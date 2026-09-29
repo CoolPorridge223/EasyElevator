@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "easyelevator-test",
+  "version": "1.0.0",
+  "name": "EasyElevator integration tests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": ["org.DJB.easyelevator.ElevatorGameTests"],
+    "client": ["org.DJB.easyelevator.ElevatorClientSmoke"]
+  },
+  "depends": {"easyelevator": "*", "fabric-gametest-api-v1": "*"}
+}

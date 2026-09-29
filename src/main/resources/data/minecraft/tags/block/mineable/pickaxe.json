@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "easyelevator:elevator_rail",
+    "easyelevator:call_button"
+  ]
+}

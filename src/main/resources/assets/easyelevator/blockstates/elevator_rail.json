@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "easyelevator:block/elevator_rail",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "easyelevator:block/elevator_rail",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "easyelevator:block/elevator_rail",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "easyelevator:block/elevator_rail",
+      "y": 270
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "elevator_running": {
+    "subtitle": "subtitles.easyelevator.elevator_running",
+    "sounds": []
+  },
+  "elevator_arrival": {
+    "subtitle": "subtitles.easyelevator.elevator_arrival",
+    "sounds": []
+  },
+  "door_open": {
+    "subtitle": "subtitles.easyelevator.door_open",
+    "sounds": []
+  },
+  "door_close": {
+    "subtitle": "subtitles.easyelevator.door_close",
+    "sounds": []
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "easyelevator",
+  "version": "${version}",
+  "name": "EasyElevator",
+  "description": "沿轨道运行的电梯：呼叫按钮、轿厢选站、门动画及音效接口。",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/easyelevator/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "org.DJB.easyelevator.client.EasyelevatorDataGenerator"
+    ],
+    "client": [
+      "org.DJB.easyelevator.client.EasyelevatorClient"
+    ],
+    "main": [
+      "org.DJB.easyelevator.Easyelevator"
+    ]
+  },
+  "mixins": [
+    "easyelevator.mixins.json",
+    {
+      "config": "easyelevator.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21"
+  }
+}

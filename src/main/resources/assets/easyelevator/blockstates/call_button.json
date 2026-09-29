@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "easyelevator:block/call_button",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "easyelevator:block/call_button",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "easyelevator:block/call_button",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "easyelevator:block/call_button",
+      "y": 270
+    }
+  }
+}

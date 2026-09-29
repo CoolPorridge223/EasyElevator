@@ -1,0 +1,167 @@
+plugins {
+    id 'fabric-loom' version '1.11.8'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "easyelevator" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+fabricApi {
+    configureDataGeneration {
+        client = true
+    }
+    configureTests {
+        createSourceSet = true
+        modId = 'easyelevator-test'
+        enableGameTests = true
+        enableClientGameTests = false
+        eula = false
+    }
+}
+
+loom {
+    runs {
+        clientSmoke {
+            client()
+            name = 'Client startup smoke test'
+            source sourceSets.gametest
+            runDir 'build/run/clientSmoke'
+            vmArg '-Deasyelevator.clientSmoke=true'
+        }
+    }
+}
+
+repositories {
+    // Add repositories to retrieve artifacts from in here.
+    // You should only use this when depending on other mods because
+    // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+    // See https://docs.gradle.org/current/userguide/declaring_repositories.html
+    // for more information about repositories.
+}
+
+dependencies {
+    // To change the versions see the gradle.properties file
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+    filteringCharset "UTF-8"
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+}
+
+def targetJavaVersion = 21
+tasks.withType(JavaCompile).configureEach {
+    // ensure that the encoding is set to UTF-8, no matter what the system default is
+    // this fixes some edge cases with special characters not displaying correctly
+    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+    // If Javadoc is generated, this must be specified in that task too.
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+    // if it is present.
+    // If you remove this line, sources will not be generated.
+    withSourcesJar()
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+tasks.named('wrapper') {
+    gradleVersion = '8.14.3'
+    distributionType = Wrapper.DistributionType.BIN
+    networkTimeout = 120000
+    distributionSha256Sum = 'bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531'
+}
+
+// Allowlisted portable project: no local paths, caches, credentials, test worlds or downloaded tools.
+tasks.register('packageProject', Zip) {
+    group = 'distribution'
+    description = 'Package the editable project, wrapper, documentation and scripts.'
+    archiveFileName = "${project.archives_base_name}-${project.version}-project.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    into('EasyElevator') {
+        from(projectDir) {
+            include 'src/**', 'docs/**', 'tools/*.ps1', 'tools/*.py'
+            include 'gradle/wrapper/**', 'gradlew', 'gradlew.bat'
+            include 'build.gradle', 'settings.gradle', 'gradle.properties', '.gitignore', 'README.md', 'LICENSE.txt'
+        }
+    }
+}
+
+tasks.register('packageRelease', Zip) {
+    group = 'distribution'
+    description = 'Build and test, then package installable jars and documentation.'
+    dependsOn 'build'
+    archiveFileName = "${project.archives_base_name}-${project.version}-release.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(tasks.named('remapJar')) { into 'mods' }
+    from(tasks.named('remapSourcesJar')) { into 'sources' }
+    from('docs') { into 'docs' }
+    from('README.md', 'LICENSE.txt')
+}
+
+tasks.register('logicTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.DJB.easyelevator.logic.ElevatorControllerTest'
+}
+tasks.named('check') { dependsOn 'logicTest' }
+
+jar {
+    from("LICENSE.txt") {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+}
+
+// configure the maven publication
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+    repositories {
+        // Add repositories to publish to here.
+        // Notice: This block does NOT have the same function as the block in the top level.
+        // The repositories here will be used for publishing your artifact, not for
+        // retrieving dependencies.
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.DJB.easyelevator.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["EntityViewMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
