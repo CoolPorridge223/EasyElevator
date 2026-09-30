@@ -111,7 +111,7 @@ public class CabinEntity extends Entity {
                 return true;
             }
             @Override public boolean doorwayBlocked() {
-                return !getWorld().getOtherEntities(CabinEntity.this, localBox(-1.3,.2,1.15,1.3,2.8,1.6),
+                return !getWorld().getOtherEntities(CabinEntity.this, localBox(-1.3,.2,ElevatorParameters.CABIN_DOOR_BACK_Z-.15,1.3,2.8,1.6),
                         e -> !e.isSpectator() && e instanceof LivingEntity).isEmpty();
             }
             @Override public void arrived(ElevatorController.Stop stop) {
@@ -172,15 +172,17 @@ public class CabinEntity extends Entity {
     }
     public List<Box> collisionBoxes() {
         List<Box> boxes = new ArrayList<>();
-        boxes.add(localBox(-1.5,0,-1.5,1.5,.2,1.5));
-        boxes.add(localBox(-1.5,2.8,-1.5,1.5,3,1.5));
-        boxes.add(localBox(-1.5,.2,-1.5,-1.3,2.8,1.5));
-        boxes.add(localBox(1.3,.2,-1.5,1.5,2.8,1.5));
+        double front = ElevatorParameters.CABIN_FRONT_Z;
+        double doorBack = ElevatorParameters.CABIN_DOOR_BACK_Z;
+        boxes.add(localBox(-1.5,0,-1.5,1.5,.2,front));
+        boxes.add(localBox(-1.5,2.8,-1.5,1.5,3,front));
+        boxes.add(localBox(-1.5,.2,-1.5,-1.3,2.8,front));
+        boxes.add(localBox(1.3,.2,-1.5,1.5,2.8,front));
         boxes.add(localBox(-1.3,.2,-1.5,1.3,2.8,-1.3));
         float p = dataTracker.get(DOOR);
         if (p < .999f) {
-            boxes.add(localBox(-1.3,.2,1.3,-1.3*p,2.8,1.5));
-            boxes.add(localBox(1.3*p,.2,1.3,1.3,2.8,1.5));
+            boxes.add(localBox(-1.3,.2,doorBack,-1.3*p,2.8,front));
+            boxes.add(localBox(1.3*p,.2,doorBack,1.3,2.8,front));
         }
         return boxes;
     }

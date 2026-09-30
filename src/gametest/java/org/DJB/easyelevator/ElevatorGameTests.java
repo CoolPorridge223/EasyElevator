@@ -57,6 +57,37 @@ public class ElevatorGameTests implements FabricGameTest {
         drops.forEach(net.minecraft.entity.Entity::discard);ctx.complete();
     }
     @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE)
+    public void cabinClearsLandingDoorInEveryDirection(TestContext ctx) {
+        BlockPos rail=ctx.getAbsolutePos(new BlockPos(3,1,3));
+        for(Direction facing:new Direction[]{Direction.NORTH,Direction.EAST,Direction.SOUTH,Direction.WEST}) {
+            CabinEntity cabin=new CabinEntity(Easyelevator.CABIN,ctx.getWorld());
+            cabin.initialize(rail,facing);
+            var saved=new net.minecraft.nbt.NbtCompound();
+            cabin.writeNbt(saved);
+            BlockPos origin=rail.offset(facing,LandingDoorBlock.RAIL_DISTANCE);
+            for(float progress:new float[]{0,.25f,.5f,.75f,1}) {
+                saved.putString("Phase",progress==1?"OPEN":"OPENING");
+                saved.putFloat("Door",progress);
+                cabin.readNbt(saved);
+                var shells=cabin.collisionBoxes();
+                require(shells.size()==(progress==1?5:7),"Check both shell and sliding leaves");
+                // Outline geometry matches the resource models without the server collision interlock.
+                for(boolean open:new boolean[]{false,true}) for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
+                    BlockPos pos=origin.offset(facing.rotateYClockwise(),col-1).up(row);
+                    var state=Easyelevator.LANDING_DOOR.getDefaultState().with(LandingDoorBlock.FACING,facing)
+                            .with(LandingDoorBlock.COLUMN,col).with(LandingDoorBlock.LEVEL,row).with(LandingDoorBlock.OPEN,open);
+                    for(Box part:state.getOutlineShape(ctx.getWorld(),pos).getBoundingBoxes()) {
+                        Box landing=part.offset(pos);
+                        for(Box shell:shells) require(!shell.expand(.005).intersects(landing),
+                                "Cabin must clear landing door/frame with a visible gap: "+facing+", progress="+progress);
+                    }
+                }
+            }
+            cabin.discard();
+        }
+        ctx.complete();
+    }
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE)
     public void stationsAndHollowCollision(TestContext ctx) {
         BlockPos rail=setup(ctx);var line=ElevatorLine.scan(ctx.getWorld(),rail);
         require(line!=null && line.stops().size()==2,"Two complete landing doors yield two stations, not eighteen parts");
@@ -69,6 +100,22 @@ public class ElevatorGameTests implements FabricGameTest {
         ctx.getWorld().setBlockState(rail.up(3),Blocks.AIR.getDefaultState());
         require(ElevatorLine.scan(ctx.getWorld(),rail).stops().size()==1,"Disconnected station excluded");
         cabin.discard();ctx.complete();
+    }
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=250)
+    public void recessedDoorStillDetectsPassengers(TestContext ctx) {
+        BlockPos rail=setup(ctx);CabinEntity cabin=spawn(ctx,rail);
+        var rider=new net.minecraft.entity.decoration.ArmorStandEntity(ctx.getWorld(),cabin.getX(),cabin.getY()+.2,cabin.getZ()+.87);
+        ctx.getWorld().spawnEntity(rider);
+        require(cabin.requestStop(rail.up(5).south(3)),"Destination accepted while doorway occupied");
+        ctx.runAtTick(80,()->{
+            require(cabin.getY()==rail.getY(),"Passenger at recessed door must prevent departure");
+            require(cabin.doorProgress(1)>0,"Recessed door must reopen instead of trapping passenger");
+            rider.setPosition(cabin.getX(),cabin.getY()+.2,cabin.getZ());
+        });
+        ctx.runAtTick(240,()->{
+            require(cabin.getY()==rail.getY()+5,"Clearing recessed doorway resumes pending trip");
+            rider.discard();cabin.discard();ctx.complete();
+        });
     }
     @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=250)
     public void travelAndDoorInterlock(TestContext ctx) {

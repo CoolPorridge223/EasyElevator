@@ -11,6 +11,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.logic.ElevatorParameters;
 
 /** Replace this renderer/model only: simulation and animation timing live in CabinEntity. */
 public class CabinRenderer extends EntityRenderer<CabinEntity> {
@@ -22,16 +23,18 @@ public class CabinRenderer extends EntityRenderer<CabinEntity> {
         matrices.translate(0, CabinMotion.renderY(cabin,delta) - net.minecraft.util.math.MathHelper.lerp(delta,cabin.lastRenderY,cabin.getY()), 0);
         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(cabin.facing()) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
         VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutoutNoCull(TEXTURE));
-        box(matrices,out,-1.5f,0,-1.5f,1.5f,.2f,1.5f,light,0xFFE6E6E6);
-        box(matrices,out,-1.5f,2.8f,-1.5f,1.5f,3,1.5f,light,0xFFF5F5F5);
-        box(matrices,out,-1.5f,.2f,-1.5f,-1.3f,2.8f,1.5f,light,0xFFFFFFFF);
-        box(matrices,out,1.3f,.2f,-1.5f,1.5f,2.8f,1.5f,light,0xFFFFFFFF);
+        float front=(float)ElevatorParameters.CABIN_FRONT_Z;
+        float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
+        box(matrices,out,-1.5f,0,-1.5f,1.5f,.2f,front,light,0xFFE6E6E6);
+        box(matrices,out,-1.5f,2.8f,-1.5f,1.5f,3,front,light,0xFFF5F5F5);
+        box(matrices,out,-1.5f,.2f,-1.5f,-1.3f,2.8f,front,light,0xFFFFFFFF);
+        box(matrices,out,1.3f,.2f,-1.5f,1.5f,2.8f,front,light,0xFFFFFFFF);
         box(matrices,out,-1.3f,.2f,-1.5f,1.3f,2.8f,-1.3f,light,0xFFFFFFFF);
         float open=cabin.doorProgress(delta);
         // Two sliding leaves retract into the side walls. 0=closed, 1=open.
         if(open<.999f) {
-            box(matrices,out,-1.3f,.2f,1.3f,-1.3f*open,2.8f,1.5f,light,0xFFCCCCCC);
-            box(matrices,out,1.3f*open,.2f,1.3f,1.3f,2.8f,1.5f,light,0xFFCCCCCC);
+            box(matrices,out,-1.3f,.2f,doorBack,-1.3f*open,2.8f,front,light,0xFFCCCCCC);
+            box(matrices,out,1.3f*open,.2f,doorBack,1.3f,2.8f,front,light,0xFFCCCCCC);
         }
         // Blank interior panel marker.
         box(matrices,out,1.25f,1.2f,.3f,1.30f,1.8f,.8f,light,0xFFBBBBBB);

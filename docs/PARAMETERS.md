@@ -52,15 +52,16 @@
 | 楼层门外尺寸 | 宽3、高3、厚3/16格；关闭时有碰撞 | `LandingDoorBlock.shape` 与门资源模型 |
 | 门状态刷新 | 每1 tick，并在轿厢状态变化当 tick 更新 | `scheduledTick`、`CabinEntity.tick` |
 | 水平轨道到轿厢中心偏移 | 2 格 | `ElevatorLine.centerX/centerZ`、`CabinEntity.initialize` |
-| 轿厢外尺寸 | 宽3 × 深3 × 高3 格 | `Easyelevator.CABIN` dimensions、渲染和碰撞 |
+| 轿厢预留范围 / 模型尺寸 | 预留3×3×3；模型宽3 × 深2.8 × 高3 格 | `Easyelevator.CABIN` dimensions 保留预留范围；正面内收避免与楼层门重叠 |
 | 局部坐标 | 原点底部中心，+Z 门口 | `CabinEntity.localBox`、`CabinRenderer` |
 | 地板厚度/表面 | 0.2 格；相对 Y=0.2 | `collisionBoxes`、白模 renderer |
 | 侧壁厚度 | 0.2 格 | 外缘 ±1.5，内缘 ±1.3 |
 | 顶板 | 相对 Y=2.8..3.0 | 轿厢净高 2.6 格 |
-| 门口 | X=-1.3..1.3，Y=0.2..2.8，Z=1.3..1.5 | 双扇门各占一半 |
+| 轿厢正面前缘 | 局部 Z=1.3 | `ElevatorParameters.CABIN_FRONT_Z`，渲染与碰撞共用；楼层门后缘 Z=1.3125，间隙0.0125格 |
+| 门口 | X=-1.3..1.3，Y=0.2..2.8，Z=1.1..1.3 | 双扇门各占一半；后缘 `CABIN_DOOR_BACK_Z`，厚度仍0.2格 |
 | 乘客横向包围盒边界 | 中心 ±1.31 格 | `containsPassenger`；非旁观、未骑乘 |
 | 乘客脚部高度范围 | 相对 Y≥0.14 且 <2.7 | `containsPassenger` |
-| 门口防夹检测区域 | X ±1.3，Y 0.2..2.8，Z 1.15..1.6 | `doorwayBlocked`，检测 LivingEntity |
+| 门口防夹检测区域 | X ±1.3，Y 0.2..2.8，Z 0.95..1.6 | `doorwayBlocked`，内缘为 `CABIN_DOOR_BACK_Z-0.15`，检测 LivingEntity |
 | 障碍扫描边界内缩 | 0.001 格 | `canMove` 的 swept box，避免面接触误判 |
 | 实体追踪范围 | 10 个区块，即约160格 | `Easyelevator.CABIN.maxTrackingRange(10)` |
 | 原版实体追踪间隔 | 1 tick | `trackingTickInterval(1)` |

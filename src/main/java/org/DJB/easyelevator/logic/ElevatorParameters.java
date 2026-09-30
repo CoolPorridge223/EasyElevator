@@ -9,6 +9,10 @@ public final class ElevatorParameters {
     public static final int DOOR_TICKS = 20;
     public static final int DWELL_TICKS = 40;
     public static final int MAX_REQUESTS = 128;
+    // Landing doors occupy local Z=1.3125..1.5. Recess the entire front, not just
+    // the leaves, so the floor, roof and side walls also clear the landing frame.
+    public static final double CABIN_FRONT_Z = 1.3;
+    public static final double CABIN_DOOR_BACK_Z = CABIN_FRONT_Z - .2;
     public static final int INTERPOLATION_DELAY_TICKS = 2;
     public static final int MOTION_HISTORY_SIZE = 32;
     public static final int MOTION_RESET_GAP_TICKS = 20;
