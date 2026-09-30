@@ -22,12 +22,30 @@ def element(a, b):
 
 for name, parts in {
     'elevator_rail': [element([5,0,5],[11,16,11])],
-    'call_button': [element([5,5,13],[11,11,16])],
+    'call_button': [element([0,0,0],[16,16,3])],
 }.items():
     write(ASSETS / f'models/block/{name}.json', {'textures': {'all': 'easyelevator:block/blank', 'particle': 'easyelevator:block/blank'}, 'elements': parts})
     write(ASSETS / f'blockstates/{name}.json', {'variants': {f'facing={d}': {'model': f'easyelevator:block/{name}', 'y': r} for d, r in [('north',0),('east',90),('south',180),('west',270)]}})
     write(ASSETS / f'models/item/{name}.json', {'parent': f'easyelevator:block/{name}'})
     write(ROOT / f'data/easyelevator/loot_table/blocks/{name}.json', {'type': 'minecraft:block', 'pools': [{'rolls': 1, 'entries': [{'type': 'minecraft:item', 'name': f'easyelevator:{name}'}], 'conditions': [{'condition': 'minecraft:survives_explosion'}]}]})
+
+# The old call_button registry ID is deliberately retained for inventory compatibility.
+for name, parts in {
+    'landing_door_open_left': [element([0,0,0],[3,16,3])],
+    'landing_door_open_right': [element([13,0,0],[16,16,3])],
+    'landing_door_open_top': [element([0,13,0],[16,16,3])],
+    'landing_door_open_middle': [],
+}.items():
+    write(ASSETS / f'models/block/{name}.json', {'textures': {'all':'easyelevator:block/blank','particle':'easyelevator:block/blank'}, 'elements':parts})
+variants={}
+for facing, rotation in [('north',0),('east',90),('south',180),('west',270)]:
+    for col in range(3):
+        for row in range(3):
+            for opened in [False,True]:
+                model='call_button' if not opened else 'landing_door_open_'+('top' if row==2 else ['left','middle','right'][col])
+                variants[f'facing={facing},column={col},level={row},open={str(opened).lower()}']={'model':f'easyelevator:block/{model}','y':rotation}
+write(ASSETS / 'blockstates/call_button.json',{'variants':variants})
+write(ROOT / 'data/easyelevator/loot_table/blocks/call_button.json',{'type':'minecraft:block','pools':[{'rolls':1,'entries':[{'type':'minecraft:item','name':'easyelevator:call_button'}],'conditions':[{'condition':'minecraft:survives_explosion'},{'condition':'minecraft:block_state_property','block':'easyelevator:call_button','properties':{'column':'1','level':'0'}}]}]})
 
 write(ASSETS / 'models/item/cabin.json', {'parent': 'minecraft:block/cube_all', 'textures': {'all': 'easyelevator:block/blank'}})
 png(ASSETS / 'textures/block/blank.png', 16, (242,242,242,255))
@@ -37,30 +55,32 @@ write(ASSETS / 'sounds.json', {key: {'subtitle': f'subtitles.easyelevator.{key}'
 
 zh = {
     'itemGroup.easyelevator': '简易电梯', 'block.easyelevator.elevator_rail': '电梯轨道',
-    'block.easyelevator.call_button': '电梯呼叫按钮', 'item.easyelevator.cabin': '电梯轿厢', 'entity.easyelevator.cabin': '电梯轿厢',
+    'block.easyelevator.call_button': '电梯门', 'item.easyelevator.cabin': '电梯轿厢', 'entity.easyelevator.cabin': '电梯轿厢',
     'message.easyelevator.no_cabin': '这条线路没有轿厢，请先在轨道上放置轿厢。',
     'message.easyelevator.multiple_cabins': '这条线路存在多个轿厢，请移除多余轿厢。',
-    'message.easyelevator.called': '呼叫已加入队列。', 'message.easyelevator.invalid_stop': '站点或线路已变化，或请求队列已满，请检查轨道和按钮。',
+    'message.easyelevator.called': '呼叫已加入队列。', 'message.easyelevator.invalid_stop': '站点或线路已变化，或请求队列已满，请检查轨道和电梯门。',
     'message.easyelevator.existing_cabin': '这条线路已有轿厢。', 'message.easyelevator.obstructed': '轿厢需要 3×3×3 的空位，且所在区块必须已加载。',
     'message.easyelevator.enter': '请进入轿厢后右键选站；空手潜行右键可回收空轿厢。', 'message.easyelevator.selected': '目的站已加入队列。',
     'screen.easyelevator.title': '电梯选站', 'screen.easyelevator.station': '站点 %s  ·  Y = %s',
     'screen.easyelevator.status': '高度 %s  |  %s', 'screen.easyelevator.count': '%s 个站点  ·  第 %s / %s 页',
-    'screen.easyelevator.empty': '同一线路尚未安装呼叫按钮',
+    'screen.easyelevator.empty': '同一线路尚未安装完整电梯门',
     'phase.easyelevator.open': '开门停靠', 'phase.easyelevator.closing': '正在关门', 'phase.easyelevator.moving': '运行中',
     'phase.easyelevator.opening': '正在开门', 'phase.easyelevator.blocked': '暂停：请检查轨道或障碍',
     'subtitles.easyelevator.elevator_running': '电梯运行', 'subtitles.easyelevator.elevator_arrival': '电梯到站',
     'subtitles.easyelevator.door_open': '电梯开门', 'subtitles.easyelevator.door_close': '电梯关门',
 }
 en = dict(zip(zh, [
-    'Easy Elevator','Elevator Rail','Call Button','Elevator Cabin','Elevator Cabin',
+    'Easy Elevator','Elevator Rail','Landing Door','Elevator Cabin','Elevator Cabin',
     'No cabin on this line. Place a cabin on the rail first.', 'Multiple cabins on this line. Remove the extra cabin.',
-    'Call queued.', 'Station/line changed or queue full. Check the rails and buttons.',
+    'Call queued.', 'Station/line changed or queue full. Check the rails and landing doors.',
     'This line already has a cabin.', 'The cabin requires a clear, loaded 3 x 3 x 3 space.',
     'Enter and right-click to select a station. Sneak + empty-hand right-click recovers an empty cabin.', 'Destination queued.',
     'Select a station','Station %s  /  Y = %s','Height %s  |  %s','%s stations  /  Page %s of %s',
-    'No call buttons on this line','Doors open','Closing doors','Moving','Opening doors','Paused: check rails or obstacles',
+    'No complete landing doors on this line','Doors open','Closing doors','Moving','Opening doors','Paused: check rails or obstacles',
     'Elevator running','Elevator arriving','Elevator door opening','Elevator door closing'
 ], strict=True))
+zh['message.easyelevator.door_placement']='门底部中心必须在轨道朝向前方3格处，并留出3格宽、3格高空间。'
+en['message.easyelevator.door_placement']='Place the bottom centre 3 blocks in front of a rail, with a clear 3 by 3 doorway.'
 write(ASSETS / 'lang/zh_cn.json', zh)
 write(ASSETS / 'lang/en_us.json', en)
 

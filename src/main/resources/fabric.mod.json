@@ -3,7 +3,7 @@
   "id": "easyelevator",
   "version": "${version}",
   "name": "EasyElevator",
-  "description": "沿轨道运行的电梯：呼叫按钮、轿厢选站、门动画及音效接口。",
+  "description": "沿轨道运行的电梯：楼层门呼叫、轿厢选站、高精度移动、门联锁及音效接口。",
   "authors": [],
   "contact": {},
   "license": "All-Rights-Reserved",

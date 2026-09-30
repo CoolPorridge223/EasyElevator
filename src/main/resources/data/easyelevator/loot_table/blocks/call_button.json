@@ -12,6 +12,14 @@
       "conditions": [
         {
           "condition": "minecraft:survives_explosion"
+        },
+        {
+          "condition": "minecraft:block_state_property",
+          "block": "easyelevator:call_button",
+          "properties": {
+            "column": "1",
+            "level": "0"
+          }
         }
       ]
     }

@@ -21,6 +21,7 @@ import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.api.ElevatorEvents;
+import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
@@ -90,8 +91,8 @@ public class CabinEntity extends Entity {
                 BlockPos p = BlockPos.fromLong(stop.id());
                 if (!getWorld().isChunkLoaded(p)) return true;
                 var s = getWorld().getBlockState(p);
-                return s.isOf(Easyelevator.CALL_BUTTON)
-                        && org.DJB.easyelevator.block.CallButtonBlock.railPos(s, p).equals(new BlockPos(railX, stop.y(), railZ));
+                return LandingDoorBlock.isRoot(s) && LandingDoorBlock.complete(getWorld(),p)
+                        && LandingDoorBlock.railPos(s, p).equals(new BlockPos(railX, stop.y(), railZ));
             }
             @Override public boolean canMove(double from, double to) {
                 if (!unique || !currentLine.stops().contains(BlockPos.fromLong(controller.target().id()))) return false;
@@ -134,6 +135,8 @@ public class CabinEntity extends Entity {
         }
         dataTracker.set(PHASE, controller.phase().ordinal()); dataTracker.set(DOOR, controller.door());
         dataTracker.set(TARGET_Y, controller.target() == null ? Integer.MIN_VALUE : controller.target().y());
+        // Update landing locks in the same server tick as the car's door/motion state.
+        if(currentLine!=null) for(BlockPos door:currentLine.stops()) LandingDoorBlock.refresh(getWorld(),door);
         if (dy != 0) motionSettleTicks = ElevatorParameters.MOTION_SETTLE_TICKS;
         if (dy != 0 || motionSettleTicks > 0) {
             ElevatorNetworking.syncMotion(this);
@@ -151,7 +154,13 @@ public class CabinEntity extends Entity {
         for (BlockPos p : BlockPos.iterate(MathHelper.floor(box.minX), MathHelper.floor(box.minY), MathHelper.floor(box.minZ),
                 MathHelper.floor(box.maxX), MathHelper.floor(box.maxY), MathHelper.floor(box.maxZ)))
             if (!getWorld().isChunkLoaded(p)) return false;
-        for (VoxelShape shape : getWorld().getBlockCollisions(this, box)) if (!shape.isEmpty()) return false;
+        for (BlockPos p : BlockPos.iterate(MathHelper.floor(box.minX),MathHelper.floor(box.minY),MathHelper.floor(box.minZ),
+                MathHelper.floor(box.maxX),MathHelper.floor(box.maxY),MathHelper.floor(box.maxZ))) {
+            var state=getWorld().getBlockState(p);
+            if(state.isOf(Easyelevator.LANDING_DOOR) && LandingDoorBlock.belongsToCabin(getWorld(),p,state,this)) continue;
+            VoxelShape shape=state.getCollisionShape(getWorld(),p,net.minecraft.block.ShapeContext.of(this));
+            for(Box part:shape.getBoundingBoxes()) if(part.offset(p).intersects(box)) return false;
+        }
         return getWorld().getEntitiesByClass(CabinEntity.class, box, e -> e != this && !e.isRemoved()).isEmpty();
     }
     /** Geometry is in blocks. The local front (+Z) is rotated to the rail facing. */

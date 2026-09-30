@@ -1,13 +1,13 @@
 {
   "itemGroup.easyelevator": "Easy Elevator",
   "block.easyelevator.elevator_rail": "Elevator Rail",
-  "block.easyelevator.call_button": "Call Button",
+  "block.easyelevator.call_button": "Landing Door",
   "item.easyelevator.cabin": "Elevator Cabin",
   "entity.easyelevator.cabin": "Elevator Cabin",
   "message.easyelevator.no_cabin": "No cabin on this line. Place a cabin on the rail first.",
   "message.easyelevator.multiple_cabins": "Multiple cabins on this line. Remove the extra cabin.",
   "message.easyelevator.called": "Call queued.",
-  "message.easyelevator.invalid_stop": "Station/line changed or queue full. Check the rails and buttons.",
+  "message.easyelevator.invalid_stop": "Station/line changed or queue full. Check the rails and landing doors.",
   "message.easyelevator.existing_cabin": "This line already has a cabin.",
   "message.easyelevator.obstructed": "The cabin requires a clear, loaded 3 x 3 x 3 space.",
   "message.easyelevator.enter": "Enter and right-click to select a station. Sneak + empty-hand right-click recovers an empty cabin.",
@@ -16,7 +16,7 @@
   "screen.easyelevator.station": "Station %s  /  Y = %s",
   "screen.easyelevator.status": "Height %s  |  %s",
   "screen.easyelevator.count": "%s stations  /  Page %s of %s",
-  "screen.easyelevator.empty": "No call buttons on this line",
+  "screen.easyelevator.empty": "No complete landing doors on this line",
   "phase.easyelevator.open": "Doors open",
   "phase.easyelevator.closing": "Closing doors",
   "phase.easyelevator.moving": "Moving",
@@ -25,5 +25,6 @@
   "subtitles.easyelevator.elevator_running": "Elevator running",
   "subtitles.easyelevator.elevator_arrival": "Elevator arriving",
   "subtitles.easyelevator.door_open": "Elevator door opening",
-  "subtitles.easyelevator.door_close": "Elevator door closing"
+  "subtitles.easyelevator.door_close": "Elevator door closing",
+  "message.easyelevator.door_placement": "Place the bottom centre 3 blocks in front of a rail, with a clear 3 by 3 doorway."
 }

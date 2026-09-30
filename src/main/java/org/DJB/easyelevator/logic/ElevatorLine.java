@@ -6,7 +6,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.block.CallButtonBlock;
+import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
 import org.DJB.easyelevator.entity.CabinEntity;
 import java.util.ArrayList;
@@ -26,12 +26,11 @@ public record ElevatorLine(int x, int z, int bottom, int top, Direction facing, 
         List<BlockPos> stops = new ArrayList<>();
         for (int y = low; y <= high; y++) {
             BlockPos rail = new BlockPos(seed.getX(), y, seed.getZ());
-            for (Direction side : Direction.Type.HORIZONTAL) {
-                BlockPos button = rail.offset(side);
-                if (!world.isChunkLoaded(button)) continue;
-                BlockState b = world.getBlockState(button);
-                if (b.isOf(Easyelevator.CALL_BUTTON) && CallButtonBlock.railPos(b, button).equals(rail)) stops.add(button.toImmutable());
-            }
+            BlockPos door = rail.offset(direction,LandingDoorBlock.RAIL_DISTANCE);
+            if (!world.isChunkLoaded(door)) continue;
+            BlockState b = world.getBlockState(door);
+            if (LandingDoorBlock.isRoot(b) && b.get(LandingDoorBlock.FACING)==direction
+                    && LandingDoorBlock.complete(world,door)) stops.add(door.toImmutable());
         }
         stops.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
         return new ElevatorLine(seed.getX(), seed.getZ(), low, high, direction, List.copyOf(stops));

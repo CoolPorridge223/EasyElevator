@@ -55,5 +55,10 @@ public class ElevatorScreen extends Screen {
         if(stops.isEmpty()) context.drawCenteredTextWithShadow(textRenderer,Text.translatable("screen.easyelevator.empty"),width/2,top+64,0xFFC27A);
         super.render(context,mouseX,mouseY,delta);
     }
+    @Override public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+        // Screen.renderBackground applies the vanilla blur shader. A light tint keeps the world
+        // and its text sharp, and cannot blur title/status text already drawn by another pass.
+        context.fill(0,0,width,height,0x18000000);
+    }
     @Override public boolean shouldPause() { return false; }
 }

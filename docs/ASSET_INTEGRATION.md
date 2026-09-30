@@ -7,7 +7,8 @@
 | 资源 | 位置（相对 `src/main/resources/assets/easyelevator/`） |
 | --- | --- |
 | 轨道 | `models/block/elevator_rail.json` |
-| 外部呼叫按钮 | `models/block/call_button.json` |
+| 楼层门关闭部分（保留旧 ID） | `models/block/call_button.json` |
+| 楼层门打开后的左/右/上框及空心部分 | `models/block/landing_door_open_left.json`、`landing_door_open_right.json`、`landing_door_open_top.json`、`landing_door_open_middle.json` |
 | 物品显示 | `models/item/elevator_rail.json`、`call_button.json`、`cabin.json` |
 | 方块白色贴图 | `textures/block/blank.png` |
 | 轿厢白色贴图 | `textures/entity/cabin.png` |
@@ -15,6 +16,10 @@
 轿厢是移动实体，**不是可直接替换 block JSON 的方块**。当前 `CabinRenderer` 用白色立方体绘制地板、顶板、侧壁、两扇门及内部面板；替换为你的 Java/Blockbench 实体模型时，保留注册的 `CabinRenderer`，在其 `render` 内调用你的模型即可。如果将来采用 GeckoLib，需要自行增加适用于 1.21.1 的依赖及动画控制器；当前实现不依赖动画库。
 
 轿厢局部坐标：原点在底部中心，X 左右，Y 向上，+Z 为门口。尺寸 3×3×3 格，范围 X/Z=-1.5..1.5，Y=0..3。内部地板面 Y=0.2，侧壁内缘 ±1.3，天花板内侧 Y=2.8。
+
+楼层门采用3×3多方块白模。方块状态 `facing` 表示朝向、`column=0/1/2` 表示横向位置、`level=0/1/2` 表示高度、`open` 控制门面及碰撞。只有 `column=1,level=0` 的底部中心定义站点；资源组合见 `blockstates/call_button.json`。门物品/方块 ID 保留 `easyelevator:call_button`。
+
+楼层门白模目前通过 open 状态切换门面，轿厢双扇门仍使用原有连续门动画接口。将来给楼层门添加骨骼动画时，应保留 `LandingDoorBlock` 的服务端联锁和完整性检查，不要由动画自行决定能否打开。
 
 模型尺寸变化时同步调整 `CabinEntity.collisionBoxes`、`containsPassenger`、门口检测体积、实体注册 dimensions 和线路中心偏移。仅改贴图/外观且不改尺寸时，无需改运行逻辑。
 

@@ -1,0 +1,7 @@
+{
+  "textures": {
+    "all": "easyelevator:block/blank",
+    "particle": "easyelevator:block/blank"
+  },
+  "elements": []
+}

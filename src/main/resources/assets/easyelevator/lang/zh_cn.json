@@ -1,13 +1,13 @@
 {
   "itemGroup.easyelevator": "简易电梯",
   "block.easyelevator.elevator_rail": "电梯轨道",
-  "block.easyelevator.call_button": "电梯呼叫按钮",
+  "block.easyelevator.call_button": "电梯门",
   "item.easyelevator.cabin": "电梯轿厢",
   "entity.easyelevator.cabin": "电梯轿厢",
   "message.easyelevator.no_cabin": "这条线路没有轿厢，请先在轨道上放置轿厢。",
   "message.easyelevator.multiple_cabins": "这条线路存在多个轿厢，请移除多余轿厢。",
   "message.easyelevator.called": "呼叫已加入队列。",
-  "message.easyelevator.invalid_stop": "站点或线路已变化，或请求队列已满，请检查轨道和按钮。",
+  "message.easyelevator.invalid_stop": "站点或线路已变化，或请求队列已满，请检查轨道和电梯门。",
   "message.easyelevator.existing_cabin": "这条线路已有轿厢。",
   "message.easyelevator.obstructed": "轿厢需要 3×3×3 的空位，且所在区块必须已加载。",
   "message.easyelevator.enter": "请进入轿厢后右键选站；空手潜行右键可回收空轿厢。",
@@ -16,7 +16,7 @@
   "screen.easyelevator.station": "站点 %s  ·  Y = %s",
   "screen.easyelevator.status": "高度 %s  |  %s",
   "screen.easyelevator.count": "%s 个站点  ·  第 %s / %s 页",
-  "screen.easyelevator.empty": "同一线路尚未安装呼叫按钮",
+  "screen.easyelevator.empty": "同一线路尚未安装完整电梯门",
   "phase.easyelevator.open": "开门停靠",
   "phase.easyelevator.closing": "正在关门",
   "phase.easyelevator.moving": "运行中",
@@ -25,5 +25,6 @@
   "subtitles.easyelevator.elevator_running": "电梯运行",
   "subtitles.easyelevator.elevator_arrival": "电梯到站",
   "subtitles.easyelevator.door_open": "电梯开门",
-  "subtitles.easyelevator.door_close": "电梯关门"
+  "subtitles.easyelevator.door_close": "电梯关门",
+  "message.easyelevator.door_placement": "门底部中心必须在轨道朝向前方3格处，并留出3格宽、3格高空间。"
 }
