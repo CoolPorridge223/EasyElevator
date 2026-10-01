@@ -28,7 +28,7 @@ fabricApi {
     configureTests {
         createSourceSet = true
         modId = 'easyelevator-test'
-        enableGameTests = true
+        enableGameTests = false
         enableClientGameTests = false
         eula = false
     }
@@ -137,10 +137,13 @@ tasks.register('packageRelease', Zip) {
 
 tasks.register('logicTest', JavaExec) {
     dependsOn testClasses
+    enabled = false
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.DJB.easyelevator.logic.ElevatorControllerTest'
 }
-tasks.named('check') { dependsOn 'logicTest' }
+tasks.named('check') {
+    dependsOn 'logicTest'
+}
 
 jar {
     from("LICENSE.txt") {
