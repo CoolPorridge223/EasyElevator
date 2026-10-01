@@ -32,15 +32,20 @@ public class Easyelevator implements ModInitializer {
     public static final SoundEvent ARRIVAL = sound("elevator_arrival");
     public static final SoundEvent DOOR_OPEN = sound("door_open");
     public static final SoundEvent DOOR_CLOSE = sound("door_close");
+
     public static Identifier id(String path) { return Identifier.of(MOD_ID, path); }
+
     private static SoundEvent sound(String name) {
         return Registry.register(Registries.SOUND_EVENT, id(name), SoundEvent.of(id(name)));
     }
+
     private static void block(String name, Block block) {
         Registry.register(Registries.BLOCK, id(name), block);
         Registry.register(Registries.ITEM, id(name), new BlockItem(block, new Item.Settings()));
     }
-    @Override public void onInitialize() {
+
+    @Override
+    public void onInitialize() {
         block("elevator_rail", RAIL);
         // Keep the old registry ID so existing inventory items are not lost on upgrade.
         block("call_button", LANDING_DOOR);

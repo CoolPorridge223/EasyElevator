@@ -29,23 +29,38 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
 
 /** A 3x3 landing door. The bottom centre is the one and only station/controller. */
 public final class LandingDoorBlock extends HorizontalFacingBlock {
+
     public static final MapCodec<LandingDoorBlock> CODEC = createCodec(LandingDoorBlock::new);
+
     public static final IntProperty COLUMN = IntProperty.of("column", 0, 2);
+
     public static final IntProperty LEVEL = IntProperty.of("level", 0, 2);
+
     public static final BooleanProperty OPEN = Properties.OPEN;
+
     public static final int RAIL_DISTANCE = 3;
+
     public LandingDoorBlock(Settings settings) {
         super(settings);
         setDefaultState(getStateManager().getDefaultState().with(FACING,Direction.NORTH).with(COLUMN,1).with(LEVEL,0).with(OPEN,false));
     }
-    @Override public MapCodec<LandingDoorBlock> getCodec() { return CODEC; }
-    @Override protected void appendProperties(StateManager.Builder<Block,BlockState> b) { b.add(FACING,COLUMN,LEVEL,OPEN); }
+
+    @Override
+    public MapCodec<LandingDoorBlock> getCodec() { return CODEC; }
+
+    @Override
+    protected void appendProperties(StateManager.Builder<Block,BlockState> b) { b.add(FACING,COLUMN,LEVEL,OPEN); }
+
     public static boolean isRoot(BlockState s) { return s.isOf(Easyelevator.LANDING_DOOR) && s.get(COLUMN)==1 && s.get(LEVEL)==0; }
+
     public static BlockPos root(BlockState s, BlockPos p) {
         return p.offset(s.get(FACING).rotateYClockwise(),1-s.get(COLUMN)).down(s.get(LEVEL));
     }
+
     public static BlockPos railPos(BlockState s,BlockPos p) { return root(s,p).offset(s.get(FACING).getOpposite(),RAIL_DISTANCE); }
+
     private static BlockPos part(BlockPos root,Direction facing,int column,int level) { return root.offset(facing.rotateYClockwise(),column-1).up(level); }
+
     public static boolean complete(World world,BlockPos root) {
         BlockState state=world.getBlockState(root);
         if(!isRoot(state)) return false;
@@ -58,7 +73,9 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         }
         return true;
     }
-    @Override public BlockState getPlacementState(ItemPlacementContext ctx) {
+
+    @Override
+    public BlockState getPlacementState(ItemPlacementContext ctx) {
         BlockPos root=ctx.getBlockPos();
         World world=ctx.getWorld();
         for(Direction facing:Direction.Type.HORIZONTAL) {
@@ -75,7 +92,9 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         if(!world.isClient && ctx.getPlayer()!=null) ctx.getPlayer().sendMessage(Text.translatable("message.easyelevator.door_placement"),true);
         return null;
     }
-    @Override public void onPlaced(World world,BlockPos p,BlockState s,LivingEntity placer,ItemStack stack) {
+
+    @Override
+    public void onPlaced(World world,BlockPos p,BlockState s,LivingEntity placer,ItemStack stack) {
         super.onPlaced(world,p,s,placer,stack);
         if(world.isClient || !isRoot(s)) return;
         for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
@@ -85,11 +104,14 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         refresh(world,p);
         world.scheduleBlockTick(p,this,1);
     }
-    @Override protected void scheduledTick(BlockState s,ServerWorld world,BlockPos p,Random random) {
+
+    @Override
+    protected void scheduledTick(BlockState s,ServerWorld world,BlockPos p,Random random) {
         if(!isRoot(s)) return;
         refresh(world,p);
         world.scheduleBlockTick(p,this,1);
     }
+
     private static boolean mayOpen(World world,BlockPos origin) {
         if(!complete(world,origin)) return false;
         BlockState state=world.getBlockState(origin);
@@ -106,6 +128,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
                 && car.phase()!=ElevatorController.Phase.MOVING && car.phase()!=ElevatorController.Phase.BLOCKED
                 && car.doorProgress(1)>0;
     }
+
     public static void refresh(World world,BlockPos origin) {
         if(world.isClient) return;
         BlockState state=world.getBlockState(origin);
@@ -118,13 +141,16 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
                 world.setBlockState(p,cell.with(OPEN,open),Block.NOTIFY_LISTENERS);
         }
     }
+
     /** Only this car's own landing faces are permitted to overlap its front shell. */
     public static boolean belongsToCabin(World world,BlockPos p,BlockState state,CabinEntity car) {
         BlockPos rail=railPos(state,p);
         return state.get(FACING)==car.facing() && rail.getX()==car.railX() && rail.getZ()==car.railZ()
                 && complete(world,root(state,p));
     }
-    @Override protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
+
+    @Override
+    protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
         if(!world.isClient) {
             BlockPos origin=root(state,pos);
             ElevatorLine line=complete(world,origin)?ElevatorLine.scan(world,railPos(state,pos)):null;
@@ -134,14 +160,18 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         }
         return ActionResult.SUCCESS;
     }
-    @Override public BlockState onBreak(World world,BlockPos pos,BlockState state,PlayerEntity player) {
+
+    @Override
+    public BlockState onBreak(World world,BlockPos pos,BlockState state,PlayerEntity player) {
         if(!world.isClient && !isRoot(state)) {
             BlockPos origin=root(state,pos);
             if(isRoot(world.getBlockState(origin))) world.breakBlock(origin,!player.isCreative(),player);
         }
         return super.onBreak(world,pos,state,player);
     }
-    @Override protected void onStateReplaced(BlockState state,World world,BlockPos pos,BlockState next,boolean moved) {
+
+    @Override
+    protected void onStateReplaced(BlockState state,World world,BlockPos pos,BlockState next,boolean moved) {
         if(!world.isClient && !next.isOf(this)) {
             BlockPos origin=root(state,pos);
             for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
@@ -153,12 +183,17 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         }
         super.onStateReplaced(state,world,pos,next,moved);
     }
-    @Override protected VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) { return shape(s); }
-    @Override protected VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
+
+    @Override
+    protected VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) { return shape(s); }
+
+    @Override
+    protected VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
         // Enforce the landing interlock even before a scheduled visual-state refresh runs.
         if(w instanceof World world && !world.isClient && s.get(OPEN) && !mayOpen(world,root(s,p))) s=s.with(OPEN,false);
         return shape(s);
     }
+
     private static VoxelShape shape(BlockState s) {
         double minX=0,maxX=16,minY=0;
         if(s.get(OPEN)) {

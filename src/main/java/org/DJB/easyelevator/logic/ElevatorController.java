@@ -26,6 +26,7 @@ public final class ElevatorController {
     public float door() { return door; }
     public Stop target() { return target; }
     public List<Stop> pending() { return List.copyOf(queue); }
+
     public boolean request(Stop stop, double y) {
         if (stop.equals(target) || queue.contains(stop)) return true;
         if (Math.abs(y - stop.y()) <= ElevatorParameters.POSITION_EPSILON && (phase == Phase.OPEN || phase == Phase.OPENING)) { dwell = DWELL_TICKS; return true; }
@@ -33,6 +34,7 @@ public final class ElevatorController {
         queue.addLast(stop);
         return true;
     }
+
     public double tick(double y, Environment env) {
         queue.removeIf(s -> !env.valid(s));
         if (target != null && !env.valid(target)) {
@@ -76,6 +78,7 @@ public final class ElevatorController {
         }
         return y;
     }
+
     public void restore(Phase phase, float door, Stop target, List<Stop> pending) {
         this.phase = phase; this.door = Math.max(0, Math.min(1, door)); this.target = target;
         queue.clear(); pending.stream().distinct().limit(MAX_REQUESTS).forEach(queue::addLast);

@@ -15,6 +15,7 @@ import java.util.List;
 
 /** One unbroken, consistently oriented vertical column. Adjacent shafts stay separate. */
 public record ElevatorLine(int x, int z, int bottom, int top, Direction facing, List<BlockPos> stops) {
+
     public static ElevatorLine scan(World world, BlockPos seed) {
         if (!world.isChunkLoaded(seed)) return null;
         BlockState state = world.getBlockState(seed);
@@ -35,14 +36,19 @@ public record ElevatorLine(int x, int z, int bottom, int top, Direction facing, 
         stops.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
         return new ElevatorLine(seed.getX(), seed.getZ(), low, high, direction, List.copyOf(stops));
     }
+
     public static boolean matches(World w, BlockPos p, Direction d) {
         if (!w.isChunkLoaded(p)) return false;
         BlockState s = w.getBlockState(p);
         return s.isOf(Easyelevator.RAIL) && s.get(ElevatorRailBlock.FACING) == d;
     }
+
     public boolean containsRail(BlockPos p) { return p.getX() == x && p.getZ() == z && p.getY() >= bottom && p.getY() <= top; }
+
     public double centerX() { return x + .5 + facing.getOffsetX() * 2; }
+
     public double centerZ() { return z + .5 + facing.getOffsetZ() * 2; }
+
     public List<CabinEntity> cabins(World world) {
         return world.getEntitiesByClass(CabinEntity.class, new Box(centerX()-2, bottom-1, centerZ()-2, centerX()+2, top+4, centerZ()+2),
                 c -> !c.isRemoved() && c.railX() == x && c.railZ() == z && c.getY() >= bottom - .01 && c.getY() <= top + .01);

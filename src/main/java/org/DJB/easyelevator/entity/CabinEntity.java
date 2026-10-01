@@ -30,43 +30,72 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CabinEntity extends Entity {
+
     private static final TrackedData<Integer> PHASE = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+
     private static final TrackedData<Float> DOOR = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.FLOAT);
+
     private static final TrackedData<Integer> FACING = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+
     private static final TrackedData<Integer> TARGET_Y = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+
     private final ElevatorController controller = new ElevatorController();
+
     private int railX, railZ;
+
     private float previousDoor = 1;
+
     private int motionSettleTicks;
+
     public CabinEntity(EntityType<? extends CabinEntity> type, World world) { super(type, world); setNoGravity(true); }
-    @Override protected void initDataTracker(DataTracker.Builder b) {
+
+    @Override
+    protected void initDataTracker(DataTracker.Builder b) {
         b.add(PHASE, 0); b.add(DOOR, 1f); b.add(FACING, Direction.NORTH.getId()); b.add(TARGET_Y, Integer.MIN_VALUE);
     }
+
     public void initialize(BlockPos rail, Direction facing) {
         railX = rail.getX(); railZ = rail.getZ(); dataTracker.set(FACING, facing.getId());
         setPosition(railX + .5 + facing.getOffsetX()*2, rail.getY(), railZ + .5 + facing.getOffsetZ()*2);
     }
+
     public int railX() { return railX; }
+
     public int railZ() { return railZ; }
+
     public Direction facing() { return Direction.byId(dataTracker.get(FACING)); }
+
     public ElevatorController.Phase phase() { return ElevatorController.Phase.values()[dataTracker.get(PHASE)]; }
+
     public float doorProgress(float tickDelta) { return MathHelper.lerp(tickDelta, previousDoor, dataTracker.get(DOOR)); }
+
     public int targetY() { return dataTracker.get(TARGET_Y); }
+
     public ElevatorLine line() { return ElevatorLine.scan(getWorld(), new BlockPos(railX, MathHelper.floor(getY()+.0001), railZ)); }
+
     public boolean containsPassenger(Entity e) {
         Box b = e.getBoundingBox();
         return !e.isSpectator() && !e.hasVehicle() && b.minX >= getX()-1.31 && b.maxX <= getX()+1.31
                 && b.minZ >= getZ()-1.31 && b.maxZ <= getZ()+1.31 && e.getY() >= getY()+.14 && e.getY() < getY()+2.7;
     }
+
     public boolean requestStop(BlockPos button) {
         ElevatorLine line = line();
         if (line == null || line.facing() != facing() || line.cabins(getWorld()).size() != 1 || !line.stops().contains(button)) return false;
         return controller.request(new ElevatorController.Stop(button.asLong(), button.getY()), getY());
     }
-    @Override public boolean canHit() { return true; }
-    @Override public boolean isCollidable() { return false; } // Hollow collision supplied by EntityViewMixin.
-    @Override public boolean isPushable() { return false; }
-    @Override public ActionResult interact(PlayerEntity player, Hand hand) {
+
+    @Override
+    public boolean canHit() { return true; }
+
+    @Override
+    public boolean isCollidable() { return false; } // Hollow collision supplied by EntityViewMixin.
+
+    @Override
+    public boolean isPushable() { return false; }
+
+    @Override
+    public ActionResult interact(PlayerEntity player, Hand hand) {
         if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
         if (!getWorld().isClient) {
             if (player.isSneaking() && player.getStackInHand(hand).isEmpty() && phase() == ElevatorController.Phase.OPEN
@@ -78,7 +107,9 @@ public class CabinEntity extends Entity {
         }
         return ActionResult.SUCCESS;
     }
-    @Override public void tick() {
+
+    @Override
+    public void tick() {
         previousDoor = dataTracker.get(DOOR);
         super.tick();
         if (getWorld().isClient) return;
@@ -86,7 +117,8 @@ public class CabinEntity extends Entity {
         final ElevatorLine currentLine = line();
         final boolean unique = currentLine != null && currentLine.facing() == facing() && currentLine.cabins(getWorld()).size() == 1;
         double nextY = controller.tick(getY(), new ElevatorController.Environment() {
-            @Override public boolean valid(ElevatorController.Stop stop) {
+            @Override
+            public boolean valid(ElevatorController.Stop stop) {
                 // A temporary gap must pause the trip, not erase its destination.
                 BlockPos p = BlockPos.fromLong(stop.id());
                 if (!getWorld().isChunkLoaded(p)) return true;
@@ -94,7 +126,8 @@ public class CabinEntity extends Entity {
                 return LandingDoorBlock.isRoot(s) && LandingDoorBlock.complete(getWorld(),p)
                         && LandingDoorBlock.railPos(s, p).equals(new BlockPos(railX, stop.y(), railZ));
             }
-            @Override public boolean canMove(double from, double to) {
+            @Override
+            public boolean canMove(double from, double to) {
                 if (!unique || !currentLine.stops().contains(BlockPos.fromLong(controller.target().id()))) return false;
                 int bottom = MathHelper.floor(Math.min(from, to)+.0001);
                 int top = MathHelper.ceil(Math.max(from, to)-.0001);
@@ -148,7 +181,9 @@ public class CabinEntity extends Entity {
             ElevatorEvents.PHASE_CHANGED.invoker().onChange(this, before, controller.phase());
         }
     }
+
     private void sound(SoundEvent event) { getWorld().playSound(null, getX(), getY(), getZ(), event, SoundCategory.BLOCKS, ElevatorParameters.EVENT_VOLUME, ElevatorParameters.SOUND_PITCH); }
+
     public boolean spaceClear(Box box) {
         if (box.minY < getWorld().getBottomY() || box.maxY > getWorld().getTopY() || !getWorld().getWorldBorder().contains(box)) return false;
         for (BlockPos p : BlockPos.iterate(MathHelper.floor(box.minX), MathHelper.floor(box.minY), MathHelper.floor(box.minZ),
@@ -163,6 +198,7 @@ public class CabinEntity extends Entity {
         }
         return getWorld().getEntitiesByClass(CabinEntity.class, box, e -> e != this && !e.isRemoved()).isEmpty();
     }
+
     /** Geometry is in blocks. The local front (+Z) is rotated to the rail facing. */
     public Box localBox(double x1, double y1, double z1, double x2, double y2, double z2) {
         int fx = facing().getOffsetX(), fz = facing().getOffsetZ();
@@ -170,6 +206,7 @@ public class CabinEntity extends Entity {
         double bx = x2*fz + z2*fx, bz = -x2*fx + z2*fz;
         return new Box(getX()+Math.min(ax,bx), getY()+y1, getZ()+Math.min(az,bz), getX()+Math.max(ax,bx),getY()+y2,getZ()+Math.max(az,bz));
     }
+
     public List<Box> collisionBoxes() {
         List<Box> boxes = new ArrayList<>();
         double front = ElevatorParameters.CABIN_FRONT_Z;
@@ -186,7 +223,9 @@ public class CabinEntity extends Entity {
         }
         return boxes;
     }
-    @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
+
+    @Override
+    protected void writeCustomDataToNbt(NbtCompound nbt) {
         nbt.putInt("RailX",railX); nbt.putInt("RailZ",railZ); nbt.putInt("Facing",facing().getId());
         nbt.putString("Phase",controller.phase().name()); nbt.putFloat("Door",controller.door());
         if (controller.target()!=null) nbt.putLong("Target",controller.target().id());
@@ -194,7 +233,9 @@ public class CabinEntity extends Entity {
         for (var stop : controller.pending()) { NbtCompound s = new NbtCompound(); s.putLong("Button",stop.id()); list.add(s); }
         nbt.put("Queue",list);
     }
-    @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
+
+    @Override
+    protected void readCustomDataFromNbt(NbtCompound nbt) {
         railX=nbt.getInt("RailX"); railZ=nbt.getInt("RailZ");
         Direction direction = Direction.byId(nbt.getInt("Facing"));
         dataTracker.set(FACING, (direction.getAxis().isHorizontal()?direction:Direction.NORTH).getId());
@@ -206,5 +247,6 @@ public class CabinEntity extends Entity {
         dataTracker.set(PHASE,controller.phase().ordinal()); dataTracker.set(DOOR,controller.door()); previousDoor=controller.door();
         dataTracker.set(TARGET_Y,controller.target()==null?Integer.MIN_VALUE:controller.target().y());
     }
+
     private static ElevatorController.Stop stop(long packed) { return new ElevatorController.Stop(packed,BlockPos.fromLong(packed).getY()); }
 }

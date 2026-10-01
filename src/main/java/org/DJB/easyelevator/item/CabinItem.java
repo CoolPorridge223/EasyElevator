@@ -9,8 +9,11 @@ import org.DJB.easyelevator.entity.CabinEntity;
 import org.DJB.easyelevator.logic.ElevatorLine;
 
 public class CabinItem extends Item {
+
     public CabinItem(Settings s) { super(s); }
-    @Override public ActionResult useOnBlock(ItemUsageContext ctx) {
+
+    @Override
+    public ActionResult useOnBlock(ItemUsageContext ctx) {
         if (!ctx.getWorld().getBlockState(ctx.getBlockPos()).isOf(Easyelevator.RAIL)) return ActionResult.PASS;
         if (ctx.getWorld().isClient) return ActionResult.SUCCESS;
         var line = ElevatorLine.scan(ctx.getWorld(), ctx.getBlockPos());
