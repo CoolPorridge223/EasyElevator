@@ -19,6 +19,7 @@ import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.FloorIndicator;
+import org.DJB.easyelevator.logic.ElevatorStatus;
 
 /** Replace this renderer/model only: simulation and animation timing live in AbstractCabinEntity.
  * 轿厢渲染器：只负责画，不参与模拟，三种轿厢共用。
@@ -80,10 +81,11 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
                     .overlay(RenderPhase.ENABLE_OVERLAY_COLOR)
                     .writeMaskState(RenderPhase.COLOR_MASK)
                     .build(true));
-    /** 轿厢内面板的字号（格/像素）：楼层行大一号、运行状态行小一点；两行各自水平居中。 */
-    private static final float FLOOR_SCALE=.018f, STATUS_SCALE=.011f;
-    /** 两行的行锚点（像素，相对面板中心）：负 Y 缩放后局部 +Y 是世界向下，因此楼层行取负（在上）、状态行取正（在下）。 */
-    private static final float FLOOR_LINE_Y=-10f, STATUS_LINE_Y=5f;
+    /** 轿厢内面板的字号（格/像素）：方向箭头一行、楼层号一行（都是单个字符，字号大些才醒目）；两行各自水平居中。 */
+    private static final float FLOOR_SCALE=.018f, ARROW_SCALE=.022f;
+    /** 两行的行锚点（像素，相对面板中心）：负 Y 缩放后局部 +Y 是世界向下，
+     * 因此取负偏移的那行画在上面——**箭头在上（-8）、楼层号在下（+6）**。 */
+    private static final float ARROW_LINE_Y=-8f, FLOOR_LINE_Y=6f;
     /** 面板上文字的颜色（红色）；与门框顶部、选站面板显示同一个楼层号与状态。 */
     private static final int FLOOR_COLOR=0xFFFF4040;
     /**
@@ -235,8 +237,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     }
 
     /**
-     * 在轿厢内右侧壁的模拟操作面板上画两行红字：第一行是当前到达层数，第二行是运行状态
-     * （"电梯上行" / "电梯下行" / "停靠"）。
+     * 在轿厢内右侧壁的模拟操作面板上画两行红字：第一行是运行方向箭头，第二行是当前到达层数
+     * （▲ 上行 / ▼ 下行，会闪烁；停靠时留空）。
      *
      * <p>面板是 1.25..1.30（X）× 1.2..1.8（Y）× 0.3..0.8（Z）的占位方块，内侧朝 -X：文字先绕 Y 轴
      * 转 -90° 让正面朝 -X（轿厢内部），再按面板中心定位，因此乘客在轿厢里读到的是正向文字。
@@ -255,9 +257,11 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         if(floor==0) return; // 还没经过任何站点（或线路无效）：不显示，避免出现"0 层"（负数 = 地下 B1、B2…，要显示）
         TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
         // 负 Y 缩放之后，局部 +Y 对应世界里的"向下"，所以取负偏移的那行显示在上面：
-        // 第一行楼层号、第二行运行状态。楼层号统一走 FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…
+        // 第一行楼层号（FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…），
+        // 第一行运行方向：▲ 上行 / ▼ 下行（闪烁），停靠时整行留空；第二行是当前到达层数。
+        String arrow=StatusArrow.glyph(cabin.status());
+        if(!arrow.isEmpty()) drawPanelLine(textRenderer,matrices,buffers,Text.literal(arrow),ARROW_LINE_Y,ARROW_SCALE);
         drawPanelLine(textRenderer,matrices,buffers,Text.literal(FloorIndicator.format(floor)),FLOOR_LINE_Y,FLOOR_SCALE);
-        drawPanelLine(textRenderer,matrices,buffers,Text.translatable("status.easyelevator."+cabin.status().key()),STATUS_LINE_Y,STATUS_SCALE);
     }
 
     /**

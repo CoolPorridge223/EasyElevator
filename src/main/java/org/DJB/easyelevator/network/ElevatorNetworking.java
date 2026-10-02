@@ -207,16 +207,18 @@ public final class ElevatorNetworking {
      * @param station 楼层门根方块位置（站点）
      * @param up 该站的上行按钮当前是否点亮
      * @param down 该站的下行按钮当前是否点亮
+     * @param showUp 是否显示上行按钮（最顶层之上没有站点时为 false）
+     * @param showDown 是否显示下行按钮（最底层之下没有站点时为 false）
      */
-    public record OpenHallPanel(BlockPos station, boolean up, boolean down) implements CustomPayload {
+    public record OpenHallPanel(BlockPos station, boolean up, boolean down, boolean showUp, boolean showDown) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_hall_panel}。 */
         public static final Id<OpenHallPanel> ID = new Id<>(Easyelevator.id("open_hall_panel"));
         /** 线格式编解码器：一个 BlockPos 加两个布尔。 */
         public static final PacketCodec<RegistryByteBuf,OpenHallPanel> CODEC = new PacketCodec<>() {
             /** 读回面板初值。 */
-            @Override public OpenHallPanel decode(RegistryByteBuf buf) { return new OpenHallPanel(buf.readBlockPos(),buf.readBoolean(),buf.readBoolean()); }
+            @Override public OpenHallPanel decode(RegistryByteBuf buf) { return new OpenHallPanel(buf.readBlockPos(),buf.readBoolean(),buf.readBoolean(),buf.readBoolean(),buf.readBoolean()); }
             /** 写出面板初值。 */
-            @Override public void encode(RegistryByteBuf buf,OpenHallPanel p) { buf.writeBlockPos(p.station);buf.writeBoolean(p.up);buf.writeBoolean(p.down); }
+            @Override public void encode(RegistryByteBuf buf,OpenHallPanel p) { buf.writeBlockPos(p.station);buf.writeBoolean(p.up);buf.writeBoolean(p.down);buf.writeBoolean(p.showUp);buf.writeBoolean(p.showDown); }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
         @Override public Id<? extends CustomPayload> getId() { return ID; }

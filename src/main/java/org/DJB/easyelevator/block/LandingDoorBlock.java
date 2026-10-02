@@ -435,13 +435,23 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      */
     private static void openHallPanel(World world,BlockPos origin,PlayerEntity player) {
         if(!(player instanceof ServerPlayerEntity serverPlayer)) return; // 只有服务端玩家实体能收包
-        boolean up=false,down=false;
+        boolean up=false,down=false,showUp=true,showDown=true;
         if(complete(world,origin)) {
             ElevatorLine line=ElevatorLine.scan(world,railPos(world.getBlockState(origin),origin));
+            if(line!=null) {
+                // 端站只有一个有意义的呼叫方向：最底层下面没有站（只能向上），最顶层上面没有站（只能向下）；
+                // 中间层两个方向都显示；整条线路只有一站时保留"向上"（等价于"把车叫到本层"）。
+                var stops=line.stops();
+                int index=stops.indexOf(origin);
+                if(index>=0) {
+                    showDown=index>0;
+                    showUp=index<stops.size()-1||stops.size()==1;
+                }
+            }
             var cabins=line==null?java.util.List.<AbstractCabinEntity>of():line.cabins(world);
             if(cabins.size()==1) { up=cabins.getFirst().hasHallCall(origin,true); down=cabins.getFirst().hasHallCall(origin,false); }
         }
-        ServerPlayNetworking.send(serverPlayer,new ElevatorNetworking.OpenHallPanel(origin.toImmutable(),up,down));
+        ServerPlayNetworking.send(serverPlayer,new ElevatorNetworking.OpenHallPanel(origin.toImmutable(),up,down,showUp,showDown));
     }
 
     /**

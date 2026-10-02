@@ -136,8 +136,8 @@ zh = {
     'screen.easyelevator.title': '电梯选站', 'screen.easyelevator.station': '站点 %s  ·  Y = %s',
     'screen.easyelevator.status': '高度 %s  |  %s', 'screen.easyelevator.count': '%s 个站点  ·  第 %s / %s 页',
     'screen.easyelevator.empty': '同一线路尚未安装完整电梯门',
-    'screen.easyelevator.floor': '第 %s 层',
     'screen.easyelevator.open_door': '开门', 'screen.easyelevator.close_door': '关门',
+    'screen.easyelevator.prev_page': '上一页', 'screen.easyelevator.next_page': '下一页',
     'phase.easyelevator.open': '开门停靠', 'phase.easyelevator.closing': '正在关门', 'phase.easyelevator.moving': '运行中',
     'phase.easyelevator.opening': '正在开门', 'phase.easyelevator.blocked': '暂停：请检查轨道或障碍',
     'status.easyelevator.up': '电梯上行', 'status.easyelevator.down': '电梯下行', 'status.easyelevator.idle': '停靠',
@@ -159,7 +159,7 @@ en = dict(zip(zh, [
     '%s call registered.',
     'This landing is now floor 1; the other floors were renumbered around it.',
     'Select a station','Station %s  /  Y = %s','Height %s  |  %s','%s stations  /  Page %s of %s',
-    'No complete landing doors on this line','Floor %s','Open','Close','Doors open','Closing doors','Moving','Opening doors','Paused: check rails or obstacles',
+    'No complete landing doors on this line','Open','Close','Previous page','Next page','Doors open','Closing doors','Moving','Opening doors','Paused: check rails or obstacles',
     'Going up','Going down','Parked',
     'Elevator running','Elevator arriving','Elevator door opening','Elevator door closing'
 ], strict=True))

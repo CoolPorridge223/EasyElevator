@@ -19,6 +19,7 @@ import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.LandingDoorGeometry;
+import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.FloorIndicator;
 import org.joml.Matrix4f;
 
@@ -85,7 +86,7 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
     }
 
     /**
-     * 在门框顶部横向显示"[运行状态] [楼层号]"（例如"电梯上行 3"），整组水平居中。
+     * 在门框顶部横向显示"[方向箭头] [楼层号]"（例如"▲ 3"），整组水平居中；箭头会闪烁，停靠时不显示。
      *
      * <p>排版：先量出状态文本与楼层号的像素宽度，起点取"负的半个总宽"（含中间留白），于是状态文本在左、
      * 楼层号在右、整组在门宽中点居中。状态文本宽度随内容变化（"停靠"比"电梯上行"窄），所以每帧重算，
@@ -108,10 +109,14 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         if(floor==0) return; // 本线路没有轿厢：什么都不画，避免显示成"0 层"（负数 = 地下 B1、B2…，要显示）
         Direction facing=state.get(LandingDoorBlock.FACING);
         TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
-        Text statusText=Text.translatable("status.easyelevator."+door.cabinStatus().key());
+        // 运行方向用闪烁箭头表示（▲ 上行 / ▼ 下行 / 停靠留空），不再写"电梯上行"这类文字。
+        ElevatorStatus status=door.cabinStatus();
+        boolean moving=StatusArrow.moving(status);
+        Text arrowText=Text.literal(StatusArrow.glyph(status));
         // 楼层号统一走 FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…，与选站面板、轿厢内面板同一口径。
         Text floorText=Text.literal(FloorIndicator.format(floor));
-        int statusWidth=textRenderer.getWidth(statusText), floorWidth=textRenderer.getWidth(floorText);
+        // 箭头宽度始终按字符本身预留（停靠时不占位），这样闪烁的半个周期里楼层号不会左右跳动。
+        int statusWidth=moving?StatusArrow.width(textRenderer):0, floorWidth=textRenderer.getWidth(floorText);
         float start=-(statusWidth+STATUS_GAP+floorWidth)/2f; // 整组居中的起点
         // 位置：从方块中心沿朝向推出"半格（到门面）+ 0.02 格"；门面在朝向轴上正向为 1.0、反向为 0.0，
         // 这样四种朝向都正好贴在门面外侧，不会浮在门外半格、也不会嵌进方块内部。
@@ -124,7 +129,9 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         matrices.scale(FLOOR_SCALE,-FLOOR_SCALE,FLOOR_SCALE);
         Matrix4f matrix=matrices.peek().getPositionMatrix();
         // 最高亮度：井道或走廊再暗也能看清红字。POLYGON_OFFSET 与原版告示牌一致，避免与门框面片闪烁。
-        textRenderer.draw(statusText,start,TEXT_Y,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+        // 只在"正在运行 + 闪烁的亮相"画箭头；灭相与停靠都不画，位置由上面的 statusWidth 固定住。
+        if(!arrowText.getString().isEmpty())
+            textRenderer.draw(arrowText,start,TEXT_Y,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
         textRenderer.draw(floorText,start+statusWidth+STATUS_GAP,TEXT_Y,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
         matrices.pop();
     }

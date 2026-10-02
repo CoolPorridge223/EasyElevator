@@ -122,6 +122,14 @@ public final class ElevatorController {
     private int dwell = DWELL_TICKS;
     /** 当前承诺的服务方向：由 {@link #select(double)} 维护，空闲（没有任何请求）时复位为 {@link Travel#NONE}。 */
     private Travel travel = Travel.NONE;
+    /**
+     * 当前目的站是"哪一条厅外呼叫"带来的（{@link Travel#NONE} = 目的站来自轿厢内选站）。
+     *
+     * <p>到站清扫时据此决定熄灭哪个方向的呼叫灯：空车跨越方向去接人（例如上行去接"下行"呼叫）时，
+     * 按钮方向与行驶方向相反，只看 {@link #travel} 会清错那一盏灯。读档恢复出的行程没有这个信息，
+     * 退回按行驶方向清扫（最多多开关一次门，不会留下死呼叫）。
+     */
+    private Travel targetHallDirection = Travel.NONE;
 
     /**
      * 用默认速度（{@link ElevatorParameters#SPEED}）构造状态机，即普通轿厢与观光轿厢。
@@ -267,7 +275,7 @@ public final class ElevatorController {
      * @return 本刻结束时的 Y（单位：格）；未发生移动时原样返回
      * 副作用：修改 phase/door/dwell/target/queue/hallCalls/travel；可能经 env.arrived 开门、播放音效、改方块状态。
      * 说明：到站时先把位置精确吸附到 target.y() 再回调 arrived，保证门联锁的 1e-7 到站判定一定成立；
-     * 到站同时清掉本站的厅外呼叫与同层选站（门开着，等待的人都上得来，按钮随之熄灭）。
+     * 到站时清掉本站"本次服务方向"的厅外呼叫与同层选站（门开着，等这个方向的人都上得来，该方向的按钮随之熄灭；另一方向的呼叫保持点亮，等轿厢回头再来）。
      */
     public double tick(double y, Environment env) {
         // 先剔除已失效的请求（门被拆、区块卸载）：避免把行程派发给已经不存在的站。
@@ -278,14 +286,26 @@ public final class ElevatorController {
             // 目的站失效时绝不就地开门（会停在楼层之间），也不静默丢弃行程：
             // 清空 target 并转入 BLOCKED；新的请求（或站点恢复）可在 MOVING/BLOCKED 分支恢复行程。
             target = null;
+            targetHallDirection = Travel.NONE;
             phase = Phase.BLOCKED;
         }
         switch (phase) {
             case OPEN -> {
                 // 开门停留倒计时；dwell 归零且还有请求（选站或厅外呼叫）才派发下一站并开始关门。
                 if (dwell > 0) dwell--;
-                if (!hasRequests()) travel = Travel.NONE; // 请求全部完成：关着门/开着门停车待命，服务方向复位为空闲
-                else if (dwell == 0) { target = select(y); if (target != null) phase = Phase.CLOSING; }
+                // 注意：这里**不**把 travel 复位为空闲。停车待命（门开着等乘客）时要保留"刚才是上行还是下行"的
+                // 记忆，否则"被下行呼叫叫到 5 层、乘客进厢按 6 层、楼下还有呼叫"会丢掉下行方向而先去 6 层。
+                if (dwell == 0 && hasRequests()) {
+                    target = select(y);
+                    if (target != null) {
+                        if (Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON) {
+                            // 目的站就是本层（例如门开着时另一方向有人按，第 ④ 步掉头后选中它）：
+                            // 车已经在这一层、门也开着，就地把它认领掉并续满停留时间，不必先关一次门再重开。
+                            // 清扫仍然只清这一条呼叫（见 serveStation），另一方向的呼叫各自独立。
+                            serveStation(target.y()); target = null; dwell = DWELL_TICKS;
+                        } else phase = Phase.CLOSING;
+                    }
+                }
             }
             case CLOSING -> {
                 // 防夹：关门过程中门口出现活体则立即反向开门；target 保留，重开后由 OPENING 归队。
@@ -326,7 +346,7 @@ public final class ElevatorController {
                     door = 1; phase = Phase.OPEN; dwell = DWELL_TICKS;
                     // Anti-crush reopening preserves the interrupted request.
                     // 防夹重开：被中断的目的站放回队首而不是丢弃，开门停留结束后它会最先被重新派发。
-                    if (target != null) { queue.addFirst(target); target = null; }
+                    if (target != null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; }
                 }
             }
         }
@@ -357,7 +377,10 @@ public final class ElevatorController {
     private void retarget(double y) {
         if (target == null) return;
         // 读档恢复时可能"只有目标、没有服务方向"（旧存档）：按目标相对位置补一个，否则顺路判断会失去参照。
-        if (travel == Travel.NONE) travel = target.y() > y ? Travel.UP : target.y() < y ? Travel.DOWN : Travel.UP;
+        // 服务方向 = 轿厢朝当前目标的实际运行方向。这样"空车去接反方向呼叫"途中，凡是与轿厢同向的
+        // 厅外呼叫（例如车向下开时二层的"下行"）都会被顺路接走；读档恢复出与行驶方向不一致的旧方向时，
+        // 这里也会在下一 tick 自动纠正。
+        travel = directionTowards(y, target.y());
         Pick ahead = nearest(y, travel, true, false);
         if (ahead == null) return;
         if (ahead.stop().y() == target.y()) return; // 最近的就是当前目标：不动
@@ -376,8 +399,14 @@ public final class ElevatorController {
      * @param stationY 刚刚到站的站点高度（格）
      */
     private void serveStation(int stationY) {
-        hallCalls.removeIf(c -> c.y() == stationY);
+        // 只清"本次服务方向"上的厅外呼叫：同一层可以同时挂着上行与下行两条呼叫，上行到达只应熄灭上行
+        // 那盏灯，下行的乘客还要等轿厢回头来接（真实电梯的上/下呼叫灯各自独立）。方向来自目的站本身——
+        // 空车跨越方向去接人时按钮方向与行驶方向相反，按行驶方向会清错。
+        Travel served = targetHallDirection != Travel.NONE ? targetHallDirection : travel;
+        if (served == Travel.NONE) hallCalls.removeIf(c -> c.y() == stationY); // 方向未知（读档恢复的行程）：退回全清，避免留下死呼叫
+        else hallCalls.removeIf(c -> c.y() == stationY && c.up() == (served == Travel.UP));
         queue.removeIf(s -> s.y() == stationY);
+        targetHallDirection = Travel.NONE;
     }
 
     /**
@@ -395,25 +424,54 @@ public final class ElevatorController {
      * @return 下一个目的站；没有任何请求时返回 null（并把服务方向复位为空闲）
      */
     private Stop select(double y) {
-        if (!hasRequests()) { travel = Travel.NONE; return null; }
-        // ① 当前层有请求：任何请求都就地开门，不必先决定方向。
-        Pick here = nearest(y, null, false, true);
-        if (here != null) return take(here);
-        // ② 起始方向：由最早的请求决定——选站看它与轿厢的相对位置，厅外呼叫看按钮方向。
+        // 没有任何请求：保持当前服务方向。停车待命期间的"上/下"记忆要留到下一次请求
+        //（真实电梯的厅外指示灯同理），否则刚被下行呼叫叫来、乘客一按上层就丢掉了方向。
+        if (!hasRequests()) return null;
+        // ① 起始方向：由最早的请求决定——选站看它与轿厢的相对位置，厅外呼叫看车实际要往哪边开。
         if (travel == Travel.NONE) travel = initialTravel(y);
-        // ③ 先在本侧前方找顺路可服务的最近请求；没有就掉头再找一次（两次都失败时方向已回到原值）。
-        for (int i = 0; i < 2; i++) {
-            Pick ahead = nearest(y, travel, true, false);
-            if (ahead != null) return take(ahead);
-            travel = opposite(travel);
-        }
-        // ④ 兜底：只有反方向厅外呼叫时（例如车向上、乘客按了下行），按距离选最近的请求，
-        //    并让服务方向跟随它——既保证任何请求都会被服务，也保证到站时它会被正确清扫。
-        //    这里方向参数传 null：兜底必须"任何方向都收"，否则反方向呼叫会被过滤掉而永远等不到车。
-        Pick any = nearest(y, null, false, false);
-        if (any == null) { travel = Travel.NONE; return null; }
-        if (any.hall() != null) travel = any.hall().up() ? Travel.UP : Travel.DOWN;
+        // ② 当前层有请求就地开门：轿厢内选站（零距离行程）与"与本趟方向一致"的同层厅外呼叫。
+        //    反方向的同层厅外呼叫故意不在这里处理——前方还有活时留给它自己的方向（等轿厢回头），
+        //    前方确实没活了会在第 ④ 步掉头后就地服务。两种都不会把另一方向的呼叫连带清掉。
+        Pick here = nearest(y, travel, false, true);
+        if (here != null) return take(here);
+        // ③ 只要"当前方向的前方还有请求"就继续这个方向（真实电梯的"跑完这一趟再掉头"）：
+        //    a. 先挑该方向上真正顺路可服务的（轿厢内选站 + 同向厅外呼叫）；
+        //    b. 若没有，但前方还有反方向的厅外呼叫，也先去它——车已经往这边开了，顺路接上比掉头更符合预期。
+        //       这里按<b>登记先后</b>取最早的那条，而不是"最近"的：同时挂着"1 层上行（先按）"和
+        //       "2 层上行（后按）"时，车应当先下到 1 层（那是它被派去的目的地），再顺路上来接 2 层；
+        //       取最近会让后按的 2 层抢走目的地（用户报告的正是这个现象）。真正的"顺路抢单"只发生在
+        //       {@link #retarget} 里，且仅限同方向呼叫，因此不会破坏"先来先服务"。
+        Pick servable = nearest(y, travel, true, false);
+        if (servable != null) return take(servable);
+        Pick aheadAny = oldestAheadHallCall(y, travel, false); // 严格在前：本层的反方向呼叫交给第 ④ 步
+        if (aheadAny != null) return take(aheadAny);
+        // ④ 该方向前方确实没有活了：掉头，服务另一侧（同样先来先服务，含反方向孤立呼叫，保证不饥饿、不空转）。
+        travel = opposite(travel);
+        Pick any = oldestAheadHallCall(y, travel, true); // 这一步含本层：停在本层、另一方向有人按 → 就地变成那个方向
+        if (any == null) any = nearest(y, null, false, false);
+        if (any == null) { travel = opposite(travel); return null; }
+        // 服务方向取"轿厢实际要走的那个方向"，而不是按钮自身的方向：车在 10 层、底层按了"上行"时，
+        // 车必须向下开过去；若把服务方向记成 UP，一路上所有"与轿厢同向"的下行呼叫都会被漏接
+        //（这正是"底层上行 + 二层下行，却先到底层再折返二层"的根因）。
+        travel = directionTowards(y, any.stop().y());
         return take(any);
+    }
+
+    /**
+     * 求从 {@code y} 到 {@code stationY} 的<b>实际运行方向</b>（同层时沿用当前服务方向）。
+     *
+     * <p>为什么需要它：厅外呼叫带的是"乘客想去的方向"，而轿厢的服务方向必须是"它实际要开的方向"，
+     * 两者在"空车去接反方向呼叫"时正好相反。服务方向一旦记错，{@link #retarget} 就会把与轿厢同向的
+     * 中途呼叫全部漏掉，看起来就是"明明顺路却不接"。
+     *
+     * @param y 轿厢当前高度（格）
+     * @param stationY 目标楼层高度（格）
+     * @return {@link Travel#UP} / {@link Travel#DOWN}；同层时返回当前服务方向（空闲则按上行）
+     */
+    private Travel directionTowards(double y,int stationY) {
+        if (stationY > y + ElevatorParameters.POSITION_EPSILON) return Travel.UP;
+        if (stationY < y - ElevatorParameters.POSITION_EPSILON) return Travel.DOWN;
+        return travel == Travel.NONE ? Travel.UP : travel;
     }
 
     /**
@@ -425,6 +483,8 @@ public final class ElevatorController {
      */
     private Stop take(Pick pick) {
         if (pick.hall() == null) queue.remove(pick.stop());
+        // 记住这一趟回应的呼叫方向，供到站清扫使用（见 targetHallDirection）。
+        targetHallDirection = pick.hall() == null ? Travel.NONE : (pick.hall().up() ? Travel.UP : Travel.DOWN);
         return pick.stop();
     }
 
@@ -450,14 +510,33 @@ public final class ElevatorController {
         }
         for (HallCall c : hallCalls) {
             double distance = Math.abs(c.y() - y);
+            // 方向过滤对"同层"分支同样生效：厅外呼叫是带方向的，反方向那条必须留给它自己的行程
+            //（否则停在本层时会把反方向呼叫就地"服务"掉，等于到站清错了灯）。
+            if (direction != null && c.up() != (direction == Travel.UP)) continue;
             if (sameFloorOnly) { if (distance > ElevatorParameters.POSITION_EPSILON) continue; }
-            else {
-                if (direction != null && c.up() != (direction == Travel.UP)) continue;
-                if (!along(c.y(), y, direction, aheadOnly)) continue;
-            }
+            else if (!along(c.y(), y, direction, aheadOnly)) continue;
             if (distance < bestDistance) { bestDistance = distance; best = new Pick(new Stop(c.id(), c.y()), c); }
         }
         return best;
+    }
+
+    /**
+     * 当前方向上"前方"的任意请求（<b>含反方向的厅外呼叫</b>），取距离最近的一条。
+     *
+     * <p>只回答一个问题：这条方向还有没有活干（决定"继续往前"还是"掉头"）。真正顺路可服务的请求由
+     * {@link #nearest} 挑（它会把反方向厅外呼叫过滤掉），因此顺序永远是"先服务顺路的，再谈掉头"。
+     *
+     * @param y 轿厢当前高度（格）
+     * @param direction 当前服务方向
+     * @return 前方最近的请求；该方向前方什么都没有时返回 null
+     */
+    private Pick oldestAheadHallCall(double y,Travel direction,boolean includeHere) {
+        // hallCalls 本身就是登记顺序（新呼叫追加在尾部、到站时按下标删除），因此第一条命中即最早的那条。
+        for (HallCall c : hallCalls) {
+            if (!includeHere && Math.abs(c.y() - y) <= ElevatorParameters.POSITION_EPSILON) continue;
+            if (along(c.y(), y, direction, true)) return new Pick(new Stop(c.id(), c.y()), c);
+        }
+        return null;
     }
 
     /**
@@ -479,7 +558,9 @@ public final class ElevatorController {
      * 空闲时由最早的请求决定起始服务方向。
      *
      * @param y 轿厢当前高度（格）
-     * @return 起始方向：有轿厢内选站时看第一个选站与轿厢的相对位置（同层时沿用上行），否则看第一条厅外呼叫的方向
+     * @return 起始方向：有轿厢内选站时看第一个选站与轿厢的相对位置（同层时沿用上行），
+     *         否则看<b>最早登记的那条厅外呼叫</b>在轿厢的哪一侧（注意不是按钮自身的方向：底层按"上行"
+     *         而轿厢在楼上时，车必须向下开过去）
      */
     private Travel initialTravel(double y) {
         if (!queue.isEmpty()) {
@@ -487,7 +568,7 @@ public final class ElevatorController {
             if (delta > ElevatorParameters.POSITION_EPSILON) return Travel.UP;
             if (delta < -ElevatorParameters.POSITION_EPSILON) return Travel.DOWN;
         }
-        if (!hallCalls.isEmpty()) return hallCalls.get(0).up() ? Travel.UP : Travel.DOWN;
+        if (!hallCalls.isEmpty()) return directionTowards(y, hallCalls.get(0).y());
         return Travel.UP; // 只剩同层请求：调用点已先行处理，这里给一个确定值
     }
 

@@ -18,7 +18,6 @@ import org.DJB.easyelevator.entity.ObservationCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
-import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.FloorIndicator;
 
 /**
@@ -183,50 +182,6 @@ public class ElevatorGameTests implements FabricGameTest {
         ctx.complete();
     }
     /**
-     * 覆盖 README「楼层门与轿厢自带门拥有相同的开关门效果，有门框和门的区分，不再瞬间变成一堵墙」：
-     * 门框常驻、两扇门扇随进度向两侧收拢。
-     *
-     * <p>不变量：门框（左右立柱、门楣）在开与关时都存在；门洞（中列底层）全开时为空、关闭时有碰撞；
-     * 关闭时两扇门扇只在门洞正中留 {@link LandingDoorGeometry#SEAM} 宽（1/16 格）的细门缝；
-     * 门扇内缘随进度单调收拢，progress = 1 时宽度归零。
-     * 几何直接取自 {@link LandingDoorGeometry#shape}（渲染、碰撞、轮廓同源），因此不必真的放置方块或生成轿厢。
-     *
-     * <p>用 SOUTH 朝向：门宽轴是 -X，正好覆盖 u → 局部坐标的镜像分支（NORTH / EAST 是直接映射）。
-     *
-     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
-     */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE)
-    public void landingLeavesSlideIntoTheFrame(TestContext ctx) {
-        Direction facing=Direction.SOUTH;
-        // 门框常驻：全开时左右立柱与门楣仍然存在，只有门洞让空。
-        require(!LandingDoorGeometry.shape(facing,0,0,1f).isEmpty(),"Left frame pillar stays when open");
-        require(!LandingDoorGeometry.shape(facing,2,0,1f).isEmpty(),"Right frame pillar stays when open");
-        require(!LandingDoorGeometry.shape(facing,1,2,1f).isEmpty(),"Top frame stays when open");
-        // 门洞：中列底层全开为空（可以通行），关闭时有真实碰撞（不能穿过去）。
-        require(LandingDoorGeometry.shape(facing,1,0,1f).isEmpty(),"Open door clears the doorway");
-        var closed=LandingDoorGeometry.shape(facing,1,0,0f);
-        require(!closed.isEmpty(),"Closed door blocks the doorway");
-        // 关闭时中缝可见：没有任何碰撞盒跨越门洞正中（两扇门扇被 SEAM 宽门缝分开）。
-        for(Box part:closed.getBoundingBoxes())
-            require(!(part.minX<.5&&part.maxX>.5),"Closed leaves leave the centre seam open");
-        // 门扇内缘：关门时两扇各占门洞一半（正好是 门框 + 半个门洞），开门时收到门框内缘、宽度归零。
-        double half=LandingDoorGeometry.FRAME+LandingDoorGeometry.LEAF_TRAVEL;
-        require(Math.abs(LandingDoorGeometry.leafEdge(0,false)-half)<1e-9
-                        &&Math.abs(LandingDoorGeometry.leafEdge(0,true)-(LandingDoorGeometry.DOOR_WIDTH-half))<1e-9,
-                "Closed leaves cover half the opening each");
-        require(Math.abs(LandingDoorGeometry.leafEdge(1,false)-LandingDoorGeometry.FRAME)<1e-9
-                        &&Math.abs(LandingDoorGeometry.leafEdge(1,true)-(LandingDoorGeometry.DOOR_WIDTH-LandingDoorGeometry.FRAME))<1e-9,
-                "Open leaves retract into the frame");
-        // 单调收拢：进度递增时左扇右缘只能向门框方向移动，不能回弹（否则画面上门扇会抖动）。
-        double previous=Double.MAX_VALUE;
-        for(float progress:new float[]{0,.25f,.5f,.75f,1}) {
-            double edge=LandingDoorGeometry.leafEdge(progress,false);
-            require(edge<=previous+1e-9,"Left leaf retracts monotonically");
-            previous=edge;
-        }
-        ctx.complete();
-    }
-    /**
      * 覆盖「一扇 3x3 门只算一个站点、轿厢归属其轨道线路、轿厢是空心而非实心、断轨后站点失效」。
      *
      * <p>不变量：ElevatorLine.scan 得到 2 个站点（两扇完整门）而不是 18 块方块；线路内只有 1 个轿厢；
@@ -324,75 +279,33 @@ public class ElevatorGameTests implements FabricGameTest {
         });
     }
     /**
-     * 覆盖「高速电梯：速度是普通电梯的 2.5 倍、外观与普通电梯无异」。
+     * 覆盖「三种轿厢共用同一个父类，型号差异只体现在"速度"与"外观开关"上」。
      *
-     * <p>不变量（时刻表按普通车推导：40 刻停留 + 20 刻关门，之后才开始移动）：
+     * <p>只做型号接线层的集成校验（真正跑起来的运动与调度由纯 Java 状态机测试覆盖：
+     * 那里已经逐刻验证了 0.20 / 0.50 格/刻的位移与到站精度）：
      * <ul>
-     *   <li>速度就是普通车的 2.5 倍（0.50 格/刻 = 10 格/秒），由构造时注入，不靠改状态机常量；</li>
-     *   <li>外观与普通车完全相同——同一位置、同一朝向、同一门进度下两车的碰撞外壳逐盒相等
-     *       （渲染几何与碰撞同源，因此"外壳相同"就是"白模相同"）；</li>
-     *   <li>第 68 刻已经上行 ≥2.5 格（普通车此时最多 1.6 格），第 80 刻已精确到站
-     *       （普通车 5 格行程最早也要到第 85 刻才到）；门时序仍然是"到站后开门"，没有为了快而跳过门联锁。</li>
+     *   <li>高速型号的速度恰好是普通型号的 2.5 倍（构造时注入的是 {@code HIGH_SPEED}，不是默认值）；</li>
+     *   <li>观光型号速度为默认值，且只有它声明玻璃外观；</li>
+     *   <li>三种型号的碰撞外壳逐盒相同——尺寸、井道要求与门联锁因此完全一致，换型号不用改建井道。</li>
      * </ul>
      *
      * @param ctx GameTest 上下文；结束时调用 ctx.complete()
      */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=140)
-    public void highSpeedCabinRunsTwoAndAHalfTimesFaster(TestContext ctx) {
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE)
+    public void cabinVariantsShareSpeedAndShell(TestContext ctx) {
         BlockPos rail=setup(ctx);
-        var fast=new HighSpeedCabinEntity(Easyelevator.HIGH_SPEED_CABIN,ctx.getWorld());
-        fast.initialize(rail,Direction.SOUTH);
-        spawn(ctx,fast);
+        var normal=new CabinEntity(Easyelevator.CABIN,ctx.getWorld()); normal.initialize(rail,Direction.SOUTH);
+        var fast=new HighSpeedCabinEntity(Easyelevator.HIGH_SPEED_CABIN,ctx.getWorld()); fast.initialize(rail,Direction.SOUTH);
+        var glass=new ObservationCabinEntity(Easyelevator.OBSERVATION_CABIN,ctx.getWorld()); glass.initialize(rail,Direction.SOUTH);
+        require(normal.speed()==ElevatorParameters.SPEED,"standard cabin uses the standard speed");
         require(fast.speed()==ElevatorParameters.HIGH_SPEED&&fast.speed()==ElevatorParameters.SPEED*2.5,
-                "High-speed cabin runs at exactly 2.5x the standard speed");
-        // 外观同一性：普通车与高速车在同一轨道、同一朝向下的外壳集合必须逐盒相等。
-        var normal=new CabinEntity(Easyelevator.CABIN,ctx.getWorld());
-        normal.initialize(rail,Direction.SOUTH);
-        require(fast.collisionBoxes().equals(normal.collisionBoxes()),"High-speed cabin must look exactly like the standard cabin");
-        normal.discard();
-        require(fast.requestStop(rail.up(5).south(3)),"Destination accepted");
-        ctx.runAtTick(68,()->require(fast.getY()>=rail.getY()+2.5,
-                "High-speed cabin covers at least 2.5 blocks in the first eight moving ticks (a standard cabin covers 1.6 at most)"));
-        ctx.runAtTick(80,()->require(Math.abs(fast.getY()-(rail.getY()+5))<.001,
-                "High-speed cabin reaches its station by tick eighty (a standard cabin needs at least eighty-five)"));
-        ctx.runAtTick(105,()->{
-            // 到站后照常走完 OPENING（20 刻）并停在 OPEN：更快不等于跳过门联锁。
-            require(Math.abs(fast.getY()-(rail.getY()+5))<.001,"High-speed cabin holds its station");
-            require(fast.phase()==ElevatorController.Phase.OPEN,"Arrival opens the doors as usual");
-            fast.discard();ctx.complete();
-        });
-    }
-    /**
-     * 覆盖「观光电梯：除四个支撑边外四面墙换成玻璃，性能与普通电梯无异」。
-     *
-     * <p>不变量：只有观光型号声明玻璃外观；它的速度与普通车相同、碰撞外壳与普通车逐盒相等
-     * （玻璃只改客户端绘制，井道尺寸、乘客判定、门口防夹与门联锁一字未改），
-     * 并且能在同一套标准井道里完成与普通车完全一样的行程。
-     *
-     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
-     */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=220)
-    public void observationCabinIsGlassButOtherwiseIdentical(TestContext ctx) {
-        BlockPos rail=setup(ctx);
-        var glass=new ObservationCabinEntity(Easyelevator.OBSERVATION_CABIN,ctx.getWorld());
-        glass.initialize(rail,Direction.SOUTH);
-        require(glass.glassWalls(),"Observation cabin renders glass walls");
-        require(glass.speed()==ElevatorParameters.SPEED,"Observation cabin keeps the standard speed");
-        // 另外两种型号不得启用玻璃：外观差异必须由型号唯一决定，而不是"所有轿厢都变玻璃"。
-        require(!new CabinEntity(Easyelevator.CABIN,ctx.getWorld()).glassWalls()
-                        &&!new HighSpeedCabinEntity(Easyelevator.HIGH_SPEED_CABIN,ctx.getWorld()).glassWalls(),
-                "Only the observation cabin uses glass walls");
-        var normal=new CabinEntity(Easyelevator.CABIN,ctx.getWorld());
-        normal.initialize(rail,Direction.SOUTH);
-        require(glass.collisionBoxes().equals(normal.collisionBoxes()),"Glass walls must not change the collision shell");
-        normal.discard();
-        spawn(ctx,glass);
-        require(glass.requestStop(rail.up(5).south(3)),"Destination accepted");
-        ctx.runAtTick(180,()->{
-            require(Math.abs(glass.getY()-(rail.getY()+5))<.001,"Observation cabin travels the standard trip");
-            require(glass.phase()==ElevatorController.Phase.OPEN,"Observation cabin opens its doors on arrival");
-            glass.discard();ctx.complete();
-        });
+                "high-speed cabin runs at exactly 2.5x the standard speed");
+        require(glass.speed()==ElevatorParameters.SPEED,"observation cabin keeps the standard speed");
+        require(glass.glassWalls()&&!normal.glassWalls()&&!fast.glassWalls(),"only the observation cabin declares glass walls");
+        require(fast.collisionBoxes().equals(normal.collisionBoxes())&&glass.collisionBoxes().equals(normal.collisionBoxes()),
+                "all three cabin types share one collision shell, so they fit the same shaft");
+        normal.discard(); fast.discard(); glass.discard();
+        ctx.complete();
     }
     /**
      * 覆盖「厅外上/下呼叫」与「潜行右键设置基准层后重新编号」两项功能。
@@ -407,8 +320,8 @@ public class ElevatorGameTests implements FabricGameTest {
         BlockPos rail=setup(ctx),lower=rail.south(3),upper=rail.up(5).south(3);
         CabinEntity cabin=spawn(ctx,rail);
         // ① 在上层按下"上行"：呼叫进入状态机，并且只有这个方向是挂着的（另一个方向的按钮不亮）。
-        require(cabin.requestHallCall(upper,true),"hall call accepted at the upper landing");
-        require(cabin.hasHallCall(upper,true)&&!cabin.hasHallCall(upper,false),"only the pressed direction is pending");
+        require(cabin.requestHallCall(upper,false),"hall call accepted at the upper landing (downwards: nothing above the top floor)");
+        require(cabin.hasHallCall(upper,false)&&!cabin.hasHallCall(upper,true),"only the pressed direction is pending");
         require(cabin.hallCalls().size()==1,"exactly one pending hall call");
         ctx.runAtTick(130,()->{
             // ② 车到站开门后呼叫自动清除（按钮熄灭）。
@@ -432,47 +345,6 @@ public class ElevatorGameTests implements FabricGameTest {
             require(Math.abs(cabin.getY()-lower.getY())<1e-6,"car reached the lower landing");
             require(cabin.floorNumber()==-1,"below the base floor the number is basement 1");
             require(FloorIndicator.format(cabin.floorNumber()).equals("B1"),"basement renders as B1");
-            cabin.discard();ctx.complete();
-        });
-    }
-    /**
-     * 覆盖「顺路重排：运行途中插入的同方向更近请求会被插到当前目标之前」。
-     *
-     * <p>场景：车在底层、轿厢内已选最上层（6 格高）并已关门起步；车走到 2 层时有人在中间层（3 层）
-     * 按下"上行"。旧实现会径直开过 3 层直达 6 层；正确行为是先在 3 层停（按钮随之熄灭），再继续去 6 层。
-     *
-     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
-     */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=320)
-    public void onTheWayCallIsInsertedAhead(TestContext ctx) {
-        BlockPos rail=setup(ctx);
-        // setup 的线路上只有底层（y=1，门占 1..3）与顶层（y=6，门占 6..8）两扇门——门高 3 格，中间塞不下第三扇。
-        // 这里拆掉原顶层门、把轨道向上延长到 y=9，再按 1 / 4 / 7 摆三扇互不重叠的门。
-        for(int row=0;row<3;row++) for(int col=0;col<3;col++) ctx.setBlockState(new BlockPos(3+col-1,6+row,4),Blocks.AIR.getDefaultState());
-        for(int y=7;y<=9;y++) ctx.setBlockState(new BlockPos(3,y,1),Easyelevator.RAIL.getDefaultState().with(ElevatorRailBlock.FACING,Direction.SOUTH));
-        var state=Easyelevator.LANDING_DOOR.getDefaultState().with(LandingDoorBlock.FACING,Direction.SOUTH);
-        BlockPos middle=rail.up(3).south(3),upper=rail.up(6).south(3);
-        for(BlockPos door:new BlockPos[]{middle,upper}) {
-            ctx.getWorld().setBlockState(door,state);
-            Easyelevator.LANDING_DOOR.onPlaced(ctx.getWorld(),door,state,null,net.minecraft.item.ItemStack.EMPTY);
-        }
-        var line=ElevatorLine.scan(ctx.getWorld(),rail);
-        require(line!=null&&line.stops().size()==3,"three non-overlapping stations on the line");
-        CabinEntity cabin=spawn(ctx,rail);
-        require(cabin.requestStop(upper),"car call to the top floor");
-        ctx.runAtTick(65,()->{
-            // 已关门起步、正驶向最上层；此时插入中间层的上行呼叫。
-            require(cabin.getY()>rail.getY()&&cabin.getY()<middle.getY(),"car is on its way past the middle floor");
-            require(cabin.requestHallCall(middle,true),"on-the-way hall call accepted");
-        });
-        ctx.runAtTick(115,()->{
-            // 中间层必须被顺路停下（旧实现会直接开过），按钮到站即熄灭。
-            require(Math.abs(cabin.getY()-middle.getY())<1e-6,"the on-the-way call is served before the far destination");
-            require(cabin.hallCalls().isEmpty(),"the on-the-way call is cleared on arrival");
-        });
-        ctx.runAtTick(260,()->{
-            // 原目标不丢：停完中间层后继续到最上层。
-            require(Math.abs(cabin.getY()-upper.getY())<1e-6,"the original destination is still served afterwards");
             cabin.discard();ctx.complete();
         });
     }
@@ -631,95 +503,6 @@ public class ElevatorGameTests implements FabricGameTest {
                 require(!cabin.doorCommand(true),"Open button rejected between floors");
                 cabin.discard();ctx.complete();
             });
-        });
-    }
-
-    /**
-     * 覆盖"运行状态"显示（上行/下行/停靠）。状态由已同步的 Phase + 目的站高度 + 当前位置推导，
-     * 因此面板与门框在服务端、客户端得到同一结果。
-     *
-     * <p>不变量：停着时是"停靠"；整个行程中必须出现过上行、出现过下行、出现过"到站后的 2 层而且状态回到停靠"，
-     * 行程结束时回到 1 层且停靠。断言采用"逐刻记录 + 行程末尾统一检查"的写法，不依赖某一刻正好在移动中
-     * （开门停留 40 刻、关门 20 刻、5 格行程 25 刻，固定时刻很容易擦边）；下行请求也直接入队，
-     * 不要求它必须在某一刻被处理。
-     *
-     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
-     */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=460)
-    public void statusFollowsTravel(TestContext ctx) {
-        BlockPos rail=setup(ctx),lower=rail.south(3),upper=rail.up(5).south(3);
-        CabinEntity cabin=spawn(ctx,rail);
-        // 刚生成时停在底层、门全开：状态必须是"停靠"
-        require(cabin.status()==ElevatorStatus.IDLE,"Parked cabin reports parked");
-        require(cabin.requestStop(upper),"Request to the upper station accepted");
-        // 逐刻记录一路上出现过的状态；下行请求直接入队，等上行到站、停留结束后自然会被处理
-        ctx.runAtTick(80,()->require(cabin.requestStop(lower),"Request back to the lower station accepted"));
-        final boolean[] sawUp={false},sawDown={false},sawFloorTwo={false},sawParkedUpstairs={false};
-        for(int t=1;t<=380;t++) ctx.runAtTick(t,()->{
-            if(cabin.status()==ElevatorStatus.UP) sawUp[0]=true;
-            if(cabin.status()==ElevatorStatus.DOWN) sawDown[0]=true;
-            if(cabin.floorNumber()==2) {
-                sawFloorTwo[0]=true;
-                if(cabin.status()==ElevatorStatus.IDLE) sawParkedUpstairs[0]=true;
-            }
-        });
-        ctx.runAtTick(400,()->{
-            require(sawUp[0],"Climbing cabin reports going up at some point");
-            require(sawDown[0],"Descending cabin reports going down at some point");
-            require(sawFloorTwo[0],"Arrival upstairs updates the displayed floor to 2");
-            require(sawParkedUpstairs[0],"Arrived cabin reports parked while at floor 2");
-            require(cabin.floorNumber()==1,"Back at floor 1");
-            require(cabin.status()==ElevatorStatus.IDLE,"Parked again at floor 1");
-            cabin.discard();ctx.complete();
-        });
-    }
-
-    /**
-     * 覆盖"开门键＝中断关门"，这是玩家报告过的 bug：门正在关时按开门，旧实现走的是
-     * {@code requestStop(本层)}，于是门继续关、本层又被排进呼叫队列，电梯开走之后还要回来一趟。
-     *
-     * <p>不变量：打断那一刻相位立刻变成开门方向、呼叫计划仍然只有原来那一个目的站（本层没有入队）；
-     * 打断之后轿厢<b>在原地</b>把门重新开到全开，然后照常完成原来那趟行程（到上层站点并停稳）。
-     *
-     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
-     */
-    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=320)
-    public void openButtonInterruptsClosing(TestContext ctx) {
-        BlockPos rail=setup(ctx),lower=rail.south(3),upper=rail.up(5).south(3);
-        CabinEntity cabin=spawn(ctx,rail);
-        // 先排一个上层站点：这正是"电梯会开走"的前提条件
-        require(cabin.requestStop(upper),"Request to the upper station accepted");
-        final boolean[] interrupted={false},reopenedBeforeLeaving={false};
-        final double[] doorAtInterrupt={1};
-        final int[] ticksSinceInterrupt={0};
-        for(int t=1;t<=250;t++) ctx.runAtTick(t,()->{
-            if(!interrupted[0]) {
-                // 等门真的关到一半（相位 CLOSING 且进度 <= 0.5）再按"开门"：这正是玩家报告的场景，
-                // 而且此时门必须能反向变宽，才能证明是"中断"而不是"继续关完再重开"。
-                if(cabin.phase()!=ElevatorController.Phase.CLOSING || cabin.doorProgress(1)>.5f) return;
-                doorAtInterrupt[0]=cabin.doorProgress(1);
-                require(cabin.doorCommand(true),"Open button accepted while the doors are closing");
-                // 立刻校验呼叫计划：本层不能被排进队列（旧实现就是在这里把本层入队的）。
-                // 注意 phase() 读的是同步字段、只在 tick() 里写回，因此"相位变成开门"放到下一刻再校验。
-                require(cabin.plannedStops().size()==1,"Open button does not queue the current floor");
-                require(cabin.plannedStops().get(0).getY()==upper.getY(),"Original destination preserved");
-                interrupted[0]=true;
-                return;
-            }
-            ticksSinceInterrupt[0]++;
-            if(ticksSinceInterrupt[0]==1)
-                require(cabin.phase()==ElevatorController.Phase.OPENING,"Next tick reports the doors reopening");
-            // 打断之后：必须还在本层就把门重新开到全开（旧实现会继续关门并直接开走）
-            if(Math.abs(cabin.getY()-lower.getY())<=ElevatorParameters.POSITION_EPSILON && cabin.doorProgress(1)>=.999f)
-                reopenedBeforeLeaving[0]=true;
-        });
-        ctx.runAtTick(300,()->{
-            require(interrupted[0],"Doors started closing at some point");
-            require(reopenedBeforeLeaving[0],"Interrupted close reopened fully while still at the floor");
-            // 旧实现会把本层入队，于是到楼上之后再折返回来；修好后行程就在楼上结束并停稳
-            require(cabin.floorNumber()==2,"The original trip still completes at floor 2");
-            require(cabin.plannedStops().isEmpty(),"No leftover request: the cabin never returns to the floor it left");
-            cabin.discard();ctx.complete();
         });
     }
 

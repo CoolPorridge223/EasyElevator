@@ -191,7 +191,7 @@ public final class ElevatorControllerTest {
         testTimeline();
         // 厅外方向呼叫（楼层门上的上/下按钮）与集选调度。
         testHallCalls();
-        System.out.println("PASS: 4 blocks/sec, 2.5x high-speed cabin (10 blocks/sec) with identical door/lock/arrival rules, sub-step exact arrival, frame interpolation/precision, position-ordered service, up/down arrival, door interlock, obstacle pause/resume, anti-crush, manual door open/close, deleted stations, save/reload, current floor, queue limit, directional hall calls (collective control, no starvation, button lit until arrival), en-route reordering (a nearer same-direction request inserted while moving is served first).");
+        System.out.println("PASS: 4 blocks/sec, 2.5x high-speed cabin (10 blocks/sec) with identical door/lock/arrival rules, sub-step exact arrival, frame interpolation/precision, position-ordered service, up/down arrival, door interlock, obstacle pause/resume, anti-crush, manual door open/close, deleted stations, save/reload, current floor, queue limit, directional hall calls (collective control, no starvation, button lit until arrival), en-route reordering (a nearer same-direction request inserted while moving is served first), first-come-first-served dispatch (a later opposite-direction call never steals the destination at either terminal), independent up/down hall calls at one station (arrival clears only the served direction).");
     }
     /**
      * 厅外呼叫（楼层门的上行 / 下行按钮）的调度行为测试。
@@ -208,7 +208,9 @@ public final class ElevatorControllerTest {
         s.ticks(700);
         check(s.arrivals.equals(List.of(5,10,8)),"collective control: serve up calls and car calls going up, the down call on the way back");
         check(s.control.hallCalls().isEmpty(),"every hall call ends up served");
-        check(s.control.travel()==ElevatorController.Travel.NONE,"idle resets the service direction");
+        // 服务方向在停车待命时**故意保留**（真实电梯的记忆方向，见 select 注释），所以这里不再断言 NONE，
+        // 只确认所有请求都已经服务完。
+        check(s.control.pending().isEmpty()&&s.control.hallCalls().isEmpty(),"every request is finished");
         // ② 反方向孤立呼叫：车在 2 层、只有 8 层的"下行"呼叫。车必须空车上行到 8 才能接上他，
         //    到站即清（不允许因为方向不一致而永远不派车）。
         s=new Simulation(); s.y=2; s.callHall(1,8,false);
@@ -254,6 +256,46 @@ public final class ElevatorControllerTest {
         // ⑩ 反方向的呼叫不会被"顺路"改道：车向上驶向 10 层时，5 层的下行呼叫要等掉头后才接。
         s=new Simulation(); s.request(3,10); s.ticks(65); s.callHall(1,5,false); s.ticks(400);
         check(s.arrivals.equals(List.of(10,5)),"an opposite-direction call is not served on the way up");
+        // ⑪ 端点呼叫方向（用户报告的问题）：车在 10 层，底层(0)先按"上行"（最早的请求），随后二层(5)按"下行"。
+        //    车必须向下开到底层，服务方向因此是 DOWN，沿途就该顺路接走二层的下行呼叫：先 5 再 0，
+        //    而不是一路下到底层再折返二层。旧实现把服务方向记成按钮方向(UP)，于是漏接了二层的下行。
+        s=new Simulation(); s.y=10; s.callHall(1,0,true); s.ticks(60); s.callHall(2,5,false); s.ticks(400);
+        check(s.arrivals.equals(List.of(5,0)),"a car heading down to a lower call picks up down calls on the way");
+        // ⑫ 镜像情形：车在 0 层，顶层(10)先按"下行"，随后 5 层按"上行"——向上开时应顺路接 5 层的上行。
+        s=new Simulation(); s.callHall(1,10,false); s.ticks(60); s.callHall(2,5,true); s.ticks(400);
+        check(s.arrivals.equals(List.of(5,10)),"a car heading up to an upper call picks up up calls on the way");
+        // ⑬ 方向记忆（用户报告）：5 层按"下行"把车从 10 层叫下来；乘客进厢后按 6 层，同时 1 层有呼叫。
+        //    轿厢刚才是下行来的，应当先把这一趟跑完：**先去 1 层接人，再上行到 6 层**——而不是丢下
+        //    方向直接去 6 层（旧实现在停车待命时把服务方向清成了空闲）。
+        s=new Simulation(); s.y=10; s.callHall(2,5,false); s.ticks(300);
+        check(s.arrivals.equals(List.of(5))&&Math.abs(s.y-5)<1e-9,"called down to the fifth floor");
+        check(s.control.travel()==ElevatorController.Travel.DOWN,"the down direction is remembered while parked with the doors open");
+        s.request(3,6); s.callHall(1,1,true); s.ticks(600);
+        check(s.arrivals.equals(List.of(5,1,6)),"a car called downwards finishes the down trip first: 1st floor before the 6th");
+        // ⑭ 特例：五层以下没有任何呼叫时，才可以直接上行去 6 层。
+        s=new Simulation(); s.y=10; s.callHall(2,5,false); s.ticks(300);
+        s.request(3,6); s.ticks(600);
+        check(s.arrivals.equals(List.of(5,6)),"with nothing left below, the car may go straight up");
+        // ⑮ 先来先服务（用户报告）：车停在高度 20（约 5 层）空闲；底层(0)先按"上行"（较早登记），
+        //    紧接着高度 5 处也按"上行"（较晚登记）。车应当把**最早**那条当作目的地——先下到 0，
+        //    再顺路上来接高度 5 的乘客；旧实现按"最近"派车，目的地被后按的那条抢走（先 5 再 0）。
+        s=new Simulation(); s.y=20; s.callHall(1,0,true); s.callHall(2,5,true); s.ticks(600);
+        check(s.arrivals.equals(List.of(0,5)),"dispatch honours the oldest call instead of the nearest one");
+        // ⑯ 同一场景，但第二条呼叫在车已启动后才登记：同样先 0 后 5——运行途中只有同方向呼叫能被顺路接走，
+        //    反方向呼叫不得抢走目的地（这条以前就是对的，留作回归保护）。
+        s=new Simulation(); s.y=20; s.callHall(1,0,true); s.ticks(60); s.callHall(2,5,true); s.ticks(600);
+        check(s.arrivals.equals(List.of(0,5)),"a call arriving after departure never steals the destination");
+        // ⑰ 镜像：车在 0，顶层(20)先按"下行"，随后高度 5 按"下行"——先上到 20，再顺路下行接高度 5。
+        s=new Simulation(); s.callHall(1,20,false); s.callHall(2,5,false); s.ticks(700);
+        check(s.arrivals.equals(List.of(20,5)),"mirror case: the topmost call keeps the destination");        // ⑱ 同层两个方向的呼叫各自独立（用户报告）：高度 5 同时挂着"上行"（先按）与"下行"（后按），
+        //    另有高度 10 的轿厢内选站。上行到 5 时**只应熄灭上行那盏灯**，下行那条必须留着，
+        //    等轿厢上到 10 再回头下行到 5 时才熄灭（旧实现到站把两条一起清掉）。
+        s=new Simulation(); s.request(9,10); s.callHall(1,5,true); s.callHall(2,5,false); s.ticks(120);
+        check(s.arrivals.equals(List.of(5))&&s.control.hallCalls().size()==1&&!s.control.hallCalls().getFirst().up(),
+                "arrival clears only the hall call matching the served direction");
+        s.ticks(600);
+        check(s.arrivals.equals(List.of(5,10,5))&&s.control.hallCalls().isEmpty(),
+                "the opposite-direction call stays lit and is served when the car comes back");
     }
     /**
      * MotionTimeline（客户端乘客镜头与轿厢模型共用的显示轨迹）的行为测试。
