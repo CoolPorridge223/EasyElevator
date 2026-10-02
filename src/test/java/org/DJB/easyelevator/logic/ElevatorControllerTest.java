@@ -119,9 +119,35 @@ public final class ElevatorControllerTest {
         // 队列上限 MAX_REQUESTS = 128 个请求：第 128 个被接受，第 129 个被拒绝（返回 false），防止刷屏压垮队列。
         var c=new ElevatorController();for(int i=1;i<=128;i++) check(c.request(new ElevatorController.Stop(i,i),0),"queue capacity");
         check(!c.request(new ElevatorController.Stop(129,129),0),"queue flood bounded");
+        // 手动"关门"键：队列为空也能把门关上并停在本层（真实电梯可以关着门等人），且不能把门关穿到负值。
+        s=new Simulation();s.request(1,0);s.ticks(100);
+        check(s.control.forceClose(),"close command accepted while doors are open");
+        s.ticks(22);
+        check(s.control.door()==0 && s.control.phase()==ElevatorController.Phase.MOVING && s.y==0,"manual close shuts doors and parks");
+        check(!s.control.forceClose(),"close command rejected when doors are already shut");
+        // 手动"开门"键：停在某一层、门已关好（相位 MOVING、无目的站）时重新开门。
+        check(s.control.forceOpen(),"open command accepted at a station with doors shut");
+        s.ticks(22);
+        check(s.control.door()==1 && s.control.phase()==ElevatorController.Phase.OPEN,"manual open reopens the doors");
+        // 正在关门时按"开门"：反向重新打开（手动反向，和防夹走同一条门联锁路径），
+        // 而且"开门"是纯门操作——不改 target/queue，因此不会把本层排进呼叫队列、也不会让轿厢开走再回来。
+        s.control.forceClose();s.ticks(4);
+        check(s.control.door()>0 && s.control.door()<1 && s.control.phase()==ElevatorController.Phase.CLOSING,"closing in progress");
+        check(s.control.forceOpen(),"open command reverses a closing door");
+        check(s.control.target()==null && s.control.pending().isEmpty(),"reversing a close adds nothing to the call plan");
+        s.ticks(22);
+        check(s.control.door()==1 && s.control.phase()==ElevatorController.Phase.OPEN,"reversed door ends fully open");
+        // 门已全开时按"开门"只续满停留时间（相当于按住开门键）：队列里的目的站要等到松手后才出发。
+        // 停留时间 DWELL_TICKS = 40 刻，这里先只推进 20 刻，确保还在开门停靠阶段。
+        s=new Simulation();s.request(1,0);s.request(2,10);s.ticks(20);
+        check(s.control.phase()==ElevatorController.Phase.OPEN,"open before departure");
+        for(int i=0;i<ElevatorParameters.DWELL_TICKS;i++) { s.control.forceOpen(); s.ticks(1); }
+        check(s.control.phase()==ElevatorController.Phase.OPEN && s.y==0,"holding the open button delays departure");
+        s.ticks(400);
+        check(s.y==10 && s.arrivals.contains(10),"departure resumes after the open button is released");
         // 显示轨迹（客户端乘客镜头与轿厢模型共用）的插值、缺包、乱序、精度与复位行为。
         testTimeline();
-        System.out.println("PASS: 4 blocks/sec, sub-step exact arrival, frame interpolation/precision, FIFO/dedup, up/down arrival, door interlock, obstacle pause/resume, anti-crush, deleted stations, save/reload, current floor, queue limit.");
+        System.out.println("PASS: 4 blocks/sec, sub-step exact arrival, frame interpolation/precision, FIFO/dedup, up/down arrival, door interlock, obstacle pause/resume, anti-crush, manual door open/close, deleted stations, save/reload, current floor, queue limit.");
     }
     /**
      * MotionTimeline（客户端乘客镜头与轿厢模型共用的显示轨迹）的行为测试。

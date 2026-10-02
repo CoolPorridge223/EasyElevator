@@ -145,6 +145,15 @@ tasks.named('check') {
     dependsOn 'logicTest'
 }
 
+// 楼层门几何回归测试：纯算术、不启动游戏，但需要 Minecraft 类路径，所以走 gradle 而不是 tools 脚本。
+// 它是门模型/门尺寸改动后的按需检查（./gradlew.bat geometryTest），不挂到 build/check 上以免拖慢日常构建。
+tasks.register('geometryTest', JavaExec) {
+    dependsOn testClasses
+    enabled = false
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.DJB.easyelevator.block.LandingDoorGeometryTest'
+}
+
 jar {
     from("LICENSE.txt") {
         rename { "${it}_${project.archives_base_name}" }

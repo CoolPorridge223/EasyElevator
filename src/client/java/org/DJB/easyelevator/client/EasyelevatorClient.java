@@ -4,6 +4,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.CabinEntity;
@@ -25,12 +26,21 @@ public class EasyelevatorClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         EntityRendererRegistry.register(Easyelevator.CABIN,CabinRenderer::new);
+        // 楼层门门扇是连续滑动的几何，方块模型做不到逐帧插值，因此交给方块实体渲染器绘制（门框仍由方块模型画）。
+        BlockEntityRendererRegistry.register(Easyelevator.LANDING_DOOR_BE,LandingDoorRenderer::new);
         // 网络回调不在主线程：所有客户端状态修改都必须回到客户端线程（context.client().execute）执行，避免数据竞争。
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.MotionFrame.ID,(payload,context)->
                 context.client().execute(()->CabinMotion.receive(payload)));
         // 服务端校验过乘客身份与站点列表后才发 OpenPanel，这里直接开界面；面板内容全部来自包，不信任客户端本地状态。
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenPanel.ID,(payload,context)->
                 context.client().execute(()->context.client().setScreen(new ElevatorScreen(payload))));
+        // 停靠计划变化（到达、取消、新请求）时服务端会推 PanelState：只刷新"已经为这辆轿厢打开的面板"，
+        // 因此不会给没开面板的乘客弹出界面；面板里据此把已加入计划的站点标红。
+        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.PanelState.ID,(payload,context)->
+                context.client().execute(()->{
+                    if(context.client().currentScreen instanceof ElevatorScreen screen && screen.entityId()==payload.entityId())
+                        screen.applyPlanned(payload.planned());
+                }));
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             // 先清理：实体卸载/移除或 Phase 离开 MOVING（到站、受阻、卡在门口）就停止运行声并移出映射；
             // removeIf 内返回 true 表示删除该条目，与 stop() 一样都是幂等的。

@@ -2,6 +2,7 @@ package org.DJB.easyelevator.block;
 
 import com.mojang.serialization.MapCodec;
 import net.minecraft.block.*;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemPlacementContext;
@@ -15,10 +16,11 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.BlockView;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
@@ -37,12 +39,21 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
  * <p>门位于轨道朝向前方 {@link #RAIL_DISTANCE} 格、与轨道同 Y；根方块到轨道朝向
  * 反方向 3 格处即该站点对应的轨道段，因此门不能脱离轨道单独存在。
  *
+ * <p>门面结构：常驻<b>门框</b> + 两扇可动<b>门扇</b>，框与扇的几何全部由 {@link LandingDoorGeometry}
+ * 统一给出，碰撞、轮廓与渲染共用同一份数据。
+ * 门框（左右立柱 3/16 格宽、门楣 3/16 格高，立柱一直顶到门楣，四角相连）永远保留；
+ * 门扇关门时各占一半门洞（正中只留 {@link LandingDoorGeometry#SEAM} 宽的细门缝 = 1/16 格），
+ * 开门时向两侧门框收拢到宽度归零，因此开关门是连续滑动而不是瞬间切换。
+ * 门扇进度由根方块的方块实体 {@link LandingDoorBlockEntity} 逐刻跟随在站轿厢的门进度，
+ * 与轿厢自带门扇同一动画。
+ *
  * <p>联锁 interlock：9 格作为一个整体共用 OPEN 状态。只有轿厢精确到站
  * （误差 ≤ {@link ElevatorParameters#POSITION_EPSILON} 格）且轿厢门正在打开时，
- * 门才开启并交出真实碰撞；否则保留碰撞（空井道不会被右键强制打开）。
+ * 门才交出真实碰撞；否则保留碰撞（空井道不会被右键强制打开）。OPEN 现在只表示联锁是否解除，
+ * 门面外观与碰撞都由连续进度决定。
  * 注册 ID 沿用旧的 {@code easyelevator:call_button}，用于兼容旧存档与旧物品。
  */
-public final class LandingDoorBlock extends HorizontalFacingBlock {
+public final class LandingDoorBlock extends HorizontalFacingBlock implements BlockEntityProvider {
 
     /** 方块编解码器，仅用于数据生成与序列化；方块本身无额外构造参数。 */
     public static final MapCodec<LandingDoorBlock> CODEC = createCodec(LandingDoorBlock::new);
@@ -56,7 +67,9 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
     /** 门在整扇门内的高度层，0..2（0 = 底行，门区域的最下方 1 格）。 */
     public static final IntProperty LEVEL = IntProperty.of("level", 0, 2);
 
-    /** 门联锁状态：由服务端 {@link #refresh} 写入，客户端只读，控制门面模型与碰撞形状。 */
+    /** 门联锁状态：由服务端 {@link #refresh} 写入，客户端只读。它决定门扇进度是否跟随轿厢门：
+     * 为假时门扇必定全关（真实碰撞），为真时门扇进度等于 {@link #leafProgress}。门面模型本身
+     * 不再随它切换，视觉与碰撞都来自连续进度。 */
     public static final BooleanProperty OPEN = Properties.OPEN;
 
     /** 根方块到所属轨道的水平距离，单位：格（沿 FACING 的反方向计数，按方块坐标算，不是中间空 3 格）。 */
@@ -83,6 +96,21 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
      */
     @Override
     protected void appendProperties(StateManager.Builder<Block,BlockState> b) { b.add(FACING,COLUMN,LEVEL,OPEN); }
+
+    /**
+     * 只有根方块（底部中心）持有方块实体：整扇门共用一份进度样本、一次世界查询。
+     *
+     * <p>其余 8 格返回 null。原版 {@code WorldChunk} 在创建方块实体后会用 {@code ifnull}
+     * 判断并跳过加入世界，因此这里返回 null 是受支持的行为，不会留下半个方块实体。
+     *
+     * @param pos 方块坐标（只有根方块位置才会真正创建）
+     * @param state 方块状态
+     * @return 根方块的 {@link LandingDoorBlockEntity}；非根部件返回 null
+     */
+    @Override
+    public BlockEntity createBlockEntity(BlockPos pos,BlockState state) {
+        return isRoot(state)?new LandingDoorBlockEntity(pos,state):null;
+    }
 
     /**
      * 判断给定状态是否为根方块（底部中心）。
@@ -233,40 +261,82 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
     }
 
     /**
-     * 门联锁的唯一判定入口：现在是否允许这扇门打开。
+     * 找出停靠在本站点的唯一轿厢；只要有任何一条几何/线路/相位条件不满足就返回 null。
      *
      * <p>依次要求：整扇门 9 格完整；站点对应的那段轨道仍属于本线路（朝向一致）；
-     * 该轨道 XZ 上恰好有一辆朝向与轨道相同的轿厢；轿厢底部 Y 与站点 Y 的误差
-     * ≤ {@link ElevatorParameters#POSITION_EPSILON} 格（1e-7 格，即"精确到站"）；
-     * 轿厢不处于 MOVING/BLOCKED；且轿厢门进度 &gt; 0（正在打开或已打开）。
+     * 该轨道前方 2 格处恰好有一辆朝向与轨道相同的轿厢，且车体中心与站点高度、中心位置的误差
+     * 都不超过给定容差；轿厢不处于 MOVING/BLOCKED（断轨、障碍、目的站被拆时门一律关闭，
+     * 绝不在半空开门）。
      *
-     * <p>车体中心用轨道坐标 +0.5 + FACING*2 复算（与 {@link ElevatorLine#centerX} 一致），
-     * 不读实体自身坐标，避免浮点抖动改变查询范围；实体查询的 Y 范围带 0.01 格粗筛余量，
-     * 真正的到站精度由返回前的 POSITION_EPSILON 复检保证。
+     * <p>为什么按车体世界坐标匹配、而不是 {@link CabinEntity#railX()} / {@code railZ()}：
+     * 那两个字段只是普通成员、没有进 DataTracker，客户端上恒为 0；用它匹配会让客户端永远找不到
+     * 在站轿厢，表现就是"轿厢门开得好好的、楼层门却不动"。车体中心由轨道坐标 +0.5 + FACING*2 复算
+     * （与 {@link ElevatorLine#centerX} 一致，也与 {@link CabinEntity#initialize} 写入的位置一致），
+     * 同一朝向下这个中心唯一对应一条轨道，因此按位置匹配与服务端按轨道字段匹配等价，
+     * 而且两边都成立。
      *
-     * <p>纯查询，无副作用。
+     * <p>容差由调用方给出：服务端联锁传 {@link ElevatorParameters#POSITION_EPSILON}（1e-7 格）
+     * 保持"精确到站"语义；门扇进度还要在客户端成立，那里坐标经过原版位置包量化，传
+     * {@link ElevatorParameters#SYNC_POSITION_EPSILON}。
      *
-     * @param world 世界（服务端调用）
+     * <p>纯查询，无副作用。联锁判定与门扇进度共用它，保证"门开着的时刻"与"门扇跟着轿厢门动的时刻"一致。
+     *
+     * @param world 世界
      * @param origin 站点根方块坐标
-     * @return 允许开启楼层门时为 true
+     * @param tolerance 位置匹配容差（格），X / Y / Z 三个方向都用它
+     * @return 在站轿厢；没有或不唯一时返回 null
      */
-    private static boolean mayOpen(World world,BlockPos origin) {
-        if(!complete(world,origin)) return false;
+    private static CabinEntity dockedCabin(World world,BlockPos origin,double tolerance) {
+        if(!complete(world,origin)) return null;
         BlockState state=world.getBlockState(origin);
         BlockPos rail=railPos(state,origin);
         Direction facing=state.get(FACING);
-        if(!ElevatorLine.matches(world,rail,facing)) return false;
+        if(!ElevatorLine.matches(world,rail,facing)) return null;
         // 轿厢中心水平位置 = 轨道中心 + 朝向 * 2 格；查询盒取 ±1.6 格（比轿厢 3 格略宽）以容纳边界情况
         double x=rail.getX()+.5+facing.getOffsetX()*2,z=rail.getZ()+.5+facing.getOffsetZ()*2;
-        var cars=world.getEntitiesByClass(CabinEntity.class,new net.minecraft.util.math.Box(x-1.6,origin.getY()-.01,z-1.6,x+1.6,origin.getY()+3,z+1.6),
-                c->!c.isRemoved() && c.railX()==rail.getX() && c.railZ()==rail.getZ() && c.facing()==facing
-                        && Math.abs(c.getY()-origin.getY())<=ElevatorParameters.POSITION_EPSILON);
-        if(cars.size()!=1) return false; // 该线路必须恰好一辆；0 辆或数据异常时保持关门
+        var cars=world.getEntitiesByClass(CabinEntity.class,new Box(x-1.6,origin.getY()-.01,z-1.6,x+1.6,origin.getY()+3,z+1.6),
+                c->!c.isRemoved() && c.facing()==facing
+                        && Math.abs(c.getX()-x)<=tolerance && Math.abs(c.getZ()-z)<=tolerance
+                        && Math.abs(c.getY()-origin.getY())<=tolerance);
+        if(cars.size()!=1) return null; // 该线路必须恰好一辆；0 辆或数据异常时保持关门
         CabinEntity car=cars.getFirst();
-        // 到站精度与门进度都必须满足；BLOCKED（断轨/障碍/目的站被拆）时门一律关闭
-        return Math.abs(car.getY()-origin.getY())<=ElevatorParameters.POSITION_EPSILON
-                && car.phase()!=ElevatorController.Phase.MOVING && car.phase()!=ElevatorController.Phase.BLOCKED
-                && car.doorProgress(1)>0;
+        // 到站精度已在上面的过滤里复检；这里只排除"还在运行 / 受阻暂停"的相位
+        if(car.phase()==ElevatorController.Phase.MOVING || car.phase()==ElevatorController.Phase.BLOCKED) return null;
+        return car;
+    }
+
+    /**
+     * 门联锁判定：现在是否允许这扇门交出真实碰撞（即解除锁闭）。
+     *
+     * <p>这里坚持用 {@link ElevatorParameters#POSITION_EPSILON}（1e-7 格）判定到站：
+     * 服务端权威、精度足够，联锁语义不因为客户端同步精度而放松。
+     *
+     * @param world 世界（服务端调用）
+     * @param origin 站点根方块坐标
+     * @return 有唯一在站轿厢且其门进度 &gt; 0（正在打开或已打开）时为 true
+     */
+    private static boolean mayOpen(World world,BlockPos origin) {
+        CabinEntity car=dockedCabin(world,origin,ElevatorParameters.POSITION_EPSILON);
+        return car!=null && car.doorProgress(1)>0;
+    }
+
+    /**
+     * 楼层门门扇的目标进度 0..1：等于在站轿厢的门进度，因此两层门逐刻同步滑动；没有轿厢时 0。
+     *
+     * <p>这是"楼层门与轿厢门同一动画"的唯一来源：{@link LandingDoorBlockEntity} 每刻采样它，
+     * 渲染器与碰撞形状都从样本读进度，门本身不再维护任何独立的开关计时。
+     *
+     * <p>用 {@link ElevatorParameters#SYNC_POSITION_EPSILON} 而不是联锁用的 1e-7：本方法在客户端也要成立，
+     * 那里的轿厢坐标来自原版位置包（量化到 1/4096 格）。放宽的只是"门扇跟到哪个进度"，
+     * 服务端联锁（{@link #mayOpen}）仍然坚持 1e-7 的精确到站判定。
+     *
+     * @param world 世界（服务端与客户端都会调用）
+     * @param origin 站点根方块坐标
+     * @return 0（全关）..1（全开）
+     */
+    public static float leafProgress(World world,BlockPos origin) {
+        CabinEntity car=dockedCabin(world,origin,ElevatorParameters.SYNC_POSITION_EPSILON);
+        return car==null?0f:MathHelper.clamp(car.doorProgress(1),0f,1f);
     }
 
     /**
@@ -400,63 +470,59 @@ public final class LandingDoorBlock extends HorizontalFacingBlock {
         super.onStateReplaced(state,world,pos,next,moved);
     }
 
-    /** @return 门格子的轮廓形状，见 {@link #shape}；轮廓与碰撞共用同一几何。 */
-    @Override
-    protected VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) { return shape(s); }
-
     /**
-     * 门格子的碰撞形状，同时充当联锁的兜底检查。
+     * 门格子的轮廓形状（选中高亮用的几何）。
      *
-     * <p>若服务端发现该格状态为 OPEN、但 {@link #mayOpen} 此刻已不成立（例如轿厢已离开、
-     * 目的站被拆），就在本次查询里把状态临时降级为关闭再取形状——不回写世界、不改方块，
-     * 因此不会与 scheduledTick 的刷新竞争。之所以需要：碰撞查询可能发生在两次
-     * scheduledTick 之间，方块状态刷新有 1 刻延迟，这段时间不允许出现"门开着但轿厢不在"
-     * 的穿越窗口。
+     * <p>与碰撞共用同一份几何，所以高亮框会跟着门扇一起收拢，不会在门已经半开时还框住整个门洞。
      *
      * @param s 方块状态
-     * @param w 世界视图；只有服务端世界才做联锁复检
+     * @param w 方块视图
      * @param p 方块坐标
-     * @param c 形状上下文
-     * @return 关闭时为 3/16 格厚的门面，开启时为门框，门洞处为空形状
+     * @param c 形状上下文（未使用）
+     * @return 该格当前的体素形状
      */
     @Override
-    protected VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
-        // Enforce the landing interlock even before a scheduled visual-state refresh runs.
-        if(w instanceof World world && !world.isClient && s.get(OPEN) && !mayOpen(world,root(s,p))) s=s.with(OPEN,false);
-        return shape(s);
+    protected VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
+        return LandingDoorGeometry.shape(s.get(FACING),s.get(COLUMN),s.get(LEVEL),progressAt(s,w,p));
     }
 
     /**
-     * 门面几何：单位格，局部坐标轴为"沿门宽"（即 COLUMN 轴）与 Y。
+     * 门格子的碰撞形状：随门扇进度连续变化，并在这里完成联锁兜底。
      *
-     * <p>关闭时每格都是朝外侧、厚 3/16 格（0.1875 格）的完整门面（minX=0、maxX=16、minY=0），
-     * 9 格拼成一堵 3 宽 3 高的门墙并带真实碰撞。
+     * <p>为什么需要兜底：碰撞查询可能发生在两次 {@code scheduledTick} 之间，而方块状态的刷新有 1 刻延迟。
+     * 若状态仍写着 OPEN、但 {@link #mayOpen} 此刻已不成立（轿厢已离开、目的站被拆），
+     * {@link #progressAt} 会把本次查询按全关处理——不回写世界、不改方块状态，因此既不会与
+     * scheduledTick 的刷新竞争，也不会出现"门开着而轿厢不在"的穿越窗口。
      *
-     * <p>开启时按部件保留门框：顶行（LEVEL=2）只留 Y=13..16 格的门楣，与列无关；
-     * 左列（COLUMN=0）留 3/16 格宽的立柱；右列（COLUMN=2）留另一侧立柱；
-     * 中列底层与中层就是门洞，返回空形状。
+     * @param s 方块状态
+     * @param w 方块视图；只有世界视图才拿得到方块实体与联锁复检结果
+     * @param p 方块坐标
+     * @param c 形状上下文（未使用）
+     * @return 关闭时为门扇封住门洞加门框，开启时为纯门框，门洞处为空形状
+     */
+    @Override
+    protected VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
+        return LandingDoorGeometry.shape(s.get(FACING),s.get(COLUMN),s.get(LEVEL),progressAt(s,w,p));
+    }
+
+    /**
+     * 取该格此刻的门扇进度 0..1。
      *
-     * <p>NORTH/EAST 直接用 minX..maxX 表示列轴范围，SOUTH/WEST 用 16-maxX..16-minX 做镜像，
-     * 保证形状与 {@link #part} 定义的列轴（{@code FACING.rotateYClockwise()}）方向一致，
-     * 否则两侧立柱会出现在错误的格子上。
+     * <p>优先读根方块的方块实体 {@link LandingDoorBlockEntity}：它逐刻跟随在站轿厢的门进度，
+     * 因此楼层门与轿厢门同刻同值。没有方块实体时（未放置的门、被替换掉的状态、非世界视图、
+     * 区块尚未建立方块实体）退回 OPEN 的静态近似 0 / 1，保证任何查询都有确定结果且不抛异常。
      *
      * @param s 门格子状态
-     * @return 该格子的体素形状
+     * @param w 方块视图
+     * @param p 门格子坐标
+     * @return 0..1 的门扇进度
      */
-    private static VoxelShape shape(BlockState s) {
-        double minX=0,maxX=16,minY=0;
-        if(s.get(OPEN)) {
-            if(s.get(LEVEL)==2) minY=13; // 顶行保留上框（门楣），门洞高度变为 13/16 格
-            else if(s.get(COLUMN)==0) maxX=3; // 左列留门框立柱
-            else if(s.get(COLUMN)==2) minX=13; // 右列留门框立柱
-            else return VoxelShapes.empty(); // 中列门洞，无碰撞
-        }
-        // 门面厚 3/16 格，贴在朝外（FACING 方向）的一侧；列轴范围按朝向旋转或镜像
-        return switch(s.get(FACING)) {
-            case NORTH -> Block.createCuboidShape(minX,minY,0,maxX,16,3);
-            case EAST -> Block.createCuboidShape(13,minY,minX,16,16,maxX);
-            case SOUTH -> Block.createCuboidShape(16-maxX,minY,13,16-minX,16,16);
-            default -> Block.createCuboidShape(0,minY,16-maxX,3,16,16-minX);
-        };
+    private static float progressAt(BlockState s,BlockView w,BlockPos p) {
+        if(!(w instanceof World world)) return s.get(OPEN)?1f:0f;
+        BlockPos origin=root(s,p);
+        // 服务端联锁兜底：状态还写着 OPEN 但此刻已不允许开门，本次碰撞就按全关算（不回写状态）
+        if(!world.isClient && s.get(OPEN) && !mayOpen(world,origin)) return 0f;
+        if(world.getBlockEntity(origin) instanceof LandingDoorBlockEntity door) return door.openProgress();
+        return s.get(OPEN)?1f:0f;
     }
 }

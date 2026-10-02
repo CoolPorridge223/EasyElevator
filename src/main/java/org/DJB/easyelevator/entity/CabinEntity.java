@@ -25,9 +25,16 @@ import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.logic.ElevatorStatus;
+import org.DJB.easyelevator.logic.FloorIndicator;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * 电梯轿厢实体：3x3x3 的空心轿厢，也是整条线路的服务端权威载体。
@@ -48,6 +55,8 @@ import java.util.List;
  *       {@link #collisionBoxes()}，否则实心包围盒会把乘客挡在轿厢外。</li>
  *   <li>BLOCKED 表示受阻暂停（断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站门被拆），
  *       不是失败；条件恢复后继续原行程。</li>
+ *   <li>乘客名册（{@link #passengers}）随存档保存：读档后必须先等这些人回到世界，才能继续原行程，
+ *       否则轿厢会抢在玩家实体载入之前开走，把乘客留在空掉的井道里（见 {@link #tickPassengers()}）。</li>
  * </ul>
  *
  * <p>几何与单位：局部坐标原点在轿厢底部中心，+Z 指向门口，长度单位一律为格（方块）。
@@ -67,6 +76,12 @@ public class CabinEntity extends Entity {
     /** 同步给客户端的当前目标站点 Y（格）；无目标时用 {@link Integer#MIN_VALUE} 作哨兵，避免与任何合法高度混淆。 */
     private static final TrackedData<Integer> TARGET_Y = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
 
+    /**
+     * 同步给客户端的"当前楼层号"（1 起，站点按高度升序，最底层 = 1 层；0 = 尚未经过任何站点）。
+     * 选站面板、楼层门框顶部与轿厢内的模拟面板都显示它，因此统一由服务端算好再同步，避免三处口径不一致。
+     */
+    private static final TrackedData<Integer> FLOOR = DataTracker.registerData(CabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+
     /** 确定性状态机实例：Phase、门进度、当前目标与请求队列都存放在这里，实体内不重复保存。 */
     private final ElevatorController controller = new ElevatorController();
 
@@ -78,6 +93,39 @@ public class CabinEntity extends Entity {
 
     /** 停车后仍需补发静止运动包的剩余刻数（刻）；不补发则客户端插值会停在最后一个运动样本上无法收敛。 */
     private int motionSettleTicks;
+
+    /**
+     * 上一刻已经下发给客户端的"停靠计划"（见 {@link #plannedStops()}）。
+     * 只用于判断是否变化：变化才发 {@link ElevatorNetworking#syncPanel}，避免每刻刷包；不写存档。
+     */
+    private List<BlockPos> lastPlan = List.of();
+
+    /** 上一刻用于判断运行方向的高度（格）；只服务于楼层显示，不参与任何运动或联锁判定。 */
+    private double floorDirectionY;
+
+    /** 当前楼层号（1 起；0 = 尚未经过任何站点）；与同步字段 FLOOR 保持一致，便于服务端自身读取。 */
+    private int floorNumber;
+
+    /**
+     * 本厢负责的乘客名册：玩家 UUID -> 相对轿厢底部中心的偏移（格，与 {@link #localBox} 同一坐标系）。
+     *
+     * <p>为什么需要它：轿厢是区块实体，随区块载入；玩家实体由登录流程单独载入，一定晚于区块实体。
+     * 运行时存档后再次进入游戏时，若轿厢立刻恢复行程，就会在乘客回到世界之前先开走，乘客随后被放回
+     * 自己存档坐标——已经空掉的井道——于是掉出电梯。名册把"这辆车上的乘客"连同相对偏移一起写进存档，
+     * 读档后据此先等人、再走（见 {@link #tickPassengers()}）。
+     *
+     * <p>维护规则（每服务端刻执行一次，见 {@link #tickPassengers()}）：
+     * <ul>
+     *   <li>当刻站在厢内的玩家：每刻刷新其相对偏移（用相对量，因此与轿厢之后走到哪里无关）；</li>
+     *   <li>不在厢内、但能在同一条井道里找到的玩家：按名册偏移放回厢内（掉线重进、客户端首帧掉下去都属于这种）；</li>
+     *   <li>门已全开（{@code DOOR ≈ 1}）时仍在线上却不在厢内的玩家：属于正常离开（开门本来就是让人走），划掉；</li>
+     *   <li>掉线的玩家一律保留在名册里等他回来：他们没有能力自己走出轿厢，只可能是被行程丢下的人。</li>
+     * </ul>
+     */
+    private final Map<UUID, Vec3d> passengers = new LinkedHashMap<>();
+
+    /** 读档后等待名册乘客归位的剩余刻数（刻）；0 = 本刻无需等待（名册已齐或等待窗口已用尽）。 */
+    private int passengerWaitTicks;
 
     /**
      * 构造轿厢实体。所属线路与初始位置随后由 {@link #initialize(BlockPos, Direction)} 或存档载入设定。
@@ -96,6 +144,7 @@ public class CabinEntity extends Entity {
     @Override
     protected void initDataTracker(DataTracker.Builder b) {
         b.add(PHASE, 0); b.add(DOOR, 1f); b.add(FACING, Direction.NORTH.getId()); b.add(TARGET_Y, Integer.MIN_VALUE);
+        b.add(FLOOR, 0); // 楼层号在第 0 刻由 updateFloorNumber 算出，默认 0 表示"还不知道"
     }
 
     /**
@@ -111,6 +160,8 @@ public class CabinEntity extends Entity {
         railX = rail.getX(); railZ = rail.getZ(); dataTracker.set(FACING, facing.getId());
         // 轿厢中心 = 轨道中心 + 朝向前方 2 格；底部 Y 与轨道同高，也就是与站点 Y 对齐
         setPosition(railX + .5 + facing.getOffsetX()*2, rail.getY(), railZ + .5 + facing.getOffsetZ()*2);
+        floorDirectionY = getY(); // 楼层显示的方向基准：刚落成时视为静止，第一次刷新按"上行规则"取所在层
+        passengers.clear(); passengerWaitTicks = 0; // 全新轿厢不带任何乘客名册（名册只来自存档）
     }
 
     /** @return 所属线路的轨道 X（方块坐标） */
@@ -121,7 +172,6 @@ public class CabinEntity extends Entity {
 
     /** @return 轨道（= 轿厢门）朝向；读同步字段，因此客户端也能得到与服务端一致的朝向 */
     public Direction facing() { return Direction.byId(dataTracker.get(FACING)); }
-
     /** @return 当前状态机 Phase；读同步字段，客户端只能用这个值做表现，不能据此驱动运动 */
     public ElevatorController.Phase phase() { return ElevatorController.Phase.values()[dataTracker.get(PHASE)]; }
 
@@ -136,6 +186,39 @@ public class CabinEntity extends Entity {
     /** @return 当前目标站点 Y（格）；无目标时返回 {@link Integer#MIN_VALUE} 哨兵值 */
     public int targetY() { return dataTracker.get(TARGET_Y); }
 
+    /** @return 是否正在执行某个目的站（用于区分"运行途中"与"关着门停在某层"） */
+    public boolean hasTarget() { return targetY() != Integer.MIN_VALUE; }
+
+    /**
+     * @return 当前楼层号（1 起，站点按高度升序、最底层 = 1 层）；0 表示尚未经过任何站点（显示端应显示占位符）。
+     *         读同步字段，因此客户端渲染门框/轿厢面板与选站面板时拿到的是同一个值。
+     */
+    public int floorNumber() { return dataTracker.get(FLOOR); }
+
+    /**
+     * @return 显示用的运行状态（上行/下行/停靠）。由已同步的 Phase、目的站高度与当前位置推导，
+     *         因此轿厢内面板与楼层门框在服务端、客户端得到同一结果，不需要额外的同步字段
+     */
+    public ElevatorStatus status() { return ElevatorStatus.of(phase(),targetY(),getY()); }
+
+    /**
+     * 刷新当前楼层号并写入同步字段。
+     *
+     * <p>编号与更新规则见 {@link FloorIndicator}：上行取"已到过/经过的最高一层"、下行取"已经过的最低一层"，
+     * 因此层号只在经过或到达一层时变化一次，不会因为轿厢恰好经过整数高度而闪动。
+     *
+     * <p>副作用：更新 floorDirectionY/floorNumber，并在变化时写 DataTracker 的 FLOOR 字段（同步给客户端）。
+     *
+     * @param line 当前线路；为 null（轨道被拆或区块未加载）时保持 0，表示暂时无法判断
+     */
+    private void updateFloorNumber(ElevatorLine line) {
+        var stationYs = new ArrayList<Integer>();
+        if (line != null) for (BlockPos stop : line.stops()) stationYs.add(stop.getY());
+        int floor = FloorIndicator.floorNumber(stationYs, getY(), floorDirectionY);
+        floorDirectionY = getY();
+        if (floor != floorNumber) { floorNumber = floor; dataTracker.set(FLOOR, floor); }
+    }
+
     /**
      * 以当前所在高度为种子扫描所属线路。
      *
@@ -144,18 +227,122 @@ public class CabinEntity extends Entity {
     public ElevatorLine line() { return ElevatorLine.scan(getWorld(), new BlockPos(railX, MathHelper.floor(getY()+.0001), railZ)); } // +0.0001 抵消浮点误差：Y 恰好停在楼层高度时 floor 可能落到下一格而扫错高度
 
     /**
+     * 判断实体的水平投影是否落在轿厢内缘之内。
+     *
+     * @param e 待判定实体
+     * @return 水平方向完全位于内缘 ±1.31 格（内缘 1.3 格 + 0.01 格浮点余量）之内时 true；不判定高度
+     *
+     * <p>单独抽出这条水平判定的原因：它同时是"是否算乘客"与"掉队乘客是否还在这条井道里"的判据，
+     * 两处必须完全一致，否则会出现"轿厢不认这个乘客、却又拽不动他"的分叉。站在楼层门口或走廊上的
+     * 玩家横向就已经在内缘之外（门槛在本地 Z=1.3..1.5 格），因此不会被误判成厢内或井道内的人。
+     */
+    private boolean insideFootprint(Entity e) {
+        Box b = e.getBoundingBox();
+        return b.minX >= getX()-1.31 && b.maxX <= getX()+1.31 && b.minZ >= getZ()-1.31 && b.maxZ <= getZ()+1.31;
+    }
+
+    /**
      * 判断实体是否算本轿厢的乘客。用于随厢移动、障碍扫描豁免、门口防夹豁免与面板/网络层的身份校验。
      *
      * @param e 待判定实体
      * @return 实体位于轿厢内部时 true；旁观者、骑乘其它载具者以及被抬出净高范围者均不算乘客
      *
-     * <p>横向边界取内缘 1.3 格再加 0.01 格余量，脚部高度从 0.14 格（地板面 0.2 格减容差）到 2.7 格
-     * （净高 2.6 格加容差），以避免站在地板或贴墙时因浮点误差被误判为非乘客。
+     * <p>横向边界取内缘 1.3 格再加 0.01 格余量（见 {@link #insideFootprint}），脚部高度从 0.14 格
+     * （地板面 0.2 格减容差）到 2.7 格（净高 2.6 格加容差），以避免站在地板或贴墙时因浮点误差被误判为非乘客。
      */
     public boolean containsPassenger(Entity e) {
-        Box b = e.getBoundingBox();
-        return !e.isSpectator() && !e.hasVehicle() && b.minX >= getX()-1.31 && b.maxX <= getX()+1.31
-                && b.minZ >= getZ()-1.31 && b.maxZ <= getZ()+1.31 && e.getY() >= getY()+.14 && e.getY() < getY()+2.7;
+        return !e.isSpectator() && !e.hasVehicle() && insideFootprint(e)
+                && e.getY() >= getY()+.14 && e.getY() < getY()+2.7;
+    }
+
+    /**
+     * 维护乘客名册，并在读档后的等待窗口内把已经回到世界的乘客放回厢内。
+     *
+     * <p>为什么需要（这是"运行途中保存退出、下次进入掉出电梯"的根因）：轿厢属于区块实体，随区块
+     * 一起载入；玩家实体由登录流程单独载入，必然晚于区块实体。存档时记在轿厢里的行程在载入的第一刻
+     * 就会被 BLOCKED 分支恢复（门是关的、目的站还在），于是轿厢在玩家实体还没出现之前就开走了；
+     * 玩家随后被放回自己的存档坐标——已经空掉的井道——脚下没有地板，直接掉出电梯。
+     *
+     * <p>执行顺序（不可调换）：
+     * <ol>
+     *   <li>先记录当刻确实站在厢内的玩家与其相对偏移（相对量，与轿厢之后走到哪里无关）；</li>
+     *   <li>再看名册里不在厢内的人能不能在井道里找回来：找到就按名册偏移放回厢内（并清掉速度与下落距离）；</li>
+     *   <li>然后才淘汰：门已全开（{@code DOOR ≈ 1}）时，仍然在线却不在厢内的玩家属于正常离开——开门本来
+     *       就是让人走。掉线的乘客不能这样处理：他们没有能力走出去，只可能是被行程丢下的，必须留到回来为止；</li>
+     *   <li>最后判断本刻能否移动：名册里还有人没归位时必须保持静止，直到人回来、等待窗口用尽，或车上
+     *       已经有别的乘客要走（不能为了等一个缺席的人把电梯钉住）。</li>
+     * </ol>
+     *
+     * @return true 表示本刻必须保持静止：名册里还有乘客没回到世界，且读档等待窗口尚未用尽
+     */
+    private boolean tickPassengers() {
+        // 1) 厢内乘客：刷新相对偏移。用相对量而不是世界坐标，因为轿厢读档后仍停在存档位置，偏移量与之后的高度无关。
+        Set<UUID> inside = new HashSet<>();
+        for (Entity e : getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger))
+            if (e instanceof PlayerEntity p) {
+                inside.add(p.getUuid());
+                passengers.put(p.getUuid(), new Vec3d(p.getX()-getX(), p.getY()-getY(), p.getZ()-getZ()));
+            }
+        // 2) 先把能找回来的乘客放回厢内：遍历副本，因为下面会往名册里写回偏移。
+        for (UUID uuid : List.copyOf(passengers.keySet())) {
+            if (inside.contains(uuid)) continue; // 已经在厢内：本刻正常随厢移动
+            PlayerEntity found = findLostPassenger(uuid);
+            if (found == null) continue; // 还没回到世界（未登录/在别世界）：先留在名册里，下一步再决定等不等
+            putPassengerBack(found, passengers.get(uuid));
+            inside.add(uuid); // 本刻已经放回厢内，不再算"缺失"
+        }
+        // 3) 门全开 = 乘客可以自由进出：仍在线却不在厢内的记录属于正常离开，划掉。
+        //    门没开（运行中、运行途中停靠）或已经掉线的人不能这样处理，那正是要等回来的人。
+        if (dataTracker.get(DOOR) >= .999f)
+            passengers.keySet().removeIf(uuid -> !inside.contains(uuid) && getWorld().getPlayerByUuid(uuid) != null);
+        // 4) 名册里还有人不在厢内（未登录、在别世界、或门关着时被丢下）→ 决定本刻能否移动。
+        if (passengers.keySet().stream().allMatch(inside::contains)) { passengerWaitTicks = 0; return false; } // 名册齐了：等待窗口结束
+        if (passengerWaitTicks <= 0) return false; // 窗口已用尽：行程照原计划继续，避免把电梯永久钉死
+        if (!inside.isEmpty()) return false; // 车上已经有别的乘客要走：不能为了等一个缺席的人把他一起钉在原地
+        passengerWaitTicks--;
+        return true;
+    }
+
+    /**
+     * 在井道范围内找回名册里丢失的乘客实体。
+     *
+     * @param uuid 乘客 UUID
+     * @return 找到的玩家；尚未登录（实体不在世界里）、在别的世界、旁观或骑乘载具时返回 null
+     *
+     * <p>为什么只按"水平落在轿厢内缘内"判定（{@link #insideFootprint}）：轿厢只能沿井道上下走，
+     * 掉队的乘客水平位置不变，一定还在同一条竖直井道里；反过来说，站在楼层门口或走廊上的玩家
+     * 横向就已经在内缘之外，因此不会被误当成掉队乘客拽进轿厢。竖直方向不设限：乘客可能已经掉到
+     * 井道深处，也可能轿厢已经走到很远的高度（例如掉线期间行程照常走完）。
+     */
+    private PlayerEntity findLostPassenger(UUID uuid) {
+        Box column = new Box(getX()-2, getWorld().getBottomY(), getZ()-2, getX()+2, getWorld().getTopY(), getZ()+2);
+        var found = getWorld().getEntitiesByClass(PlayerEntity.class, column,
+                e -> uuid.equals(e.getUuid()) && !e.isSpectator() && !e.hasVehicle() && insideFootprint(e));
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /**
+     * 把掉队的乘客放回名册记录的相对位置，并清掉速度与下落距离。
+     *
+     * @param p 待归位的玩家
+     * @param offset 名册里保存的相对偏移（格）
+     *
+     * <p>偏移先夹到厢内合法范围（地板面 0.2 格到净高 2.6 格，横向 ±1.3 格），因此被写坏或旧版本的
+     * 存档也不会把人塞进地板或顶板，归位之后下一刻的 {@link #containsPassenger} 必然成立，乘客自此随厢移动。
+     *
+     * <p>副作用：修改玩家坐标（经由 {@code requestTeleport}，与运行时载客用的是同一条"绝对位置 +
+     * 保留视角"通路，因此服务端坐标立刻生效且客户端不会回弹）、复位纵向速度与下落距离、置为站在地面。
+     * 尚未建立连接的服务端玩家（没有网络处理器，例如测试里的替身实体）直接改坐标，避免在服务端刻里空指针。
+     */
+    private void putPassengerBack(PlayerEntity p, Vec3d offset) {
+        double x = getX()+MathHelper.clamp(offset.x,-1.3,1.3), y = getY()+MathHelper.clamp(offset.y,.2,2.6), z = getZ()+MathHelper.clamp(offset.z,-1.3,1.3);
+        if (p instanceof ServerPlayerEntity sp && sp.networkHandler != null)
+            sp.networkHandler.requestTeleport(x, y, z, sp.getYaw(), sp.getPitch(),
+                    java.util.EnumSet.of(PositionFlag.X_ROT, PositionFlag.Y_ROT)); // 只带相对旋转标志：保留玩家当前视角，且不走原版相对位置包以免触发"移动过快"回弹
+        else p.setPosition(x, y, z);
+        p.fallDistance = 0; // 清零下落距离：掉队期间累积的下落高度不能在归位瞬间结算成摔落伤害
+        p.setVelocity(p.getVelocity().multiply(1, 0, 1)); // 抹掉纵向速度，避免归位后仍带着下落速度
+        p.setOnGround(true); // 站在轿厢地板上：玩家才能正常跳跃与停止水平移动
     }
 
     /**
@@ -171,6 +358,54 @@ public class CabinEntity extends Entity {
         ElevatorLine line = line();
         if (line == null || line.facing() != facing() || line.cabins(getWorld()).size() != 1 || !line.stops().contains(button)) return false;
         return controller.request(new ElevatorController.Stop(button.asLong(), button.getY()), getY());
+    }
+
+    /**
+     * 当前的"停靠计划"：正在执行的目的站在前，排队中的站点随后，都用楼层门根方块坐标表示。
+     *
+     * <p>面板用它把"已经加入计划"的按钮标红；顺序就是实际处理顺序，因此客户端不需要自己推断。
+     *
+     * @return 不可变坐标列表；没有计划时返回空列表
+     */
+    public List<BlockPos> plannedStops() {
+        var plan = new ArrayList<BlockPos>();
+        var target = controller.target();
+        if (target != null) plan.add(BlockPos.fromLong(target.id()));
+        for (var stop : controller.pending()) plan.add(BlockPos.fromLong(stop.id()));
+        return List.copyOf(plan);
+    }
+
+    /**
+     * 处理选站面板上的"开门 / 关门"按键（服务端调用；调用方已核对乘客身份）。
+     *
+     * <p>开门键的语义是<b>"开门 / 中断关门"</b>，不是"呼叫本层"：
+     * <ul>
+     *   <li>门已全开 → 续满停留时间（相当于按住开门键）；</li>
+     *   <li>正在关门 → <b>反向重新打开</b>（中断关门）；</li>
+     *   <li>门已全关但轿厢停在本层（例如刚手动关门、即将出发）→ 直接开门；</li>
+     *   <li>整个过程中<b>不改呼叫队列与目的站</b>：不会把本层排进队列，因此不会出现"先开走、之后再回来"。</li>
+     * </ul>
+     *
+     * <p>为什么要求 {@link ElevatorStatus#IDLE}：轿厢以 0.20 格/刻运行、站点高度是整数，运行时每一层都会被
+     * 精确经过一次；只看高度会让"运行途中恰好经过某层"也被判成在站点上，从而半空开门。
+     *
+     * <p>关门键交给 {@link ElevatorController#forceClose()}：允许在队列为空时先把门关上、停在本层等待呼叫。
+     *
+     * @param open true = 开门，false = 关门
+     * @return 指令被接受时 true；不在站点、正在别处运行、线路失效或门状态不允许时 false（调用方据此提示玩家）
+     */
+    public boolean doorCommand(boolean open) {
+        if (getWorld().isClient) return false; // 指令只在服务端执行，客户端点击后会收到服务端下发的面板刷新
+        if (open) {
+            if (status() != ElevatorStatus.IDLE) return false; // 运行途中（含恰好经过某层高度）一律不受理
+            ElevatorLine line = line();
+            if (line == null || line.facing() != facing()) return false;
+            // 站点高度是整数，轿厢到站时会精确吸附到该值，因此这里的 1e-7 判定等价于"就在这一层"。
+            for (BlockPos stop : line.stops())
+                if (Math.abs(stop.getY() - getY()) <= ElevatorParameters.POSITION_EPSILON) return controller.forceOpen();
+            return false;
+        }
+        return controller.forceClose();
     }
 
     /** @return 恒为 true：轿厢可被准星选中，否则无法右键打开选站面板 */
@@ -214,8 +449,9 @@ public class CabinEntity extends Entity {
      * 每刻驱动状态机并同步结果，是服务端权威的唯一入口。
      *
      * <p>执行顺序（不可调换）：先记录上一刻门进度（客户端与渲染插值用）；客户端 tick 到此结束，只读同步数据与运动包。
-     * 服务端随后扫描当前线路并判定唯一性，调用 {@link ElevatorController#tick(double, ElevatorController.Environment)}
-     * 取得本刻的目标 Y，再按位移带乘客一起移动，最后同刻刷新楼层门联锁、写回 DataTracker、发包、播音效、触发事件。
+     * 服务端随后扫描当前线路并判定唯一性，先按乘客名册把归位的乘客放回厢内（必要时本刻保持静止，见
+     * {@link #tickPassengers()}），再调用 {@link ElevatorController#tick(double, ElevatorController.Environment)}
+     * 取得本刻的目标 Y，然后按位移带乘客一起移动，最后同刻刷新楼层门联锁、写回 DataTracker、发包、播音效、触发事件。
      *
      * <p>副作用（仅服务端）：修改本实体与乘客的位置/速度/下落距离、设置 DataTracker 字段、刷新线路内所有站点的
      * 楼层门方块状态、发送运动包、播放音效、触发 {@link ElevatorEvents} 回调。
@@ -228,6 +464,8 @@ public class CabinEntity extends Entity {
         var before = controller.phase(); // 记下旧 Phase，用于本刻末尾判断是否需要播放开关门音效与触发事件
         final ElevatorLine currentLine = line();
         final boolean unique = currentLine != null && currentLine.facing() == facing() && currentLine.cabins(getWorld()).size() == 1; // 线路存在、朝向一致、且恰好一个轿厢，才允许运动
+        // 乘客名册必须在状态机之前处理：本刻是否允许移动、以及归位乘客下一刻能否被承托，都取决于这一趟的结果。
+        final boolean waitingForPassengers = tickPassengers();
         double nextY = controller.tick(getY(), new ElevatorController.Environment() {
             /**
              * 站点是否仍然有效：门被拆、3x3 不完整、或该门已不再对应本轿厢所在轨道与高度时判定失效。
@@ -254,6 +492,9 @@ public class CabinEntity extends Entity {
              */
             @Override
             public boolean canMove(double from, double to) {
+                // 读档后的等待窗口里名册乘客还没归位：本刻一步都不能走，否则轿厢先开走、乘客被留在空掉的井道里。
+                // 与其它阻塞条件一样走 BLOCKED，因此行程、队列、门联锁语义完全不变，人一到齐就自动继续。
+                if (waitingForPassengers) return false;
                 if (!unique || !currentLine.stops().contains(BlockPos.fromLong(controller.target().id()))) return false; // 线路不再唯一、或目标站点已被拆走/移出线路时立即阻塞，等待新请求恢复
                 int bottom = MathHelper.floor(Math.min(from, to)+.0001); // 扫过的整数层范围；±0.0001 抵消恰好落在整格高度时的浮点误差
                 int top = MathHelper.ceil(Math.max(from, to)-.0001);
@@ -309,6 +550,13 @@ public class CabinEntity extends Entity {
         }
         dataTracker.set(PHASE, controller.phase().ordinal()); dataTracker.set(DOOR, controller.door()); // 写回同步字段：客户端据此渲染局部 Phase 表现（门动画、载客指示）
         dataTracker.set(TARGET_Y, controller.target() == null ? Integer.MIN_VALUE : controller.target().y()); // 目标高度供客户端显示目的楼层；Integer.MIN_VALUE 表示当前无目标
+        // 停靠计划（目的站 + 队列）变化时推给客户端：面板里用红色标出"已加入计划"的站点。
+        // 只在变化那一刻发包（新请求、到站消耗、站点失效都算），因此不会每刻刷包，也不会给没开面板的乘客弹出界面。
+        List<BlockPos> plan = plannedStops();
+        if (!plan.equals(lastPlan)) { lastPlan = plan; ElevatorNetworking.syncPanel(this, plan); }
+        // 楼层显示：只在经过或到达一层时变化（见 FloorIndicator），写进同步字段供选站面板、
+        // 楼层门框顶部与轿厢内的模拟面板显示；同一 tick 内先更新运动、再算层号，显示始终跟得上。
+        updateFloorNumber(currentLine);
         // Update landing locks in the same server tick as the car's door/motion state.
         // 同刻刷新楼层门联锁：门只在轿厢精确到站且轿厢门正在打开时才开，放在移动之后可避免出现"轿厢还在动、门已开"的一刻差值
         if(currentLine!=null) for(BlockPos door:currentLine.stops()) LandingDoorBlock.refresh(getWorld(),door);
@@ -404,8 +652,8 @@ public class CabinEntity extends Entity {
     }
 
     /**
-     * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue。
-     * 世界坐标由原版实体保存流程另行写出，这里只存状态机与线路绑定所需的最小信息。
+     * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue / Riders。
+     * 世界坐标由原版实体保存流程另行写出，这里只存状态机、线路绑定与乘客名册所需的最小信息。
      *
      * @param nbt 待写入的实体 NBT
      *
@@ -419,16 +667,30 @@ public class CabinEntity extends Entity {
         NbtList list = new NbtList();
         for (var stop : controller.pending()) { NbtCompound s = new NbtCompound(); s.putLong("Button",stop.id()); list.add(s); } // 队列只存打包坐标：Y 可从 BlockPos 解出
         nbt.put("Queue",list);
+        // 乘客名册：读档后必须先等这些人回到世界才能继续行程，否则轿厢会先开走、乘客落到井道里（见 tickPassengers）。
+        // 只存 UUID 与相对轿厢的偏移：玩家各自的世界坐标由原版玩家存档负责，offsets 与轿厢之后走到哪里无关，
+        // 因此即使是"运行时存档、再次进入时轿厢停在别处"也仍然有效。
+        NbtList riders = new NbtList();
+        for (var entry : passengers.entrySet()) {
+            NbtCompound rider = new NbtCompound();
+            // UUID 拆成两个 long 而不是 UUID 字符串：往返无损、长度固定，也不需要额外的解析容错。
+            rider.putLong("Most",entry.getKey().getMostSignificantBits()); rider.putLong("Least",entry.getKey().getLeastSignificantBits());
+            rider.putDouble("X",entry.getValue().x); rider.putDouble("Y",entry.getValue().y); rider.putDouble("Z",entry.getValue().z);
+            riders.add(rider);
+        }
+        nbt.put("Riders",riders);
     }
 
     /**
-     * 从实体 NBT 恢复线路绑定与状态机状态。
+     * 从实体 NBT 恢复线路绑定、状态机状态与乘客名册。
      *
      * @param nbt 已序列化的实体 NBT
      *
-     * <p>副作用：写入 railX/railZ、同步字段 FACING/PHASE/DOOR/TARGET_Y 与 previousDoor，并重置状态机内部队列。
+     * <p>副作用：写入 railX/railZ、同步字段 FACING/PHASE/DOOR/TARGET_Y 与 previousDoor，重置状态机内部队列，
+     * 并用存档里的乘客名册打开"等待乘客归位"窗口。
      * {@link ElevatorController#restore} 会把 MOVING 降级为 BLOCKED，先校验线路再恢复运行，
-     * 避免读档瞬间在错误高度继续移动；同时同步门进度，防止客户端首帧插值跳变。
+     * 避免读档瞬间在错误高度继续移动；乘客名册则保证这次"继续"不会抢在乘客回到世界之前发生
+     * （玩家实体一定晚于区块实体载入）；同时同步门进度，防止客户端首帧插值跳变。
      */
     @Override
     protected void readCustomDataFromNbt(NbtCompound nbt) {
@@ -442,6 +704,17 @@ public class CabinEntity extends Entity {
         controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,queue);
         dataTracker.set(PHASE,controller.phase().ordinal()); dataTracker.set(DOOR,controller.door()); previousDoor=controller.door(); // 连 previousDoor 一起对齐，首帧门动画不插值
         dataTracker.set(TARGET_Y,controller.target()==null?Integer.MIN_VALUE:controller.target().y());
+        passengers.clear(); // 名册整份来自存档；旧存档没有 Riders 字段时 getList 返回空表，因此行为与旧版一致（不等待）
+        var riders=nbt.getList("Riders",10); // 10 = NbtElement.COMPOUND_TYPE
+        for (int i=0; i<riders.size(); i++) {
+            NbtCompound rider=riders.getCompound(i);
+            passengers.put(new UUID(rider.getLong("Most"),rider.getLong("Least")),
+                    new Vec3d(rider.getDouble("X"),rider.getDouble("Y"),rider.getDouble("Z")));
+        }
+        // 有乘客才开等待窗口：等待期间轿厢保持静止，乘客一出现就被放回厢内（见 tickPassengers）。
+        passengerWaitTicks = passengers.isEmpty() ? 0 : ElevatorParameters.RIDER_WAIT_TICKS;
+        // 楼层显示的方向基准取读档后的实际高度：第一刻按"上行规则"取所在层，不会因为旧的方向残留而先跳一下。
+        floorDirectionY=getY(); floorNumber=0;
     }
 
     /**

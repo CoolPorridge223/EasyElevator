@@ -14,6 +14,7 @@
 | `DOOR_TICKS` | 20 | 单次开门或关门各 1 秒 |
 | `DWELL_TICKS` | 40 | 门完全打开后的最短停留 2 秒，无请求时持续开门 |
 | `MAX_REQUESTS` | 128 | 等待队列上限，不包含正在执行的目标 |
+| `RIDER_WAIT_TICKS` | 600 | 刻，读档后等"存档时在车上的乘客"回到世界的上限（30 秒）；超时后行程照原计划继续 |
 
 速度公式：`格/秒 = SPEED × 20`。例如 3 格/秒用 0.15，6 格/秒用 0.30。服务端低于 20 TPS 时实际运行时间会变长。不要为了“更细”而减小 SPEED，否则会直接降低速度。
 
@@ -49,8 +50,9 @@
 | 站点数量来源 | 每扇完整的3×3楼层门产生一个站点 | `ElevatorLine.scan`、`LandingDoorBlock.complete` |
 | 同高度楼层门 | 每线路同一高度一扇正面门；9个部分只计1站 | 底部中心 column=1、level=0 |
 | 门中心与轨道距离 | 3 格、同一Y、沿轨道朝向 | `LandingDoorBlock.RAIL_DISTANCE` |
-| 楼层门外尺寸 | 宽3、高3、厚3/16格；关闭时有碰撞 | `LandingDoorBlock.shape` 与门资源模型 |
-| 门状态刷新 | 每1 tick，并在轿厢状态变化当 tick 更新 | `scheduledTick`、`CabinEntity.tick` |
+| 楼层门尺寸 | 宽3、高3、厚3/16格；门框立柱与门楣各3/16格（立柱顶到门楣，四角相连），门扇各1/2门洞宽、中缝1/16格 | `LandingDoorGeometry`（碰撞、轮廓与渲染同源） |
+| 楼层门门扇动画 | 逐刻等于在站轿厢门进度；全开时宽度归零、收进门框 | `LandingDoorBlockEntity.openProgress`、`LandingDoorRenderer` |
+| 门状态刷新 | 每1 tick，并在轿厢状态变化当 tick 更新（`open` 只是联锁标志） | `scheduledTick`、`CabinEntity.tick` |
 | 水平轨道到轿厢中心偏移 | 2 格 | `ElevatorLine.centerX/centerZ`、`CabinEntity.initialize` |
 | 轿厢预留范围 / 模型尺寸 | 预留3×3×3；模型宽3 × 深2.8 × 高3 格 | `Easyelevator.CABIN` dimensions 保留预留范围；正面内收避免与楼层门重叠 |
 | 局部坐标 | 原点底部中心，+Z 门口 | `CabinEntity.localBox`、`CabinRenderer` |
@@ -59,8 +61,11 @@
 | 顶板 | 相对 Y=2.8..3.0 | 轿厢净高 2.6 格 |
 | 轿厢正面前缘 | 局部 Z=1.3 | `ElevatorParameters.CABIN_FRONT_Z`，渲染与碰撞共用；楼层门后缘 Z=1.3125，间隙0.0125格 |
 | 门口 | X=-1.3..1.3，Y=0.2..2.8，Z=1.1..1.3 | 双扇门各占一半；后缘 `CABIN_DOOR_BACK_Z`，厚度仍0.2格 |
-| 乘客横向包围盒边界 | 中心 ±1.31 格 | `containsPassenger`；非旁观、未骑乘 |
+| 乘客横向包围盒边界 | 中心 ±1.31 格 | `containsPassenger`、`insideFootprint`；非旁观、未骑乘 |
 | 乘客脚部高度范围 | 相对 Y≥0.14 且 <2.7 | `containsPassenger` |
+| 乘客名册 | UUID + 相对轿厢底部中心的偏移（格），随实体 NBT 的 `Riders` 一起存档 | `writeCustomDataToNbt` / `readCustomDataFromNbt`；读档后据此等乘客归位 |
+| 掉队乘客找回范围 | 同一条井道：世界全高、水平 ±2 格查询，再要求水平落在内缘 ±1.31 格内 | `findLostPassenger`、`insideFootprint`（与"算不算乘客"共用同一水平判据） |
+| 乘客归位位置 | 名册偏移夹到 X/Z ±1.3 格、Y 0.2..2.6 格 | `putPassengerBack`；夹取后下一刻必然满足 `containsPassenger` |
 | 门口防夹检测区域 | X ±1.3，Y 0.2..2.8，Z 0.95..1.6 | `doorwayBlocked`，内缘为 `CABIN_DOOR_BACK_Z-0.15`，检测 LivingEntity |
 | 障碍扫描边界内缩 | 0.001 格 | `canMove` 的 swept box，避免面接触误判 |
 | 实体追踪范围 | 10 个区块，即约160格 | `Easyelevator.CABIN.maxTrackingRange(10)` |
@@ -80,7 +85,9 @@
 | CLOSING | 门进度从1降至0；门口有人则重新开门并保留请求 |
 | MOVING | 门必须为0；每 tick 验证轨道与扫过的空间 |
 | OPENING | 到站后门进度从0增至1 |
-| BLOCKED | 停止移动；障碍恢复且目标有效时继续 |
+| BLOCKED | 停止移动；障碍恢复且目标有效时继续。读档后"名册里的乘客还没回到世界"也走这一相位（上限 `RIDER_WAIT_TICKS`） |
+
+读档时轿厢保存的 `MOVING` 一律降级为 `BLOCKED`，先重验线路再继续；如果存档里带着乘客名册（`Riders`），会先保持静止等这些人回到世界：轿厢是区块实体、随区块载入，而玩家实体由登录流程单独载入、必然更晚，抢跑会让乘客被留在已经空掉的井道里掉出电梯。等待期间名册里的乘客一在井道里出现就被按存档偏移放回厢内；名册齐了、等待窗口用尽、或车上已经有别的乘客要走，就立刻放行继续原行程。
 
 按请求先后顺序处理，重复的同一门请求合并。请求删除或不完整的门会被拒绝；已排队但被拆除的门被移除。运行中目的门拆除会暂停，避免半空开门；新的有效请求可以恢复运行。断轨、朝向改变、多个轿厢、实体/方块障碍、世界边界和区块加载状态也会影响移动。
 
@@ -90,8 +97,26 @@
 
 | 项目 | 默认值/位置 |
 | --- | --- |
-| 单页站点数 | 随窗口高度计算，最少1、最多8，`ElevatorScreen.init` |
-| 行高 / 按钮大小 | 行间距24像素，按钮220×20像素 |
+| 按键外观 | 方形 20×20 像素按钮，只印楼层编号；悬停提示显示站点与高度，轿厢当前停靠层用绿色描边点亮（`ElevatorScreen.StationButton`） |
+| 按键编号 | 站点按高度升序，**最底层 = 1 层**；编号即按钮上的数字 |
+| 按键铺排顺序 | 从右下角起步，先右→左排满一行、再换上一行（下→上），因此每列数字自下而上递增（`PanelLayout`） |
+| 按键网格 | 列数自动选成尽量长方形：优先不留空行，其次接近正方形，同分取更宽（例 9→3×3、12→4×3、10→5×2、7→4×2；`PanelLayout.chooseColumns`） |
+| 单页容量 / 翻页 | 列数≤8、行数≤8（单页最多 64 个站点），超出用底部 `<` `>` 翻页（`ElevatorScreen.init`） |
+| 按钮间距 / 面板内边距 | 间距 4 像素，内边距 16 像素，头部 52 像素、底部 40 像素 |
+| 按键颜色 | 普通灰色描边；轿厢当前停靠层绿色描边；已加入停靠计划的站点红色描边；悬停/键盘聚焦点亮为白色（`ElevatorScreen.StationButton`） |
+| "当前层/开门键"的前置条件 | 必须**停稳**：相位不是 MOVING，或处于 MOVING 且没有目的站（= 关着门停在本层）。轿厢以 0.20 格/刻运行，运行时高度会精确经过整数楼层，只看高度会让绿色与开门键逐层闪一下（`ElevatorScreen.stopped/parkedAt`） |
+| 开门键语义 | 纯门操作、**不进队列**：门已全开 → 续满停留；正在关门 → 反向重新打开（中断关门）；门已全关但停在本层 → 直接开门。服务端受理条件＝`status()==IDLE` 且车体精确停在某站点（`CabinEntity.doorCommand`、`ElevatorController.forceOpen`），因此不会把本层排进呼叫队列、也不会开走再回来 |
+| 关门键语义 | 立刻结束停留并关门；门已全开或正在开门时受理（正在开门则反向关闭），门已关着时拒绝。允许队列为空时关门停在本层等待下一次呼叫，关门途中防夹仍然生效 |
+| 楼层显示 | 面板顶部仿数码管的红字层号；**楼层门框顶部**与**轿厢内模拟面板**也用红字显示。轿厢面板两行：第一行到达层数（字号 0.018，行锚点 -10 像素）、第二行运行状态（字号 0.011，行锚点 +5 像素），各自水平居中。世界内文字统一走"局部坐标 + 最高亮度 + 负 Y 缩放（字体内部 Y 向下，同原版告示牌 `setTextAngles`）+ `POLYGON_OFFSET`"（`LandingDoorRenderer`、`CabinRenderer`） |
+| 门框顶部排版 | 横向一行"[运行状态] [楼层号]"（中间留白 6 像素），起点取负的半个总宽，因此状态文本在左、层数在右、整组居中；状态文本宽度每帧重算。位置在门楣正中面外 0.02 格，只从走廊一侧可见 |
+| 运行状态 | 由同步数据推导，无额外同步字段：只有 MOVING 且有目的站才判上行/下行（比当前高度高＝上行、低＝下行，差值小于 `SYNC_POSITION_EPSILON` 视为已到站），其余相位（开门/开门中/关门中/暂停/关着门停靠）一律"停靠"（`logic/ElevatorStatus`） |
+| 翻译键 | `status.easyelevator.up` = 电梯上行、`status.easyelevator.down` = 电梯下行、`status.easyelevator.idle` = 停靠（`en_us` 为 Going up / Going down / Parked） |
+| 楼层号规则 | 站点按高度升序、最底层 = 1 层；上行取"已到过/经过的最高一层"、下行取"已经过的最低一层"，因此只在经过或到达一层时变化一次；尚未经过任何站点时面板显示 `--`（`logic/FloorIndicator`） |
+| 停靠计划高亮 | 目的站 + 队列中的站点，服务端在计划变化时用 `PanelState` 推送（到达、取消、新请求），只影响已打开的面板 |
+| 底部按键 | `<` `>` 翻页（首/末页禁用）、开门、关门、完成；开门/关门按轿厢实时状态自动禁用（无轿厢、不在站点、门已关好等） |
+| 开门键语义 | 只在车体精确停在某个完整站点时受理（等于"请求当前这一层"）；门已全开时按下只续满停留时间；不在楼层之间开门（`CabinEntity.doorCommand`） |
+| 关门键语义 | 立刻结束停留并关门，队列为空也允许（关门后停在本层等待）；关门中仍逐刻检查门口是否有人，防夹照旧（`ElevatorController.forceClose`） |
+| 面板有效性判定 | UI 用宽松判定（水平 ±1.5 格、相对轿厢底 -0.6..+2.9 格）以免下行时被误判为已离开轿厢；权限校验始终在服务端（`ElevatorScreen.staysInside`） |
 | 面板最大解码站点数 | 16384，`ElevatorNetworking.MAX_STOPS` |
 | 服务端选站验证 | 活着、非旁观、身处指定轿厢、完整电梯门仍存在且同线路 |
 | 面板背景 | 轻微暗色遮罩，不调用原版模糊着色器 |
@@ -109,7 +134,7 @@
 | 运行音效 | `easyelevator:elevator_running` |
 | 到站音效 | `easyelevator:elevator_arrival` |
 | 开/关门音效 | `easyelevator:door_open` / `door_close` |
-| 门动画接口 | `cabin.doorProgress(tickDelta)`，0全关、1全开 |
+| 门动画接口 | 轿厢门 `cabin.doorProgress(tickDelta)`；楼层门门扇 `doorEntity.openProgress(tickDelta)`，0全关、1全开，两者逐刻同值 |
 | 扩展事件 | `ElevatorEvents.PHASE_CHANGED`、`ARRIVED` |
 
 音效资源默认静音；具体 OGG 和模型替换步骤见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md)。

@@ -1,12 +1,15 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import org.DJB.easyelevator.Easyelevator;
@@ -23,6 +26,12 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
  */
 public class CabinRenderer extends EntityRenderer<CabinEntity> {
     private static final Identifier TEXTURE=Easyelevator.id("textures/entity/cabin.png");
+    /** 轿厢内面板的字号（格/像素）：楼层行大一号、运行状态行小一点；两行各自水平居中。 */
+    private static final float FLOOR_SCALE=.018f, STATUS_SCALE=.011f;
+    /** 两行的行锚点（像素，相对面板中心）：负 Y 缩放后局部 +Y 是世界向下，因此楼层行取负（在上）、状态行取正（在下）。 */
+    private static final float FLOOR_LINE_Y=-10f, STATUS_LINE_Y=5f;
+    /** 面板上文字的颜色（红色）；与门框顶部、选站面板显示同一个楼层号与状态。 */
+    private static final int FLOOR_COLOR=0xFFFF4040;
     /** 构造渲染器。副作用：仅保存 EntityRenderer 上下文（光源、模型加载器等）。 */
     public CabinRenderer(EntityRendererFactory.Context context) { super(context); }
     /** 返回轿厢整张白模使用的纹理。 */
@@ -46,41 +55,73 @@ public class CabinRenderer extends EntityRenderer<CabinEntity> {
         // 正面 Z（格）与门板背面 Z（格），均取自 ElevatorParameters，保证与楼层门框的间隙一致。
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
-        box(matrices,out,-1.5f,0,-1.5f,1.5f,.2f,front,light,0xFFE6E6E6); // 底板：Y=0..0.2 格，略暗以区分地面
-        box(matrices,out,-1.5f,2.8f,-1.5f,1.5f,3,front,light,0xFFF5F5F5); // 顶板：Y=2.8..3.0 格，最高亮度
-        box(matrices,out,-1.5f,.2f,-1.5f,-1.3f,2.8f,front,light,0xFFFFFFFF); // 左侧壁：厚 0.2 格
-        box(matrices,out,1.3f,.2f,-1.5f,1.5f,2.8f,front,light,0xFFFFFFFF); // 右侧壁：厚 0.2 格
-        box(matrices,out,-1.3f,.2f,-1.5f,1.3f,2.8f,-1.3f,light,0xFFFFFFFF); // 后壁：Z=-1.5..-1.3 格，正面留空形成门洞
+        BoxMesh.cuboid(matrices,out,-1.5f,0,-1.5f,1.5f,.2f,front,light,0xFFE6E6E6); // 底板：Y=0..0.2 格，略暗以区分地面
+        BoxMesh.cuboid(matrices,out,-1.5f,2.8f,-1.5f,1.5f,3,front,light,0xFFF5F5F5); // 顶板：Y=2.8..3.0 格，最高亮度
+        BoxMesh.cuboid(matrices,out,-1.5f,.2f,-1.5f,-1.3f,2.8f,front,light,0xFFFFFFFF); // 左侧壁：厚 0.2 格
+        BoxMesh.cuboid(matrices,out,1.3f,.2f,-1.5f,1.5f,2.8f,front,light,0xFFFFFFFF); // 右侧壁：厚 0.2 格
+        BoxMesh.cuboid(matrices,out,-1.3f,.2f,-1.5f,1.3f,2.8f,-1.3f,light,0xFFFFFFFF); // 后壁：Z=-1.5..-1.3 格，正面留空形成门洞
         float open=cabin.doorProgress(delta);
         // Two sliding leaves retract into the side walls. 0=closed, 1=open.
         // 两扇滑门，0 = 完全关闭、1 = 完全开启：门宽按 1.3 格 * open 内缩，收到侧壁里（不做缩放，避免纹理拉伸）。
         if(open<.999f) {
             // 门板 Z 范围 doorBack..front（格），即夹在门洞内侧与轿厢正面之间，厚 0.2 格。
-            box(matrices,out,-1.3f,.2f,doorBack,-1.3f*open,2.8f,front,light,0xFFCCCCCC);
-            box(matrices,out,1.3f*open,.2f,doorBack,1.3f,2.8f,front,light,0xFFCCCCCC);
+            BoxMesh.cuboid(matrices,out,-1.3f,.2f,doorBack,-1.3f*open,2.8f,front,light,0xFFCCCCCC);
+            BoxMesh.cuboid(matrices,out,1.3f*open,.2f,doorBack,1.3f,2.8f,front,light,0xFFCCCCCC);
         }
         // Blank interior panel marker.
         // 轿厢内壁的空白操作面板（占位标记，无交互）：贴在右侧壁内侧 0.05 格厚、1.2..1.8 格高处。
-        box(matrices,out,1.25f,1.2f,.3f,1.30f,1.8f,.8f,light,0xFFBBBBBB);
+        BoxMesh.cuboid(matrices,out,1.25f,1.2f,.3f,1.30f,1.8f,.8f,light,0xFFBBBBBB);
+        // 面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号。
+        drawFloorDisplay(cabin,matrices,buffers,light);
         matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
     }
-    /** 以两个对角点 (x,y,z)-(X,Y,Z)（单位：格）生成一个只有外表面的长方体，六个面共用一个颜色。
-     * 不做任何剔除/合并：轿厢是空心结构，内部表面也需要可见（RenderLayer 已关闭背面剔除）。
+
+    /**
+     * 在轿厢内右侧壁的模拟操作面板上画两行红字：第一行是当前到达层数，第二行是运行状态
+     * （"电梯上行" / "电梯下行" / "停靠"）。
+     *
+     * <p>面板是 1.25..1.30（X）× 1.2..1.8（Y）× 0.3..0.8（Z）的占位方块，内侧朝 -X：文字先绕 Y 轴
+     * 转 -90° 让正面朝 -X（轿厢内部），再按面板中心定位，因此乘客在轿厢里读到的是正向文字。
+     * 楼层那行字号 0.018 格/像素（两位数也放得下），状态那行 0.011（四个汉字约 0.4 格，正好在面板内）。
+     *
+     * <p>副作用：只向顶点缓冲写入文字（复用管线传入的缓冲，与原版告示牌一致），不改实体状态、不发包。
+     *
+     * @param cabin 轿厢（提供同步过来的楼层号与运行状态）
+     * @param matrices 渲染矩阵栈（已包含轿厢朝向与位置）
+     * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
+     * @param light 打包后的光照值
      */
-    private static void box(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color) {
-        face(m,v,light,color,0,0,-1,new float[]{X,y,z,x,y,z,x,Y,z,X,Y,z}); // -Z 面
-        face(m,v,light,color,0,0,1,new float[]{x,y,Z,X,y,Z,X,Y,Z,x,Y,Z}); // +Z 面
-        face(m,v,light,color,-1,0,0,new float[]{x,y,z,x,y,Z,x,Y,Z,x,Y,z}); // -X 面
-        face(m,v,light,color,1,0,0,new float[]{X,y,Z,X,y,z,X,Y,z,X,Y,Z}); // +X 面
-        face(m,v,light,color,0,1,0,new float[]{x,Y,Z,X,Y,Z,X,Y,z,x,Y,z}); // +Y 面（顶）
-        face(m,v,light,color,0,-1,0,new float[]{x,y,z,X,y,z,X,y,Z,x,y,Z}); // -Y 面（底）
+    private static void drawFloorDisplay(CabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers,int light) {
+        int floor=cabin.floorNumber();
+        if(floor<=0) return; // 还没经过任何站点（或线路无效）：不显示，避免出现"0 层"
+        TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
+        // 负 Y 缩放之后，局部 +Y 对应世界里的"向下"，所以取负偏移的那行显示在上面：
+        // 第一行楼层号、第二行运行状态。
+        drawPanelLine(textRenderer,matrices,buffers,Text.literal(Integer.toString(floor)),FLOOR_LINE_Y,FLOOR_SCALE);
+        drawPanelLine(textRenderer,matrices,buffers,Text.translatable("status.easyelevator."+cabin.status().key()),STATUS_LINE_Y,STATUS_SCALE);
     }
-    /** 画一个四边形面。顶点按 p 中每 3 个 float 一组（单位：格）顺序提交；
-     * 纹理坐标按"第 1、2 个顶点 u=1，其余 u=0；第 3、4 个顶点 v=0，其余 v=1"的固定规则给出，
-     * 使白模六面完整铺满整张纹理；法线由 nx,ny,nz 直接给定并交给矩阵变换。
+
+    /**
+     * 在轿厢内面板上画一行水平居中的红字。
+     *
+     * @param textRenderer 字体渲染器
+     * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
+     * @param buffers 顶点缓冲提供者
+     * @param text 这一行的文本
+     * @param yOffset 行锚点（像素，相对面板中心；负 Y 缩放后局部 +Y 是世界向下）
+     * @param scale 这一行的字号（格/像素）
+     *
+     * <p>副作用：只写顶点缓冲。用最高亮度是因为轿厢内部往往很暗，按局部光照画出来会是一团黑；
+     * POLYGON_OFFSET 给文字一点深度偏移，贴在面板上不会与面板面片闪烁。
      */
-    private static void face(MatrixStack m,VertexConsumer v,int light,int color,float nx,float ny,float nz,float[] p) {
-        for(int i=0;i<4;i++) v.vertex(m.peek(),p[i*3],p[i*3+1],p[i*3+2]).color(color)
-                .texture(i==1||i==2?1:0,i>=2?0:1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(m.peek(),nx,ny,nz);
+    private static void drawPanelLine(TextRenderer textRenderer,MatrixStack matrices,VertexConsumerProvider buffers,Text text,float yOffset,float scale) {
+        matrices.push();
+        // 实体渲染器传进来的矩阵已经平移到实体位置，因此这里全部用轿厢局部坐标（面板在右侧壁内侧）。
+        matrices.translate(1.245f,1.5f,.55f); // 面板中心，沿 -X 略微让开面片
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-90)); // 正面（局部 +Z）转到局部 -X，朝轿厢内部
+        matrices.scale(scale,-scale,scale); // Y 取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒
+        textRenderer.draw(text,-textRenderer.getWidth(text)/2f,yOffset,FLOOR_COLOR,true,
+                matrices.peek().getPositionMatrix(),buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+        matrices.pop();
     }
 }

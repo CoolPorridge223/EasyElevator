@@ -2,7 +2,7 @@
 
 Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1** · Java **21**。
 
-当前模组版本 **1.2.0**。三个组件：电梯轨道、楼层电梯门、电梯轿厢。当前采用无图案白模，声音默认静音，便于后续替换。
+当前模组版本 **1.3.0**。三个组件：电梯轨道、楼层电梯门、电梯轿厢。当前采用无图案白模，声音默认静音，便于后续替换。
 
 ## 搭建和使用
 
@@ -11,7 +11,7 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 3. 在轨道朝向前方 **3 格**、同一 Y 高度，放置电梯门的**底部中心**。一件物品自动生成 **3 格宽、3 格高**的整扇门，预留完整空间。距离按方块坐标计算，不是中间空出3格。每扇完整门对应一个站点，按高度排序。
 4. 手持「电梯轿厢」，右键任意一块轨道。轿厢中心位于该轨道朝向的前方 2 格；底部 Y 与被点击轨道相同。预留 **3×3 的井道、3 格轿厢高度**，整个运行区间清空。每段连续线路只能放置一个轿厢。
 5. 右键楼层电梯门的任意部分，轿厢会排队前往该门高度。没有轿厢到达这一层时，楼层门保持关闭，具有实际碰撞。到站并开始开门后开放；轿厢门关闭完毕、运行前重新锁闭楼层门。
-6. 进入轿厢后右键打开选站面板，站点较多时可翻页。面板取消背景模糊，使用轻微暗色遮罩，游戏画面与文字保持清晰。选择后由服务端重新检查整扇门及线路，随后入队。
+6. 进入轿厢后右键打开选站面板：站点排成一整块方形数字按键（模拟真实电梯面板），编号按高度从 1 起、**最底层为 1 层**；按钮从**右下角**起步，先**从右往左**、再**从下往上**排列，列数自动选成尽量长方形，站点较多时用底部的 `<` `>` 翻页。悬停显示站点与高度；**轿厢当前停靠层**的按键为绿色描边，**已加入停靠计划**（正在前往或已排队）的按键为红色描边——绿色与开门键都只在轿厢**停稳**后出现，运行时经过楼层不会闪一下。面板顶部有**楼层指示牌**（红字），显示轿厢当前在第几层，每经过或到达一层更新一次；同一个层号还用红字显示在**楼层门框顶部**与**轿厢内的模拟面板**上——轿厢面板是两行（第一行到达层数，第二行运行状态"电梯上行／电梯下行／停靠"），门框则是横向一行（左边运行状态、右边层数，整组居中，例如"电梯上行 3"）。运行状态由已同步的相位与目的站推导，不需要额外同步字段。底部另有**开门 / 关门**键：**开门**会把**正在关闭的门反向重新打开**（中断关门）、也能把已关好停在本层的门重新打开，门已全开时相当于按住开门键延长停留——它**只操作门，不会把本层排进呼叫队列**，因此不会出现"先开走、之后再回来"；**关门**会立刻结束停留并关门，队列里还有目的站时随后出发。两个键都只在轿厢停稳在某一层时有效（运行途中经过楼层时按不动）。面板取消背景模糊，使用轻微暗色遮罩，游戏画面与文字保持清晰。选择后由服务端重新检查整扇门及线路，随后入队。
 7. 无人乘坐且门完全打开时，在轿厢外**空手潜行右键**回收轿厢。生存模式返还物品。生存模式拆掉楼层门任意一部分，整扇门一起移除，只返还一个门物品。
 
 ### 一个具体示例
@@ -33,6 +33,7 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 ### 行为
 
 - 默认速度 **4 格/秒**，是旧版两倍；开关门各 1 秒，开门停留至少 2 秒；无新请求时保持开门。
+- 楼层门与轿厢门是同一套动画：门框常驻，两扇门扇随进度向两侧收拢滑入门框，不再瞬间变成一堵墙。
 - 到站误差容限 1e-7 格，最后一步精确对齐站点；double 运动样本和约100 ms显示缓冲，让轿厢和本地乘客镜头逐帧插值。
 - 按调用顺序处理请求，相同楼层门重复请求合并；最多等待 128 个请求。
 - 门未完全关闭不能移动；门口有生物会重新开门并保留原请求。
@@ -47,10 +48,11 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 详细接口见 [docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md)。
 
 - 轨道模型：`assets/easyelevator/models/block/elevator_rail.json`
-- 楼层门关闭模型：`assets/easyelevator/models/block/call_button.json`；打开模型：同目录 `landing_door_open_*.json`
+- 楼层门**门框**模型（常驻）：`assets/easyelevator/models/block/landing_door_frame_*.json`；门物品图标：同目录 `call_button.json`
+- 楼层门**门扇**：`src/client/java/org/DJB/easyelevator/client/LandingDoorRenderer.java`，几何在 `block/LandingDoorGeometry.java`
 - 轿厢及双扇门：`src/client/java/org/DJB/easyelevator/client/CabinRenderer.java`
 - 运行/到站/开门/关门音效：`assets/easyelevator/sounds.json`
-- 门动画：`CabinEntity.doorProgress(tickDelta)`，0 关闭、1 打开。
+- 门动画：轿厢门 `CabinEntity.doorProgress(tickDelta)`；楼层门门扇 `LandingDoorBlockEntity.openProgress(tickDelta)`，逐刻等于在站轿厢的门进度，0 关闭、1 打开。
 - 服务端扩展事件：`ElevatorEvents.PHASE_CHANGED`、`ElevatorEvents.ARRIVED`。
 
 ## 构建
@@ -73,11 +75,14 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageProject
 ```
 
-开发启动：`./gradlew.bat runClient`。核心逻辑测试和服务端 GameTest 已纳入 `build`，也可以脱离游戏单独运行状态机测试：
+开发启动：`./gradlew.bat runClient`。可以脱离游戏单独跑的检查：
 
 ```powershell
-.\tools\test-logic.ps1 -Jdk '你的 JDK 21 目录'
+.\tools\test-logic.ps1 -Jdk '你的 JDK 21 目录'   # 状态机与运动时间线
+.\gradlew.bat geometryTest                       # 楼层门门框/门扇几何（改门模型或门尺寸后跑）
 ```
+
+服务端 GameTest 在当前工程里没有注册成 gradle 任务，用 IDEA 运行配置 **Gametest Minecraft Game Test** 运行；详见 [验收清单](docs/TESTING.md)。
 
 ## 文件组织
 

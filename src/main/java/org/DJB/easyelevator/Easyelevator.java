@@ -2,8 +2,10 @@ package org.DJB.easyelevator;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
+import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.item.BlockItem;
@@ -15,6 +17,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import org.DJB.easyelevator.block.LandingDoorBlock;
+import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
 import org.DJB.easyelevator.entity.CabinEntity;
 import org.DJB.easyelevator.item.CabinItem;
@@ -41,6 +44,16 @@ public class Easyelevator implements ModInitializer {
     public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
     public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
+    /**
+     * 楼层电梯门的方块实体类型单例（注册 ID {@code easyelevator:landing_door}）。
+     *
+     * <p>整扇 3x3 门只有根方块会创建它（其余部件 {@code createBlockEntity} 返回 null），
+     * 里面存的是门扇滑动的连续进度样本，供渲染插值与碰撞形状使用，详见 {@link LandingDoorBlockEntity}。
+     * 用 Fabric 的 builder 而不是原版 {@code BlockEntityType.Builder}，因为原版 {@code build()}
+     * 需要额外的 datafixer 类型参数，而本方块实体没有需要数据迁移的旧存档字段。
+     */
+    public static final BlockEntityType<LandingDoorBlockEntity> LANDING_DOOR_BE = Registry.register(Registries.BLOCK_ENTITY_TYPE,
+            id("landing_door"), FabricBlockEntityTypeBuilder.create(LandingDoorBlockEntity::new, LANDING_DOOR).build());
     /** 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。 */
     public static final Item CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1));
     /**

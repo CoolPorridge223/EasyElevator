@@ -8,10 +8,14 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import org.DJB.easyelevator.block.LandingDoorBlock;
+import org.DJB.easyelevator.block.LandingDoorBlockEntity;
+import org.DJB.easyelevator.block.LandingDoorGeometry;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
 import org.DJB.easyelevator.entity.CabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
+import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.logic.ElevatorStatus;
 
 /**
  * EasyElevator 的 Fabric GameTest 集成测试集（源码在独立的 gametest 源集，不打入发布 JAR）。
@@ -113,10 +117,11 @@ public class ElevatorGameTests implements FabricGameTest {
     }
     /**
      * 覆盖 README「轿厢正面模型与碰撞内收 0.2 格、与楼层门框留 0.0125 格间隙避免重叠闪烁」与
-     * docs/TESTING.md 第 17 条：四种朝向 × 五个轿厢门进度 × 楼层门开/闭 × 3x3 门格，全部不许相交。
+     * docs/TESTING.md 第 17 条：四种朝向 × 五个轿厢门进度 × 三个楼层门门扇位置 × 3x3 门格，全部不许相交。
      *
-     * <p>比较的是「客户端资源模型的轮廓」（getOutlineShape）与「服务端碰撞壳」（collisionBoxes），
-     * 刻意绕开 getCollisionShape 的门联锁改写。每对盒子各外扩 0.005 格再判相交（两侧合计 0.01 格），
+     * <p>比较的是「楼层门几何」（{@link LandingDoorGeometry#shape}，与渲染和碰撞同源）与
+     * 「轿厢碰撞壳」（collisionBoxes），因此覆盖了门框常驻几何与滑动到任意位置的门扇。
+     * 每对盒子各外扩 0.005 格再判相交（两侧合计 0.01 格），
      * 因此实际要求间隙大于 0.01 格；设计值 0.0125 格只剩 0.0025 格余量，退化会立刻失败。
      *
      * @param ctx GameTest 上下文；结束时调用 ctx.complete()
@@ -143,24 +148,66 @@ public class ElevatorGameTests implements FabricGameTest {
                 var shells=cabin.collisionBoxes();
                 // 碰撞壳组成：地板、顶盖、左右侧壁、后壁恒为 5 个；门未全开时再加两扇滑动门，共 7 个。
                 require(shells.size()==(progress==1?5:7),"Check both shell and sliding leaves");
-                // Outline geometry matches the resource models without the server collision interlock.
-                // 用轮廓而非碰撞形状：真正会闪烁的是资源模型几何，且 OPEN 状态的碰撞会被联锁改写。
-                for(boolean open:new boolean[]{false,true}) for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
+                // 楼层门现在也是连续滑动的：全关（0）、半开（0.5）、全开（1）三种门扇位置都要与轿厢壳保持间隙。
+                // 直接调用 LandingDoorGeometry.shape（与渲染、碰撞同源的纯几何），绕开方块实体与联锁改写。
+                for(float landing:new float[]{0,.5f,1}) for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
                     // col-1/row 把 3x3 门格映射成以根方块为中心的内部坐标，rotateYClockwise 给出门的横向轴。
                     BlockPos pos=origin.offset(facing.rotateYClockwise(),col-1).up(row);
-                    var state=Easyelevator.LANDING_DOOR.getDefaultState().with(LandingDoorBlock.FACING,facing)
-                            .with(LandingDoorBlock.COLUMN,col).with(LandingDoorBlock.LEVEL,row).with(LandingDoorBlock.OPEN,open);
-                    // 两种 OPEN 都要查：开门只把门扇轮廓缩到门框两侧，关门时门扇占满整个门洞。
-                    for(Box part:state.getOutlineShape(ctx.getWorld(),pos).getBoundingBoxes()) {
+                    // 门框常驻、门扇随进度收拢，两种几何都要参与检查：真正会闪烁的是资源模型与渲染几何。
+                    for(Box part:LandingDoorGeometry.shape(facing,col,row,landing).getBoundingBoxes()) {
                         // part.offset(pos) 把 0..1 的局部形状搬到世界坐标；expand(.005) 是数值容差。
-                        Box landing=part.offset(pos);
-                        for(Box shell:shells) require(!shell.expand(.005).intersects(landing),
-                                "Cabin must clear landing door/frame with a visible gap: "+facing+", progress="+progress);
+                        Box landingBox=part.offset(pos);
+                        for(Box shell:shells) require(!shell.expand(.005).intersects(landingBox),
+                                "Cabin must clear landing door/frame with a visible gap: "+facing+", cabin progress="+progress+", landing leaves="+landing);
                     }
                 }
             }
             // 用完即弃，防止上一朝向的轿厢被后续线路扫描或碰撞查询看到。
             cabin.discard();
+        }
+        ctx.complete();
+    }
+    /**
+     * 覆盖 README「楼层门与轿厢自带门拥有相同的开关门效果，有门框和门的区分，不再瞬间变成一堵墙」：
+     * 门框常驻、两扇门扇随进度向两侧收拢。
+     *
+     * <p>不变量：门框（左右立柱、门楣）在开与关时都存在；门洞（中列底层）全开时为空、关闭时有碰撞；
+     * 关闭时两扇门扇只在门洞正中留 {@link LandingDoorGeometry#SEAM} 宽（1/16 格）的细门缝；
+     * 门扇内缘随进度单调收拢，progress = 1 时宽度归零。
+     * 几何直接取自 {@link LandingDoorGeometry#shape}（渲染、碰撞、轮廓同源），因此不必真的放置方块或生成轿厢。
+     *
+     * <p>用 SOUTH 朝向：门宽轴是 -X，正好覆盖 u → 局部坐标的镜像分支（NORTH / EAST 是直接映射）。
+     *
+     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
+     */
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE)
+    public void landingLeavesSlideIntoTheFrame(TestContext ctx) {
+        Direction facing=Direction.SOUTH;
+        // 门框常驻：全开时左右立柱与门楣仍然存在，只有门洞让空。
+        require(!LandingDoorGeometry.shape(facing,0,0,1f).isEmpty(),"Left frame pillar stays when open");
+        require(!LandingDoorGeometry.shape(facing,2,0,1f).isEmpty(),"Right frame pillar stays when open");
+        require(!LandingDoorGeometry.shape(facing,1,2,1f).isEmpty(),"Top frame stays when open");
+        // 门洞：中列底层全开为空（可以通行），关闭时有真实碰撞（不能穿过去）。
+        require(LandingDoorGeometry.shape(facing,1,0,1f).isEmpty(),"Open door clears the doorway");
+        var closed=LandingDoorGeometry.shape(facing,1,0,0f);
+        require(!closed.isEmpty(),"Closed door blocks the doorway");
+        // 关闭时中缝可见：没有任何碰撞盒跨越门洞正中（两扇门扇被 SEAM 宽门缝分开）。
+        for(Box part:closed.getBoundingBoxes())
+            require(!(part.minX<.5&&part.maxX>.5),"Closed leaves leave the centre seam open");
+        // 门扇内缘：关门时两扇各占门洞一半（正好是 门框 + 半个门洞），开门时收到门框内缘、宽度归零。
+        double half=LandingDoorGeometry.FRAME+LandingDoorGeometry.LEAF_TRAVEL;
+        require(Math.abs(LandingDoorGeometry.leafEdge(0,false)-half)<1e-9
+                        &&Math.abs(LandingDoorGeometry.leafEdge(0,true)-(LandingDoorGeometry.DOOR_WIDTH-half))<1e-9,
+                "Closed leaves cover half the opening each");
+        require(Math.abs(LandingDoorGeometry.leafEdge(1,false)-LandingDoorGeometry.FRAME)<1e-9
+                        &&Math.abs(LandingDoorGeometry.leafEdge(1,true)-(LandingDoorGeometry.DOOR_WIDTH-LandingDoorGeometry.FRAME))<1e-9,
+                "Open leaves retract into the frame");
+        // 单调收拢：进度递增时左扇右缘只能向门框方向移动，不能回弹（否则画面上门扇会抖动）。
+        double previous=Double.MAX_VALUE;
+        for(float progress:new float[]{0,.25f,.5f,.75f,1}) {
+            double edge=LandingDoorGeometry.leafEdge(progress,false);
+            require(edge<=previous+1e-9,"Left leaf retracts monotonically");
+            previous=edge;
         }
         ctx.complete();
     }
@@ -337,6 +384,25 @@ public class ElevatorGameTests implements FabricGameTest {
         // 轿厢停在底层：只有它自己那一层的门解锁，上层仍然关闭。
         require(ctx.getWorld().getBlockState(lower).get(LandingDoorBlock.OPEN),"Parked cabin opens only its landing");
         require(!ctx.getWorld().getBlockState(upper).get(LandingDoorBlock.OPEN),"Other landing remains closed");
+        // 门扇进度样本：整扇门只有根方块持有方块实体，其余 8 格必须是 null（否则一次开合要算 9 份）。
+        require(ctx.getWorld().getBlockEntity(lower) instanceof LandingDoorBlockEntity,"Root part owns the landing door block entity");
+        require(!(ctx.getWorld().getBlockEntity(lower.up()) instanceof LandingDoorBlockEntity),"Other parts create no block entities");
+        // 楼层门门扇与轿厢门门扇同刻同值：这正是"两层门同一动画"的保证。
+        var doorEntity=(LandingDoorBlockEntity)ctx.getWorld().getBlockEntity(lower);
+        require(Math.abs(doorEntity.openProgress()-cabin.doorProgress(1))<1e-4f,"Landing leaves follow the cabin door progress");
+        // 回归：railX/railZ 没有进 DataTracker，客户端上恒为 0。这里把这两个字段清零（世界坐标、
+        // 朝向、相位、门进度都原样保留）来模拟客户端视角——门扇进度必须仍然找得到这辆轿厢，
+        // 否则就会出现"轿厢门开了、楼层门不动"。校验完立刻用原始 NBT 还原，后面的行程不受影响。
+        var original=new net.minecraft.nbt.NbtCompound();
+        cabin.writeNbt(original);
+        var clientView=new net.minecraft.nbt.NbtCompound();
+        cabin.writeNbt(clientView);
+        clientView.putInt("RailX",0); clientView.putInt("RailZ",0);
+        cabin.readNbt(clientView);
+        require(cabin.railX()==0&&cabin.railZ()==0,"Simulated client cabin has no rail fields");
+        require(Math.abs(LandingDoorBlock.leafProgress(ctx.getWorld(),lower)-cabin.doorProgress(1))<1e-4f,
+                "Progress lookup must not depend on the cabin rail fields");
+        cabin.readNbt(original);
         // 关闭的门必须有真实碰撞，玩家不能在没有轿厢时穿过去。
         require(!ctx.getWorld().getBlockState(upper).getCollisionShape(ctx.getWorld(),upper).isEmpty(),"Absent cabin leaves real collision barrier");
         require(cabin.requestStop(upper),"Door can call car");
@@ -349,6 +415,8 @@ public class ElevatorGameTests implements FabricGameTest {
             // 到站开门后才解锁目的楼层；没有轿厢停留的楼层必须保持锁闭。
             require(ctx.getWorld().getBlockState(upper).get(LandingDoorBlock.OPEN),"Arrival unlocks destination");
             require(!ctx.getWorld().getBlockState(lower).get(LandingDoorBlock.OPEN),"Empty landing stays locked");
+            // 楼层显示：轨道的两扇门分别在 y 与 y+5，轿厢从底层升到这里，层号应当从 1 变为 2。
+            require(cabin.floorNumber()==2,"Arrival updates the displayed floor number");
             cabin.discard();
             // 轿厢消失后联锁立即恢复锁闭（不依赖下一次计划刻）。
             LandingDoorBlock.refresh(ctx.getWorld(),upper);
@@ -359,6 +427,212 @@ public class ElevatorGameTests implements FabricGameTest {
             // 门消失后线路扫描只剩底层一个站点，被拆的站点不再可被呼叫。
             require(ElevatorLine.scan(ctx.getWorld(),rail).stops().size()==1,"Destroyed door removed from stations");
             ctx.complete();
+        });
+    }
+    /**
+     * 覆盖面板底部"开门 / 关门"键的服务端判定（README 行为与 docs/TESTING.md 面板一节）。
+     *
+     * <p>不变量：关门键在没有目的站时也能把门关上并停在本层；门已关好时再按关门被拒绝；
+     * 开门键只在车体<b>精确停在某个完整站点</b>时受理，抬到楼层之间必须拒绝——绝不允许半空开门；
+     * 开门走的是"请求当前这一层"的同一条状态机路径，因此到站吸附、楼层门联锁都照旧生效。
+     *
+     * <p>时刻表（tickLimit = 120 刻）：生成轿厢时门是全开的 → tick 40 关门键已把门关到位（20 刻）；
+     * 随后按开门键，tick 80 门重新全开；再抬到半空按开门键必须被拒绝，最后清场。
+     *
+     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
+     */
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=120)
+    public void panelDoorButtons(TestContext ctx) {
+        BlockPos rail=setup(ctx);
+        CabinEntity cabin=spawn(ctx,rail);
+        // 轿厢生成时状态机初始相位就是 OPEN、门全开，因此关门键应当被受理；门已关好时再按必须被拒绝。
+        require(cabin.doorCommand(false),"Close button accepted while the doors are open");
+        ctx.runAtTick(40,()->{
+            require(cabin.doorProgress(1)<=.001f,"Close button shuts the doors");
+            require(cabin.phase()==ElevatorController.Phase.MOVING,"After closing with an empty queue the cabin parks at the floor");
+            require(Math.abs(cabin.getY()-rail.getY())<=ElevatorParameters.POSITION_EPSILON,"Parked cabin keeps its floor");
+            require(!cabin.doorCommand(false),"Close button rejected when the doors are already shut");
+            // 楼层显示：轿厢一直停在最底层，因此面板/门框/轿厢内面板显示的层号应当是 1。
+            require(cabin.floorNumber()==1,"Parked cabin shows floor 1");
+            // 停在站点上按开门：等价于请求当前这一层，状态机会把它当成零距离行程，到站后开门。
+            require(cabin.doorCommand(true),"Open button accepted while parked at a station");
+            ctx.runAtTick(80,()->{
+                require(cabin.doorProgress(1)>=.999f,"Open button reopens the doors at the station");
+                // 抬到楼层之间（±0.5 格）：任何开门请求都必须被拒绝，否则就会出现半空开门。
+                cabin.setPosition(cabin.getX(),rail.getY()+.5,cabin.getZ());
+                require(!cabin.doorCommand(true),"Open button rejected between floors");
+                cabin.discard();ctx.complete();
+            });
+        });
+    }
+
+    /**
+     * 覆盖"运行状态"显示（上行/下行/停靠）。状态由已同步的 Phase + 目的站高度 + 当前位置推导，
+     * 因此面板与门框在服务端、客户端得到同一结果。
+     *
+     * <p>不变量：停着时是"停靠"；整个行程中必须出现过上行、出现过下行、出现过"到站后的 2 层而且状态回到停靠"，
+     * 行程结束时回到 1 层且停靠。断言采用"逐刻记录 + 行程末尾统一检查"的写法，不依赖某一刻正好在移动中
+     * （开门停留 40 刻、关门 20 刻、5 格行程 25 刻，固定时刻很容易擦边）；下行请求也直接入队，
+     * 不要求它必须在某一刻被处理。
+     *
+     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
+     */
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=460)
+    public void statusFollowsTravel(TestContext ctx) {
+        BlockPos rail=setup(ctx),lower=rail.south(3),upper=rail.up(5).south(3);
+        CabinEntity cabin=spawn(ctx,rail);
+        // 刚生成时停在底层、门全开：状态必须是"停靠"
+        require(cabin.status()==ElevatorStatus.IDLE,"Parked cabin reports parked");
+        require(cabin.requestStop(upper),"Request to the upper station accepted");
+        // 逐刻记录一路上出现过的状态；下行请求直接入队，等上行到站、停留结束后自然会被处理
+        ctx.runAtTick(80,()->require(cabin.requestStop(lower),"Request back to the lower station accepted"));
+        final boolean[] sawUp={false},sawDown={false},sawFloorTwo={false},sawParkedUpstairs={false};
+        for(int t=1;t<=380;t++) ctx.runAtTick(t,()->{
+            if(cabin.status()==ElevatorStatus.UP) sawUp[0]=true;
+            if(cabin.status()==ElevatorStatus.DOWN) sawDown[0]=true;
+            if(cabin.floorNumber()==2) {
+                sawFloorTwo[0]=true;
+                if(cabin.status()==ElevatorStatus.IDLE) sawParkedUpstairs[0]=true;
+            }
+        });
+        ctx.runAtTick(400,()->{
+            require(sawUp[0],"Climbing cabin reports going up at some point");
+            require(sawDown[0],"Descending cabin reports going down at some point");
+            require(sawFloorTwo[0],"Arrival upstairs updates the displayed floor to 2");
+            require(sawParkedUpstairs[0],"Arrived cabin reports parked while at floor 2");
+            require(cabin.floorNumber()==1,"Back at floor 1");
+            require(cabin.status()==ElevatorStatus.IDLE,"Parked again at floor 1");
+            cabin.discard();ctx.complete();
+        });
+    }
+
+    /**
+     * 覆盖"开门键＝中断关门"，这是玩家报告过的 bug：门正在关时按开门，旧实现走的是
+     * {@code requestStop(本层)}，于是门继续关、本层又被排进呼叫队列，电梯开走之后还要回来一趟。
+     *
+     * <p>不变量：打断那一刻相位立刻变成开门方向、呼叫计划仍然只有原来那一个目的站（本层没有入队）；
+     * 打断之后轿厢<b>在原地</b>把门重新开到全开，然后照常完成原来那趟行程（到上层站点并停稳）。
+     *
+     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
+     */
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=320)
+    public void openButtonInterruptsClosing(TestContext ctx) {
+        BlockPos rail=setup(ctx),lower=rail.south(3),upper=rail.up(5).south(3);
+        CabinEntity cabin=spawn(ctx,rail);
+        // 先排一个上层站点：这正是"电梯会开走"的前提条件
+        require(cabin.requestStop(upper),"Request to the upper station accepted");
+        final boolean[] interrupted={false},reopenedBeforeLeaving={false};
+        final double[] doorAtInterrupt={1};
+        final int[] ticksSinceInterrupt={0};
+        for(int t=1;t<=250;t++) ctx.runAtTick(t,()->{
+            if(!interrupted[0]) {
+                // 等门真的关到一半（相位 CLOSING 且进度 <= 0.5）再按"开门"：这正是玩家报告的场景，
+                // 而且此时门必须能反向变宽，才能证明是"中断"而不是"继续关完再重开"。
+                if(cabin.phase()!=ElevatorController.Phase.CLOSING || cabin.doorProgress(1)>.5f) return;
+                doorAtInterrupt[0]=cabin.doorProgress(1);
+                require(cabin.doorCommand(true),"Open button accepted while the doors are closing");
+                // 立刻校验呼叫计划：本层不能被排进队列（旧实现就是在这里把本层入队的）。
+                // 注意 phase() 读的是同步字段、只在 tick() 里写回，因此"相位变成开门"放到下一刻再校验。
+                require(cabin.plannedStops().size()==1,"Open button does not queue the current floor");
+                require(cabin.plannedStops().get(0).getY()==upper.getY(),"Original destination preserved");
+                interrupted[0]=true;
+                return;
+            }
+            ticksSinceInterrupt[0]++;
+            if(ticksSinceInterrupt[0]==1)
+                require(cabin.phase()==ElevatorController.Phase.OPENING,"Next tick reports the doors reopening");
+            // 打断之后：必须还在本层就把门重新开到全开（旧实现会继续关门并直接开走）
+            if(Math.abs(cabin.getY()-lower.getY())<=ElevatorParameters.POSITION_EPSILON && cabin.doorProgress(1)>=.999f)
+                reopenedBeforeLeaving[0]=true;
+        });
+        ctx.runAtTick(300,()->{
+            require(interrupted[0],"Doors started closing at some point");
+            require(reopenedBeforeLeaving[0],"Interrupted close reopened fully while still at the floor");
+            // 旧实现会把本层入队，于是到楼上之后再折返回来；修好后行程就在楼上结束并停稳
+            require(cabin.floorNumber()==2,"The original trip still completes at floor 2");
+            require(cabin.plannedStops().isEmpty(),"No leftover request: the cabin never returns to the floor it left");
+            cabin.discard();ctx.complete();
+        });
+    }
+
+    /**
+     * 覆盖 docs/TESTING.md 验收第 9 项与"运行中保存退出、再次进入掉出电梯"这一玩家报告的 bug：
+     * 读档后的轿厢必须先等存档时的乘客回到世界，才能继续原行程。
+     *
+     * <p>根因（本用例的第一条断言就是钉它）：轿厢是区块实体，随区块载入；玩家实体由登录流程单独载入，
+     * 必然晚于区块实体。存档里的行程在载入第一刻就会被 BLOCKED 分支恢复（门关着、目的站还在），
+     * 于是轿厢抢在乘客出现之前开走；乘客随后被放回自己的存档坐标——已经空掉的井道——脚下没有地板，
+     * 直接掉出电梯。
+     *
+     * <p>用例把"存档→退出→再次进入"在同一个测试世界里复现：运行途中把轿厢写成 NBT、丢弃原实体、
+     * 用同一份 NBT 生成一辆全新轿厢（等价于读档），并让乘客暂时离开这条井道（等价于玩家实体尚未载入）。
+     * 时刻表（tickLimit = 300 刻）：
+     * <ul>
+     *   <li>tick 70：运行途中存档并"读档"，把乘客移出井道；</li>
+     *   <li>tick 85：读档后的轿厢必须一步都没走，且目的站与门状态照旧；</li>
+     *   <li>tick 95：乘客回到世界，但位置比存档时低 1 格（客户端首帧还没有轿厢碰撞时会先掉一段）；</li>
+     *   <li>tick 130：乘客已被放回厢内地板（相对高度 0.2 格）并随厢继续上行；</li>
+     *   <li>tick 250：原行程照常完成——精确到达目的站、开门，乘客全程都还在车上。</li>
+     * </ul>
+     *
+     * @param ctx GameTest 上下文；结束时调用 ctx.complete()
+     */
+    @GameTest(templateName=FabricGameTest.EMPTY_STRUCTURE,tickLimit=300)
+    public void loadedCabinWaitsForItsPassenger(TestContext ctx) {
+        BlockPos rail=setup(ctx),upper=rail.up(5).south(3);
+        CabinEntity cabin=spawn(ctx,rail);
+        // 乘客是 mock 玩家（服务端真实玩家同样走这条路）：站在轿厢中心的地板上，下一刻就会进入乘客名册。
+        var rider=ctx.createMockPlayer(net.minecraft.world.GameMode.SURVIVAL);
+        rider.setPosition(cabin.getX(),cabin.getY()+.2,cabin.getZ());
+        require(ctx.getWorld().spawnEntity(rider),"Passenger must spawn");
+        require(cabin.requestStop(upper),"Destination accepted");
+        // 跨回调共享的状态：读档后的轿厢、存档时的轿厢高度与乘客高度。lambda 只能捕获 effectively final，
+        // 因此与其它用例一样用单元素数组当可变槽位。
+        final CabinEntity[] loaded={null};
+        final double[] savedCabinY={0},savedRiderY={0};
+        ctx.runAtTick(70,()->{
+            // 前提：确实处于"运行途中"（门已关、离开底层、还没到站），否则后面的断言没有意义。
+            require(cabin.getY()>rail.getY()&&cabin.getY()<rail.getY()+5,"Cabin must be mid-trip before saving");
+            require(cabin.containsPassenger(rider),"Passenger must be aboard before saving");
+            var saved=new net.minecraft.nbt.NbtCompound();
+            cabin.writeNbt(saved); // 等价于"保存并退出"时写入实体 NBT：位置、相位、目的站与乘客名册都在里面
+            savedCabinY[0]=cabin.getY(); savedRiderY[0]=rider.getY();
+            // 玩家实体随登出一起卸载：移出这条井道（仍在世界里，但 findLostPassenger 找不到他）。
+            rider.setNoGravity(true); // 临时关掉重力：免得在这条"世界之外"的空地上摔死，干扰后面的"重新登录"
+            rider.setPosition(cabin.getX()+20,cabin.getY(),cabin.getZ());
+            cabin.discard(); // 旧实体随区块卸载
+            var reloaded=new CabinEntity(Easyelevator.CABIN,ctx.getWorld());
+            reloaded.readNbt(saved); // 再次进入游戏：从存档恢复一辆全新轿厢
+            require(ctx.getWorld().spawnEntity(reloaded),"Reloaded cabin must spawn");
+            loaded[0]=reloaded;
+        });
+        ctx.runAtTick(85,()->{
+            CabinEntity car=loaded[0];
+            // 修好之前这里会是 savedCabinY + 0.2 * 15：轿厢抢跑了一大截，乘客被留在空掉的井道里。
+            require(car.getY()==savedCabinY[0],"Loaded cabin must not move before its passenger is back");
+            require(car.phase()==ElevatorController.Phase.BLOCKED,"Waiting for the passenger is a blocked trip, not a cancelled one");
+            require(car.targetY()==upper.getY(),"Destination survives the wait");
+        });
+        ctx.runAtTick(95,()->{
+            CabinEntity car=loaded[0];
+            // 乘客重新回到世界：位置比存档时低 1 格，模拟"客户端首帧还没有轿厢碰撞、先掉下去一段"。
+            rider.setNoGravity(false);
+            rider.setPosition(car.getX(),savedRiderY[0]-1,car.getZ());
+            require(!car.containsPassenger(rider),"Fallen passenger is not inside the cabin yet");
+        });
+        ctx.runAtTick(130,()->{
+            CabinEntity car=loaded[0];
+            // 已经放回厢内：相对地板高度回到 0.2 格附近，并且轿厢带着他继续往目的站走。
+            require(Math.abs(rider.getY()-car.getY()-.2)<.02,"Passenger is put back on the cabin floor");
+            require(car.containsPassenger(rider),"Passenger counts as aboard again");
+            require(car.getY()>savedCabinY[0],"Trip continues once the passenger is back");
+        });
+        ctx.runAtTick(250,()->{
+            CabinEntity car=loaded[0];
+            require(Math.abs(car.getY()-(rail.getY()+5))<.001,"Original destination reached after the wait");
+            require(car.phase()==ElevatorController.Phase.OPEN,"Arrival opens the doors");
+            require(Math.abs(rider.getY()-car.getY()-.2)<.02,"Passenger rode the whole trip without falling out");
+            rider.discard();car.discard();ctx.complete();
         });
     }
 }

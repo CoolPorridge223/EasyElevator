@@ -4,5 +4,6 @@
 build/
 run/
 run-test/
+logs/
 .idea/
 *.iml

@@ -25,12 +25,32 @@ public final class ElevatorParameters {
      * 但仍保留该容限用于请求判定与门联锁的“精确到站”语义（避免浮点残差被当成未到站）。
      */
     public static final double POSITION_EPSILON = 1.0e-7;
+    /**
+     * 客户端位置匹配容差：0.01 格（1 厘米），只用于"门扇进度跟随轿厢门"这类显示与碰撞取值。
+     *
+     * <p>为什么不能沿用 {@link #POSITION_EPSILON}：客户端实体坐标来自原版位置包，会被量化到
+     * 1/4096 格（约 2.4e-4 格），也不保证与站点高度逐位相等。服务端联锁的"精确到站"语义
+     * 仍然只用 {@link #POSITION_EPSILON}，本常量只放宽客户端侧的进度采样，不参与联锁判定。
+     */
+    public static final double SYNC_POSITION_EPSILON = 0.01;
     /** 开关门单程耗时：20 刻 = 1 秒；门联锁进度 door 每刻推进 1/DOOR_TICKS。 */
     public static final int DOOR_TICKS = 20;
     /** 开门后至少停留 40 刻 = 2 秒；期间无新请求则保持开门。 */
     public static final int DWELL_TICKS = 40;
     /** 请求队列上限 128：避免失控或恶意请求让队列无界增长，溢出时 ElevatorController.request 返回 false。 */
     public static final int MAX_REQUESTS = 128;
+    /**
+     * 读档后等待"存档时在车上的乘客"回到世界的上限刻数：600 刻 = 30 秒。
+     *
+     * <p>为什么必须等：轿厢是区块实体，随区块一起载入；玩家实体由登录流程单独载入，一定晚于
+     * 区块实体。若读档后立刻继续行程，轿厢会在乘客还没回到世界之前先开走，乘客随后被放回自己的
+     * 存档坐标——也就是已经空掉的井道，于是掉出电梯。等待期间轿厢保持静止，乘客一出现就放回厢内。
+     *
+     * <p>为什么必须有上限：乘客可能永远不再回来（掉线、退服）。超时后行程照原计划继续，
+     * 不会把电梯永久钉死。正常重进游戏时"轿厢所在区块载入 → 玩家实体载入"只隔几秒，
+     * 30 秒是留足余量的兜底值。
+     */
+    public static final int RIDER_WAIT_TICKS = 30 * TICKS_PER_SECOND;
     // Landing doors occupy local Z=1.3125..1.5. Recess the entire front, not just
     // the leaves, so the floor, roof and side walls also clear the landing frame.
     /**

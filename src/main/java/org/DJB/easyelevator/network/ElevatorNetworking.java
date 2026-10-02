@@ -97,35 +97,121 @@ public final class ElevatorNetworking {
         }
     }
     /**
-     * 打开站层面板（服务端 -> 客户端）：携带轿厢实体 id 与该线路全部站点的根方块坐标。
+     * 打开站层面板（服务端 -> 客户端）：携带轿厢实体 id、该线路全部站点的根方块坐标，
+     * 以及当前的"停靠计划"（正在执行的目的站 + 排队中的站点）。
      *
      * <p>站点列表来自服务端 {@code ElevatorLine#stops()}，即"完整 3x3 楼层门的底部中心方块"位置，
-     * 客户端只用它渲染按钮并原样回传坐标，不做任何线路推断。
+     * 客户端只用它渲染按钮并原样回传坐标，不做任何线路推断。计划列表只用于把已加入计划的按钮标红。
      *
      * @param entityId 轿厢实体 id；客户端点击后必须原样回传，服务端据此重新定位轿厢
      * @param stops 线路上的站点（楼层门根方块）列表，元素个数不超过 {@link #MAX_STOPS}
+     * @param planned 停靠计划：目的站在前、排队站点随后，都用根方块坐标表示；只影响高亮
      */
-    public record OpenPanel(int entityId, List<BlockPos> stops) implements CustomPayload {
+    public record OpenPanel(int entityId, List<BlockPos> stops, List<BlockPos> planned) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_panel}。 */
         public static final Id<OpenPanel> ID = new Id<>(Easyelevator.id("open_panel"));
         /** 线格式编解码器；解码时对站点数量做上限校验，见下。 */
         public static final PacketCodec<RegistryByteBuf,OpenPanel> CODEC = new PacketCodec<>() {
             /** 读回面板内容：先用 VarInt 读数量并校验范围，再逐个读 BlockPos。 */
             @Override public OpenPanel decode(RegistryByteBuf buf) {
-                int id=buf.readVarInt(), size=buf.readVarInt();
+                int id=buf.readVarInt();
                 // 数量在循环之前校验：负数会让循环直接不执行，超大值则可能在分配阶段就耗尽内存。
-                if (size<0 || size>MAX_STOPS) throw new IllegalArgumentException("Invalid elevator station count");
-                var stops=new ArrayList<BlockPos>(); for(int i=0;i<size;i++) stops.add(buf.readBlockPos());
+                List<BlockPos> stops=readPositions(buf,"station");
+                List<BlockPos> planned=readPositions(buf,"planned stop");
                 // 复制成不可变列表，避免把仍在复用的读缓冲数据或可变集合泄漏给后续逻辑。
-                return new OpenPanel(id,List.copyOf(stops));
+                return new OpenPanel(id,stops,planned);
             }
-            /** 写出面板内容：实体 id、站点数量、随后每个站点根方块坐标。 */
+            /** 写出面板内容：实体 id、站点数量与坐标、计划数量与坐标。 */
             @Override public void encode(RegistryByteBuf buf, OpenPanel p) {
-                buf.writeVarInt(p.entityId); buf.writeVarInt(p.stops.size()); for(var stop:p.stops) buf.writeBlockPos(stop);
+                buf.writeVarInt(p.entityId);
+                writePositions(buf,p.stops);
+                writePositions(buf,p.planned);
             }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
         @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 面板状态刷新（服务端 -> 客户端）：只携带"停靠计划"。
+     *
+     * <p>与 {@link OpenPanel} 的分工：本包<b>永远不会打开面板</b>，只用于刷新已经打开的面板
+     * （例如某个站点已经到达、目的站被拆、队列被清理），因此可以放心地按变化推送，
+     * 不会给没开面板的乘客弹出界面。
+     *
+     * @param entityId 轿厢实体 id；客户端只在该轿厢的面板正开着时才应用
+     * @param planned 停靠计划：目的站在前、排队站点随后；空列表表示当前没有任何计划
+     */
+    public record PanelState(int entityId, List<BlockPos> planned) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:panel_state}。 */
+        public static final Id<PanelState> ID = new Id<>(Easyelevator.id("panel_state"));
+        /** 线格式编解码器：与 OpenPanel 共用同一套坐标列表读写。 */
+        public static final PacketCodec<RegistryByteBuf,PanelState> CODEC = new PacketCodec<>() {
+            /** 读回一次计划快照。 */
+            @Override public PanelState decode(RegistryByteBuf buf) { return new PanelState(buf.readVarInt(),readPositions(buf,"planned stop")); }
+            /** 写出一次计划快照。 */
+            @Override public void encode(RegistryByteBuf buf,PanelState p) { buf.writeVarInt(p.entityId);writePositions(buf,p.planned); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 把轿厢当前的停靠计划推送给正在追踪它的客户端。
+     *
+     * <p>由 {@code CabinEntity} 在"计划发生变化"的那一 tick 调用（到达、取消、新请求等），
+     * 而不是每刻推送：队列变化一次最多几十字节，且只影响已经打开面板的玩家。
+     *
+     * @param cabin 目标轿厢
+     * @param planned 停靠计划（目的站在前、排队站点随后）
+     */
+    public static void syncPanel(CabinEntity cabin,List<BlockPos> planned) {
+        var payload=new PanelState(cabin.getId(),List.copyOf(planned));
+        for (ServerPlayerEntity observer : PlayerLookup.tracking(cabin)) ServerPlayNetworking.send(observer,payload);
+    }
+    /**
+     * 面板上的"开门 / 关门"按键（客户端 -> 服务端）。
+     *
+     * <p>与服务端的关系：客户端只表达"我想开门/关门"，是否允许由服务端判定——开门必须先由服务端确认
+     * 车体精确停在某个完整站点（否则就是半空开门），关门只有在门处于打开过程时才生效。
+     *
+     * @param entityId 轿厢实体 id，由服务端在 {@link OpenPanel} 中给出；服务端仍会重新核对归属
+     * @param open true = 开门，false = 关门
+     */
+    public record DoorCommand(int entityId, boolean open) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:door_command}。 */
+        public static final Id<DoorCommand> ID = new Id<>(Easyelevator.id("door_command"));
+        /** 线格式编解码器：VarInt 实体 id + 一个布尔命令方向。 */
+        public static final PacketCodec<RegistryByteBuf,DoorCommand> CODEC = new PacketCodec<>() {
+            /** 读回一次按键；语义校验全部留给服务端处理器。 */
+            @Override public DoorCommand decode(RegistryByteBuf buf) { return new DoorCommand(buf.readVarInt(),buf.readBoolean()); }
+            /** 写出一次按键。 */
+            @Override public void encode(RegistryByteBuf buf,DoorCommand p) { buf.writeVarInt(p.entityId);buf.writeBoolean(p.open); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 读一个坐标列表：先读 VarInt 数量并做上限校验，再逐个读 BlockPos，最后复制成不可变列表。
+     *
+     * @param buf 读缓冲
+     * @param what 出错信息里用的名字（仅用于排错）
+     * @return 不可变坐标列表
+     */
+    private static List<BlockPos> readPositions(RegistryByteBuf buf,String what) {
+        int size=buf.readVarInt();
+        // 数量在循环之前校验：负数会让循环直接不执行，超大值则可能在分配阶段就耗尽内存。
+        if(size<0 || size>MAX_STOPS) throw new IllegalArgumentException("Invalid elevator "+what+" count");
+        var list=new ArrayList<BlockPos>(Math.min(size,64));
+        for(int i=0;i<size;i++) list.add(buf.readBlockPos());
+        return List.copyOf(list);
+    }
+    /**
+     * 写一个坐标列表。
+     *
+     * @param buf 写缓冲
+     * @param list 坐标列表
+     */
+    private static void writePositions(RegistryByteBuf buf,List<BlockPos> list) {
+        buf.writeVarInt(list.size()); for(BlockPos pos:list) buf.writeBlockPos(pos);
     }
     /**
      * 请求停靠（客户端 -> 服务端）：玩家在站层面板里点选的站点。
@@ -159,7 +245,9 @@ public final class ElevatorNetworking {
     public static void register() {
         PayloadTypeRegistry.playS2C().register(MotionFrame.ID,MotionFrame.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenPanel.ID,OpenPanel.CODEC);
+        PayloadTypeRegistry.playS2C().register(PanelState.ID,PanelState.CODEC);
         PayloadTypeRegistry.playC2S().register(SelectStop.ID,SelectStop.CODEC);
+        PayloadTypeRegistry.playC2S().register(DoorCommand.ID,DoorCommand.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(SelectStop.ID,(payload,context)->context.server().execute(()->{
             // 处理器在网络线程被调用，而实体/方块查询必须在服务端主线程执行，故整体切回主线程。
             var player=context.player();
@@ -175,6 +263,17 @@ public final class ElevatorNetworking {
             // Refresh so buttons placed/broken while the screen was open are reflected immediately.
             // 重新下发面板：界面停留期间可能有人增删了站点，用服务端最新快照覆盖客户端旧列表。
             open(player,cabin);
+        }));
+        // 面板上的"开门 / 关门"键：与选站同样不信任客户端，服务端重新定位轿厢、核对乘客身份，
+        // 开门还要求车体精确停在某个完整站点（CabinEntity.doorCommand 内部用线路站点列表校验）。
+        ServerPlayNetworking.registerGlobalReceiver(DoorCommand.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            var entity=player.getServerWorld().getEntityById(payload.entityId());
+            if (!(entity instanceof CabinEntity cabin) || !cabin.containsPassenger(player)) return;
+            if (cabin.doorCommand(payload.open())) open(player,cabin); // 成功后刷一次面板：计划可能已经变了
+            else player.sendMessage(Text.translatable(payload.open()
+                    ?"message.easyelevator.door_no_station":"message.easyelevator.door_close_locked"),true);
         }));
         UseItemCallback.EVENT.register((player,world,hand)->{
             // 只看主手：副手会随主手重复触发；潜行 + 空手是拆除轿厢的保留组合，不能与之抢事件。
@@ -211,6 +310,8 @@ public final class ElevatorNetworking {
         // line 可能为 null：轨道被破坏或区块未加载时，仍要让界面正常打开并显示空列表，而不是报错或卡住。
         var line=cabin.line();
         // limit(MAX_STOPS) 与解码端的上限校验配对；正常线路的站点数远小于该值，这里是防御性截断。
-        ServerPlayNetworking.send(player,new OpenPanel(cabin.getId(),line==null?List.of():line.stops().stream().limit(MAX_STOPS).toList()));
+        ServerPlayNetworking.send(player,new OpenPanel(cabin.getId(),
+                line==null?List.of():line.stops().stream().limit(MAX_STOPS).toList(),
+                cabin.plannedStops()));
     }
 }

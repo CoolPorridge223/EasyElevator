@@ -113,6 +113,43 @@ public final class ElevatorController {
     }
 
     /**
+     * 面板"开门"键：重新打开轿厢门。
+     *
+     * <p>安全性前提：<b>调用方必须已经确认车体精确停靠在某个完整站点上</b>——本类不认识世界里的站点，
+     * 无法自己判断"是不是在半空"，这个 1e-7 格的到站校验由 {@code CabinEntity} 用线路站点列表完成。
+     *
+     * <p>三种情形：门已全开 → 续满停留时间（相当于"按住开门键"）；正在开门 → 无事可做；
+     * 正在关门或门已关闭但停在站点（例如刚手动关门、即将出发）→ 反向重新开门，目的站保持不变。
+     *
+     * <p>纯状态切换，不改 queue/target：因此"开门"不会取消已经排好的行程。
+     *
+     * @return 指令是否被接受（门已经全关且正在别处运行时返回 false）
+     */
+    public boolean forceOpen() {
+        if (phase == Phase.OPEN) { dwell = DWELL_TICKS; return true; }   // 已开：续满停留时间
+        if (phase == Phase.OPENING) return true;                          // 正在开：无需变动
+        if (phase == Phase.CLOSING) { phase = Phase.OPENING; return true; } // 正在关：反向打开
+        // 门已全关（door == 0）时直接开门：调用方已确认车体就在某一层，因此不会出现半空开门
+        if (door <= 0) { phase = Phase.OPENING; return true; }
+        return false;
+    }
+
+    /**
+     * 面板"关门"键：立刻结束开门停留并关门；门已经关着时无事可做。
+     *
+     * <p>与"到站停留结束"的区别：这里不要求队列非空——真实电梯的关门键可以先把门关上、让轿厢停在
+     * 本层等待下一次呼叫，因此允许把门关到全闭后停在站点（相位停在 MOVING、target 为空）。
+     * 关门过程中仍然每刻检查门口是否有人，被夹住会重新开门（防夹不因手动操作而失效）。
+     *
+     * @return 指令是否被接受（门处于打开或开门过程中才接受）
+     */
+    public boolean forceClose() {
+        if (phase == Phase.OPEN) { dwell = 0; phase = Phase.CLOSING; return true; }
+        if (phase == Phase.OPENING) { phase = Phase.CLOSING; return true; }  // 正在开：反向关闭
+        return false;
+    }
+
+    /**
      * 推进一个服务端刻。
      *
      * @param y 本刻开始时的轿厢底部中心 Y（单位：格）
