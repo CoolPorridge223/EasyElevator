@@ -5,29 +5,34 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
+import net.minecraft.block.BlockState;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.block.LandingDoorBlock;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
+import org.DJB.easyelevator.logic.ElevatorLine;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 电梯模组的网络层：三个自定义包 + 打开站层面板的交互事件注册，是服务端权威数据流向客户端的唯一通道。
+ * 电梯模组的网络层：六个自定义包 + 打开站层面板 / 厅外呼叫面板的交互事件注册，是服务端权威数据流向客户端的唯一通道。
  *
  * <p>包的方向与用途（服务端始终是唯一数据源，客户端只读）：
  * <ul>
- *   <li>{@link MotionFrame}：S2C（服务端到客户端）。轿厢的绝对 double 高度与本地乘客偏移量，
- *       只服务渲染与本地乘客镜头插值，客户端不得据此改写真实位置。</li>
- *   <li>{@link OpenPanel}：S2C。告诉客户端"打开站层面板"以及该线路的全部站点（根方块坐标）。</li>
- *   <li>{@link SelectStop}：C2S（客户端到服务端）。玩家在面板里点了一个站点，请求停靠。</li>
+ *   <li>{@link MotionFrame}：S2C。轿厢的绝对 double 高度与本地乘客偏移量，只服务渲染与本地乘客镜头插值。</li>
+ *   <li>{@link OpenPanel} / {@link PanelState}：S2C。打开 / 刷新轿厢内选站面板（站点列表、停靠计划、基准层高度）。</li>
+ *   <li>{@link OpenHallPanel} / {@link HallPanelState}：S2C。打开 / 刷新楼层门上的厅外呼叫面板（上、下两个方向的点亮状态）。</li>
+ *   <li>{@link SelectStop} / {@link DoorCommand} / {@link HallCallButton}：C2S。轿厢内选站、开关门、以及厅外上/下呼叫。</li>
  * </ul>
  *
  * <p>关键不变量/约束：
@@ -46,7 +51,6 @@ public final class ElevatorNetworking {
     // 世界高度也远达不到这个站点数；这是防无界分配的兜底上限，正常线路只会用到其中极小一部分。
     /** 单个 {@link OpenPanel} 允许携带的站点数量上限，单位：个站点；用于防止恶意/损坏包触发无界内存分配。 */
     public static final int MAX_STOPS = 16384;
-    /** Absolute doubles bypass the vanilla relative-entity packet's fixed-point position quantum. */
     /**
      * 轿厢运动帧（服务端 -> 客户端）：一帧绝对高度样本 + 该观测者自身的乘客偏移量。
      *
@@ -90,66 +94,71 @@ public final class ElevatorNetworking {
      *
      * @param cabin 要同步的轿厢，必须位于服务端世界
      */
-    public static void syncMotion(CabinEntity cabin) {
+    public static void syncMotion(AbstractCabinEntity cabin) {
         for (ServerPlayerEntity observer : PlayerLookup.tracking(cabin)) {
             double riderOffset = cabin.containsPassenger(observer) ? observer.getY() - cabin.getY() : Double.NaN;
             ServerPlayNetworking.send(observer, new MotionFrame(cabin.getId(), cabin.getWorld().getTime(), cabin.getY(), riderOffset));
         }
     }
     /**
-     * 打开站层面板（服务端 -> 客户端）：携带轿厢实体 id、该线路全部站点的根方块坐标，
-     * 以及当前的"停靠计划"（正在执行的目的站 + 排队中的站点）。
+     * 打开站层面板（服务端 -> 客户端）：携带轿厢实体 id、该线路全部站点的根方块坐标、
+     * 当前的"停靠计划"（正在执行的目的站 + 排队中的站点），以及本线路的基准层高度。
      *
      * <p>站点列表来自服务端 {@code ElevatorLine#stops()}，即"完整 3x3 楼层门的底部中心方块"位置，
-     * 客户端只用它渲染按钮并原样回传坐标，不做任何线路推断。计划列表只用于把已加入计划的按钮标红。
+     * 客户端只用它渲染按钮并原样回传坐标，不做任何线路推断。计划列表只用于把已加入计划的按钮标红；
+     * 基准层高度（{@code baseFloorY}）用于给按钮编号：基准层是 1 层，其下依次 B1、B2…
+     * （{@code Integer.MIN_VALUE} 表示没有基准层，客户端按"最低站点 = 1 层"编号）。
      *
      * @param entityId 轿厢实体 id；客户端点击后必须原样回传，服务端据此重新定位轿厢
      * @param stops 线路上的站点（楼层门根方块）列表，元素个数不超过 {@link #MAX_STOPS}
      * @param planned 停靠计划：目的站在前、排队站点随后，都用根方块坐标表示；只影响高亮
+     * @param baseFloorY 基准层（1 层）的高度，单位格；没有基准层时为 {@link Integer#MIN_VALUE}
      */
-    public record OpenPanel(int entityId, List<BlockPos> stops, List<BlockPos> planned) implements CustomPayload {
+    public record OpenPanel(int entityId, List<BlockPos> stops, List<BlockPos> planned, int baseFloorY) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_panel}。 */
         public static final Id<OpenPanel> ID = new Id<>(Easyelevator.id("open_panel"));
         /** 线格式编解码器；解码时对站点数量做上限校验，见下。 */
         public static final PacketCodec<RegistryByteBuf,OpenPanel> CODEC = new PacketCodec<>() {
-            /** 读回面板内容：先用 VarInt 读数量并校验范围，再逐个读 BlockPos。 */
+            /** 读回面板内容：先用 VarInt 读数量并校验范围，再逐个读 BlockPos，最后读基准层高度。 */
             @Override public OpenPanel decode(RegistryByteBuf buf) {
                 int id=buf.readVarInt();
                 // 数量在循环之前校验：负数会让循环直接不执行，超大值则可能在分配阶段就耗尽内存。
                 List<BlockPos> stops=readPositions(buf,"station");
                 List<BlockPos> planned=readPositions(buf,"planned stop");
                 // 复制成不可变列表，避免把仍在复用的读缓冲数据或可变集合泄漏给后续逻辑。
-                return new OpenPanel(id,stops,planned);
+                return new OpenPanel(id,stops,planned,buf.readVarInt());
             }
-            /** 写出面板内容：实体 id、站点数量与坐标、计划数量与坐标。 */
+            /** 写出面板内容：实体 id、站点数量与坐标、计划数量与坐标、基准层高度。 */
             @Override public void encode(RegistryByteBuf buf, OpenPanel p) {
                 buf.writeVarInt(p.entityId);
                 writePositions(buf,p.stops);
                 writePositions(buf,p.planned);
+                buf.writeVarInt(p.baseFloorY);
             }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
     /**
-     * 面板状态刷新（服务端 -> 客户端）：只携带"停靠计划"。
+     * 面板状态刷新（服务端 -> 客户端）：携带"停靠计划"与本线路的基准层高度。
      *
      * <p>与 {@link OpenPanel} 的分工：本包<b>永远不会打开面板</b>，只用于刷新已经打开的面板
-     * （例如某个站点已经到达、目的站被拆、队列被清理），因此可以放心地按变化推送，
-     * 不会给没开面板的乘客弹出界面。
+     * （例如某个站点已经到达、目的站被拆、队列被清理，或别的玩家改了基准层让编号整体变化），
+     * 因此可以放心地按变化推送，不会给没开面板的乘客弹出界面。
      *
      * @param entityId 轿厢实体 id；客户端只在该轿厢的面板正开着时才应用
      * @param planned 停靠计划：目的站在前、排队站点随后；空列表表示当前没有任何计划
+     * @param baseFloorY 基准层（1 层）的高度，单位格；没有基准层时为 {@link Integer#MIN_VALUE}
      */
-    public record PanelState(int entityId, List<BlockPos> planned) implements CustomPayload {
+    public record PanelState(int entityId, List<BlockPos> planned, int baseFloorY) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:panel_state}。 */
         public static final Id<PanelState> ID = new Id<>(Easyelevator.id("panel_state"));
         /** 线格式编解码器：与 OpenPanel 共用同一套坐标列表读写。 */
         public static final PacketCodec<RegistryByteBuf,PanelState> CODEC = new PacketCodec<>() {
             /** 读回一次计划快照。 */
-            @Override public PanelState decode(RegistryByteBuf buf) { return new PanelState(buf.readVarInt(),readPositions(buf,"planned stop")); }
+            @Override public PanelState decode(RegistryByteBuf buf) { return new PanelState(buf.readVarInt(),readPositions(buf,"planned stop"),buf.readVarInt()); }
             /** 写出一次计划快照。 */
-            @Override public void encode(RegistryByteBuf buf,PanelState p) { buf.writeVarInt(p.entityId);writePositions(buf,p.planned); }
+            @Override public void encode(RegistryByteBuf buf,PanelState p) { buf.writeVarInt(p.entityId);writePositions(buf,p.planned);buf.writeVarInt(p.baseFloorY); }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
         @Override public Id<? extends CustomPayload> getId() { return ID; }
@@ -157,14 +166,14 @@ public final class ElevatorNetworking {
     /**
      * 把轿厢当前的停靠计划推送给正在追踪它的客户端。
      *
-     * <p>由 {@code CabinEntity} 在"计划发生变化"的那一 tick 调用（到达、取消、新请求等），
+     * <p>由 {@code AbstractCabinEntity} 在"计划发生变化"的那一 tick 调用（到达、取消、新请求等），
      * 而不是每刻推送：队列变化一次最多几十字节，且只影响已经打开面板的玩家。
      *
      * @param cabin 目标轿厢
      * @param planned 停靠计划（目的站在前、排队站点随后）
      */
-    public static void syncPanel(CabinEntity cabin,List<BlockPos> planned) {
-        var payload=new PanelState(cabin.getId(),List.copyOf(planned));
+    public static void syncPanel(AbstractCabinEntity cabin,List<BlockPos> planned) {
+        var payload=new PanelState(cabin.getId(),List.copyOf(planned),cabin.baseFloorY());
         for (ServerPlayerEntity observer : PlayerLookup.tracking(cabin)) ServerPlayNetworking.send(observer,payload);
     }
     /**
@@ -185,6 +194,71 @@ public final class ElevatorNetworking {
             @Override public DoorCommand decode(RegistryByteBuf buf) { return new DoorCommand(buf.readVarInt(),buf.readBoolean()); }
             /** 写出一次按键。 */
             @Override public void encode(RegistryByteBuf buf,DoorCommand p) { buf.writeVarInt(p.entityId);buf.writeBoolean(p.open); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 打开"厅外呼叫面板"（服务端 -> 客户端）：右键楼层门时下发，客户端据此弹出上/下/关闭三个按钮。
+     *
+     * <p>与选站面板 {@link OpenPanel} 一样，面板内容全部来自服务端：这里带上该站两个方向当前是否已有呼叫，
+     * 因此关掉面板再打开、或别人按过按钮之后再打开，按钮的点亮状态都仍然正确。
+     *
+     * @param station 楼层门根方块位置（站点）
+     * @param up 该站的上行按钮当前是否点亮
+     * @param down 该站的下行按钮当前是否点亮
+     */
+    public record OpenHallPanel(BlockPos station, boolean up, boolean down) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_hall_panel}。 */
+        public static final Id<OpenHallPanel> ID = new Id<>(Easyelevator.id("open_hall_panel"));
+        /** 线格式编解码器：一个 BlockPos 加两个布尔。 */
+        public static final PacketCodec<RegistryByteBuf,OpenHallPanel> CODEC = new PacketCodec<>() {
+            /** 读回面板初值。 */
+            @Override public OpenHallPanel decode(RegistryByteBuf buf) { return new OpenHallPanel(buf.readBlockPos(),buf.readBoolean(),buf.readBoolean()); }
+            /** 写出面板初值。 */
+            @Override public void encode(RegistryByteBuf buf,OpenHallPanel p) { buf.writeBlockPos(p.station);buf.writeBoolean(p.up);buf.writeBoolean(p.down); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 刷新厅外呼叫面板上的按钮状态（服务端 -> 客户端）：只更新"哪个方向还在呼叫"，绝不用它打开界面。
+     *
+     * @param station 楼层门根方块位置（站点）
+     * @param up 该站上行按钮是否点亮
+     * @param down 该站下行按钮是否点亮
+     */
+    public record HallPanelState(BlockPos station, boolean up, boolean down) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:hall_panel_state}。 */
+        public static final Id<HallPanelState> ID = new Id<>(Easyelevator.id("hall_panel_state"));
+        /** 线格式编解码器：与 {@link OpenHallPanel} 同构。 */
+        public static final PacketCodec<RegistryByteBuf,HallPanelState> CODEC = new PacketCodec<>() {
+            /** 读回一次点亮状态。 */
+            @Override public HallPanelState decode(RegistryByteBuf buf) { return new HallPanelState(buf.readBlockPos(),buf.readBoolean(),buf.readBoolean()); }
+            /** 写出一次点亮状态。 */
+            @Override public void encode(RegistryByteBuf buf,HallPanelState p) { buf.writeBlockPos(p.station);buf.writeBoolean(p.up);buf.writeBoolean(p.down); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 按下楼层门面板上的上行 / 下行按钮（客户端 -> 服务端）。
+     *
+     * <p>与选站请求一样，包里的站点坐标视为不可信输入：服务端会重新确认它是本线路的完整楼层门，
+     * 并确认这条线路恰好有一辆轿厢，然后才登记带方向的厅外呼叫。
+     *
+     * @param station 楼层门根方块位置（站点）
+     * @param up true = 上行按钮，false = 下行按钮
+     */
+    public record HallCallButton(BlockPos station, boolean up) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:hall_call_button}。 */
+        public static final Id<HallCallButton> ID = new Id<>(Easyelevator.id("hall_call_button"));
+        /** 线格式编解码器：一个 BlockPos 加一个方向布尔。 */
+        public static final PacketCodec<RegistryByteBuf,HallCallButton> CODEC = new PacketCodec<>() {
+            /** 读回一次按键；语义校验全部留给服务端处理器。 */
+            @Override public HallCallButton decode(RegistryByteBuf buf) { return new HallCallButton(buf.readBlockPos(),buf.readBoolean()); }
+            /** 写出一次按键。 */
+            @Override public void encode(RegistryByteBuf buf,HallCallButton p) { buf.writeBlockPos(p.station);buf.writeBoolean(p.up); }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
         @Override public Id<? extends CustomPayload> getId() { return ID; }
@@ -216,7 +290,7 @@ public final class ElevatorNetworking {
     /**
      * 请求停靠（客户端 -> 服务端）：玩家在站层面板里点选的站点。
      *
-     * <p>这是本模组唯一的 C2S 输入。包内只允许出现"哪个轿厢 + 哪个站点坐标"，
+     * <p>这是轿厢内面板唯一的 C2S 输入。包内只允许出现"哪个轿厢 + 哪个站点坐标"，
      * 因为服务端可以完全自主地重新推导其它一切（轿厢是否属于该玩家、站点是否在当前线路上）。
      *
      * @param entityId 轿厢实体 id，由服务端在 {@link OpenPanel} 中给出；服务端仍会重新核对
@@ -238,16 +312,19 @@ public final class ElevatorNetworking {
     /**
      * 注册全部自定义负载与交互事件；由模组初始化时调用一次。
      *
-     * <p>副作用：注册 2 个 S2C / 1 个 C2S 负载类型、1 个服务端全局接收器，
-     * 并注册两个右键事件（对空处使用物品、对方块使用物品），两者都会打开站层面板。
+     * <p>副作用：注册 5 个 S2C / 3 个 C2S 负载类型、3 个服务端全局接收器，
+     * 并注册两个右键事件（对空处使用物品、对方块使用物品），两者都会打开轿厢内的站层面板。
      * 负载类型必须先于任何收发注册，否则客户端与服务端会因缺少 id 而断连。
      */
     public static void register() {
         PayloadTypeRegistry.playS2C().register(MotionFrame.ID,MotionFrame.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenPanel.ID,OpenPanel.CODEC);
         PayloadTypeRegistry.playS2C().register(PanelState.ID,PanelState.CODEC);
+        PayloadTypeRegistry.playS2C().register(OpenHallPanel.ID,OpenHallPanel.CODEC);
+        PayloadTypeRegistry.playS2C().register(HallPanelState.ID,HallPanelState.CODEC);
         PayloadTypeRegistry.playC2S().register(SelectStop.ID,SelectStop.CODEC);
         PayloadTypeRegistry.playC2S().register(DoorCommand.ID,DoorCommand.CODEC);
+        PayloadTypeRegistry.playC2S().register(HallCallButton.ID,HallCallButton.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(SelectStop.ID,(payload,context)->context.server().execute(()->{
             // 处理器在网络线程被调用，而实体/方块查询必须在服务端主线程执行，故整体切回主线程。
             var player=context.player();
@@ -256,7 +333,7 @@ public final class ElevatorNetworking {
             var entity=player.getServerWorld().getEntityById(payload.entityId());
             // Never trust a client-provided cabin, station index, distance or line identifier.
             // 客户端可伪造任意实体 id：必须确认它在本玩家世界内、确实是轿厢、且本玩家是车上乘客。
-            if (!(entity instanceof CabinEntity cabin) || !cabin.containsPassenger(player)) return;
+            if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             // 坐标同样不可信，交由轿厢对照真实线路校验（不在线路上或朝向不符时返回 false）。
             boolean accepted=cabin.requestStop(payload.button());
             player.sendMessage(Text.translatable(accepted?"message.easyelevator.selected":"message.easyelevator.invalid_stop"),true);
@@ -265,21 +342,42 @@ public final class ElevatorNetworking {
             open(player,cabin);
         }));
         // 面板上的"开门 / 关门"键：与选站同样不信任客户端，服务端重新定位轿厢、核对乘客身份，
-        // 开门还要求车体精确停在某个完整站点（CabinEntity.doorCommand 内部用线路站点列表校验）。
+        // 开门还要求车体精确停在某个完整站点（AbstractCabinEntity.doorCommand 内部用线路站点列表校验）。
         ServerPlayNetworking.registerGlobalReceiver(DoorCommand.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
             var entity=player.getServerWorld().getEntityById(payload.entityId());
-            if (!(entity instanceof CabinEntity cabin) || !cabin.containsPassenger(player)) return;
+            if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             if (cabin.doorCommand(payload.open())) open(player,cabin); // 成功后刷一次面板：计划可能已经变了
             else player.sendMessage(Text.translatable(payload.open()
                     ?"message.easyelevator.door_no_station":"message.easyelevator.door_close_locked"),true);
+        }));
+        // 楼层门面板上的"上行 / 下行"按钮：坐标不可信，服务端重新扫描线路、核对"恰好一辆轿厢"后登记厅外呼叫；
+        // 登记完立刻把该站最新的点亮状态回推给附近客户端（含按按钮的这位），按钮当场变红。
+        ServerPlayNetworking.registerGlobalReceiver(HallCallButton.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            var world=player.getServerWorld();
+            BlockPos origin=payload.station();
+            if (!world.isChunkLoaded(origin)) return;
+            BlockState state=world.getBlockState(origin);
+            if (!LandingDoorBlock.isRoot(state) || !LandingDoorBlock.complete(world,origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+            ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(state,origin));
+            if (line==null || line.facing()!=state.get(LandingDoorBlock.FACING) || !line.stops().contains(origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+            var cabins=line.cabins(world);
+            if (cabins.isEmpty()) { player.sendMessage(Text.translatable("message.easyelevator.no_cabin"),true); return; }
+            if (cabins.size()!=1) { player.sendMessage(Text.translatable("message.easyelevator.multiple_cabins"),true); return; }
+            var cabin=cabins.getFirst();
+            boolean accepted=cabin.requestHallCall(origin,payload.up());
+            player.sendMessage(Text.translatable(accepted?"message.easyelevator.hall_queued":"message.easyelevator.invalid_stop",
+                    Text.translatable(payload.up()?"screen.easyelevator.hall_up":"screen.easyelevator.hall_down")),true);
+            syncHallState(world,origin,cabin.hasHallCall(origin,true),cabin.hasHallCall(origin,false));
         }));
         UseItemCallback.EVENT.register((player,world,hand)->{
             // 只看主手：副手会随主手重复触发；潜行 + 空手是拆除轿厢的保留组合，不能与之抢事件。
             if (hand!=Hand.MAIN_HAND || player.isSpectator() || player.isSneaking()) return TypedActionResult.pass(player.getStackInHand(hand));
             // 用玩家自身碰撞箱查询，等价于"玩家是否站在轿厢内部的 3x3 空间里"。
-            for (var cabin:world.getEntitiesByClass(CabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
+            for (var cabin:world.getEntitiesByClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
                 // 仅在逻辑服务端发包；客户端返回成功即可，否则会收到重复面板。
                 if (!world.isClient) open((ServerPlayerEntity)player,cabin);
                 return TypedActionResult.success(player.getStackInHand(hand));
@@ -290,7 +388,7 @@ public final class ElevatorNetworking {
             // 与上面的 UseItem 路径互补：视线命中方块时走这里，未命中方块时走上一个回调。
             // 条件必须完全一致，否则"对着方块右键"与"对着空气右键"行为会分叉。
             if (hand!=Hand.MAIN_HAND || player.isSpectator() || player.isSneaking()) return ActionResult.PASS;
-            for (var cabin:world.getEntitiesByClass(CabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
+            for (var cabin:world.getEntitiesByClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
                 if (!world.isClient) open((ServerPlayerEntity)player,cabin);
                 return ActionResult.SUCCESS;
             }
@@ -299,19 +397,35 @@ public final class ElevatorNetworking {
         });
     }
     /**
+     * 把某个站点的厅外呼叫点亮状态推给附近客户端（登记、到站清扫、门被拆时各发一次）。
+     *
+     * <p>只发给站点附近 64 格内的玩家：面板是在门口打开的，按按钮的人一定在这个范围内，
+     * 不必为一条呼叫惊动整条线路上的所有人；没开面板的客户端只更新一份缓存，不影响画面。
+     *
+     * @param world 世界；非服务端世界时直接返回（本方法只在服务端调用）
+     * @param station 楼层门根方块位置
+     * @param up 该站上行按钮是否点亮
+     * @param down 该站下行按钮是否点亮
+     */
+    public static void syncHallState(World world,BlockPos station,boolean up,boolean down) {
+        if (!(world instanceof ServerWorld server)) return;
+        var payload=new HallPanelState(station.toImmutable(),up,down);
+        for (ServerPlayerEntity observer : PlayerLookup.around(server,station,64d)) ServerPlayNetworking.send(observer,payload);
+    }
+    /**
      * 向指定玩家下发该轿厢当前线路的站层面板快照。
      *
      * <p>副作用：发送一个 {@link OpenPanel} 包（客户端收到后打开或刷新界面）。
      *
      * @param player 目标玩家，必须是服务端玩家实体
-     * @param cabin 轿厢；线路由服务端实时扫描轨道列得到（{@link CabinEntity#line()}）
+     * @param cabin 轿厢；线路由服务端实时扫描轨道列得到（{@link AbstractCabinEntity#line()}）
      */
-    public static void open(ServerPlayerEntity player,CabinEntity cabin) {
+    public static void open(ServerPlayerEntity player,AbstractCabinEntity cabin) {
         // line 可能为 null：轨道被破坏或区块未加载时，仍要让界面正常打开并显示空列表，而不是报错或卡住。
         var line=cabin.line();
         // limit(MAX_STOPS) 与解码端的上限校验配对；正常线路的站点数远小于该值，这里是防御性截断。
         ServerPlayNetworking.send(player,new OpenPanel(cabin.getId(),
                 line==null?List.of():line.stops().stream().limit(MAX_STOPS).toList(),
-                cabin.plannedStops()));
+                cabin.plannedStops(), cabin.baseFloorY()));
     }
 }

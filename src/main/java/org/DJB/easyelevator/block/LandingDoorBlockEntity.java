@@ -2,12 +2,14 @@ package org.DJB.easyelevator.block;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.ElevatorStatus;
@@ -40,6 +42,15 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     private float previousProgress;
     /** 上一次采样时的世界刻号；{@code Long.MIN_VALUE} 表示这一对样本还没被推进过。 */
     private long sampledTick = Long.MIN_VALUE;
+
+    /**
+     * 本门是否被指定为这条线路的<b>基准层</b>（潜行右键门上任意部件设置，见 {@code LandingDoorBlock#onUse}）。
+     *
+     * <p>基准层就是"1 层"：它上方的站点依次显示 2、3…，下方的依次显示 B1、B2…（见 {@code logic/FloorIndicator}）。
+     * 一条线路最多一扇门带这个标记；标记写在方块实体里，因此随区块一起存档、拆掉门就自然失效
+     * （整条线路回到默认编号：最低站点 = 1 层）。</p>
+     */
+    private boolean baseFloor;
 
     /** 本线路轿厢的当前楼层号（1 起，0 = 没有轿厢）：门框顶部的红色层号显示用，同样每刻只查一次。 */
     private int cabinFloor;
@@ -83,7 +94,7 @@ public final class LandingDoorBlockEntity extends BlockEntity {
         progress=state.isOf(Easyelevator.LANDING_DOOR) && state.get(LandingDoorBlock.OPEN)
                 ? LandingDoorBlock.leafProgress(world,pos) : 0f;
         // 门框顶部的显示内容（楼层号 + 运行状态）同样每刻只查一次，渲染器直接读缓存
-        CabinEntity cabin=state.isOf(Easyelevator.LANDING_DOOR) ? cabinOf(world,state) : null;
+        AbstractCabinEntity cabin=state.isOf(Easyelevator.LANDING_DOOR) ? cabinOf(world,state) : null;
         cabinFloor=cabin==null ? 0 : cabin.floorNumber();
         cabinStatus=cabin==null ? ElevatorStatus.IDLE : cabin.status();
         sampledTick=now;
@@ -103,12 +114,12 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param state 根方块状态（用其 FACING 反推轨道位置）
      * @return 本线路的轿厢；线路无效或没有轿厢时为 null
      */
-    private CabinEntity cabinOf(World world,BlockState state) {
+    private AbstractCabinEntity cabinOf(World world,BlockState state) {
         ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(state,pos));
         if(line==null) return null;
         double x=line.centerX(), z=line.centerZ();
-        CabinEntity found=null;
-        for(CabinEntity cabin:world.getEntitiesByClass(CabinEntity.class,
+        AbstractCabinEntity found=null;
+        for(AbstractCabinEntity cabin:world.getEntitiesByClass(AbstractCabinEntity.class,
                 new Box(x-1.6,line.bottom()-1,z-1.6,x+1.6,line.top()+4,z+1.6),
                 c->!c.isRemoved() && Math.abs(c.getX()-x)<=ElevatorParameters.SYNC_POSITION_EPSILON
                         && Math.abs(c.getZ()-z)<=ElevatorParameters.SYNC_POSITION_EPSILON)) {
@@ -128,4 +139,43 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @return 本线路轿厢的运行状态（上行/下行/停靠），渲染门框顶部显示时使用；每刻更新一次
      */
     public ElevatorStatus cabinStatus() { sample(); return cabinStatus; }
+
+    /**
+     * @return 本门是否为这条线路的基准层（1 层）；编号计算全在服务端完成，因此这个值只在服务端有意义
+     */
+    public boolean baseFloor() { return baseFloor; }
+
+    /**
+     * 设置 / 清除基准层标记。
+     *
+     * @param value true = 本门成为整条线路的 1 层
+     * 副作用：改动方块实体 NBT 并 markDirty()，随区块保存；不改方块状态、不发包。
+     */
+    public void setBaseFloor(boolean value) {
+        if (baseFloor == value) return;
+        baseFloor = value;
+        markDirty();
+    }
+
+    /**
+     * 把基准层标记写进方块实体 NBT（随区块存档）。
+     *
+     * @param nbt 目标 NBT
+     * @param registries 注册表查询（本实体没有需要迁移的字段，仅透传给父类）
+     */
+    @Override protected void writeNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
+        super.writeNbt(nbt,registries);
+        if (baseFloor) nbt.putBoolean("BaseFloor",true); // 只写 true：默认门不必多一个 false 字段
+    }
+
+    /**
+     * 从方块实体 NBT 读回基准层标记。
+     *
+     * @param nbt 存档 NBT
+     * @param registries 注册表查询（透传父类）
+     */
+    @Override protected void readNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
+        super.readNbt(nbt,registries);
+        baseFloor=nbt.getBoolean("BaseFloor");
+    }
 }

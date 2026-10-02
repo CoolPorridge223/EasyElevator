@@ -66,7 +66,24 @@ public final class FloorIndicatorTest {
         }
         check(changes==2,"descending 80 -> 64 changes the floor exactly twice (3 -> 2 -> 1)");
 
+        // ---- 基准层（潜行右键楼层门设置的"1 层"）----
+        // 以中间那层（72）为基准：64 显示 B1、72 显示 1、80 显示 2；没有经过任何楼层时仍然是 0。
+        check(FloorIndicator.baseIndex(ys,72)==1,"base floor index is looked up by height");
+        check(FloorIndicator.baseIndex(ys,999)==0,"an unknown base height falls back to the lowest station");
+        check(FloorIndicator.label(0,1).equals("B1")&&FloorIndicator.label(1,1).equals("1")&&FloorIndicator.label(2,1).equals("2"),
+                "labels around the base floor are B1 / 1 / 2");
+        check(FloorIndicator.floorNumber(ys,64,64,72)==-1,"below the base floor is basement 1");
+        check(FloorIndicator.floorNumber(ys,72,71.8,72)==1,"the base floor itself is floor 1");
+        check(FloorIndicator.floorNumber(ys,80,79.8,72)==2,"one floor above the base is floor 2");
+        check(FloorIndicator.floorNumber(ys,63,63,72)==0,"below every station there is still no floor number");
+        check(FloorIndicator.format(-1).equals("B1")&&FloorIndicator.format(-2).equals("B2")&&FloorIndicator.format(3).equals("3"),
+                "format renders basements as B1 / B2 and floors as plain numbers");
+        check(FloorIndicator.format(0).equals("--"),"an unknown floor shows the placeholder");
+        // 基准层设在最底层（默认口径）：编号与旧版本完全一致，旧存档不会因为这次改动而变号。
+        for(int stationY : new int[]{64,72,80}) check(FloorIndicator.floorNumber(ys,stationY,stationY,64)==FloorIndicator.floorNumber(ys,stationY,stationY),
+                "a base floor at the lowest station keeps the historical numbering");
+
         System.out.println("PASS: floor indicator (lowest station = floor 1, updates only when passing or reaching a floor,"
-                + " monotonic in both directions, no flicker at intermediate heights).");
+                + " monotonic in both directions, no flicker at intermediate heights, configurable base floor with B1/B2 basements).");
     }
 }

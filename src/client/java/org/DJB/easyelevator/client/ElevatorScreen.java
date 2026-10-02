@@ -8,9 +8,10 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.logic.FloorIndicator;
 import org.DJB.easyelevator.logic.PanelLayout;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 import java.util.ArrayList;
@@ -56,6 +57,10 @@ public class ElevatorScreen extends Screen {
     private final List<BlockPos> stops; // 按高度升序的站点（根方块）列表：下标 0 就是"1 层"；只读
     /** 停靠计划里的站点：{@code BlockPos.asLong()} 集合，命中的按钮画红色描边。 */
     private final Set<Long> planned=new HashSet<>();
+    /** 本线路基准层（1 层）的高度（格）：来自服务端下发的 baseFloorY；没有基准层时为 Integer.MIN_VALUE。 */
+    private int baseFloorY=Integer.MIN_VALUE;
+    /** 基准层在 stops 里的下标（0 基）：该下标处显示 1，其上 2,3…，其下 B1,B2…；找不到基准时为 0。 */
+    private int baseIndex;
     private int page; // 当前页（0 基）；翻页时保留，越界会在 init() 里被夹回合法范围
     private PanelLayout.Grid grid=PanelLayout.grid(0,1,1); // 网格与分页参数（列数/行数/页数），init() 时按站点数与窗口尺寸重算
     private int panelLeft, panelTop, panelWidth, panelHeight; // 面板矩形（像素）：init() 计算，render() 复用
@@ -74,6 +79,7 @@ public class ElevatorScreen extends Screen {
         List<BlockPos> sorted=new ArrayList<>(payload.stops());
         sorted.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
         stops=List.copyOf(sorted);
+        setBaseFloor(payload.baseFloorY());
         applyPlanned(payload.planned());
     }
 
@@ -91,6 +97,31 @@ public class ElevatorScreen extends Screen {
     public void applyPlanned(List<BlockPos> plan) {
         planned.clear();
         for(BlockPos pos:plan) planned.add(pos.asLong());
+    }
+
+    /**
+     * 应用服务端下发的"计划 + 基准层"（{@code PanelState}）：计划只改高亮；
+     * 基准层若变化则重建控件——按钮上的编号（1 / 2 / B1 / B2…）是按下标算出来的，必须重新铺一遍。
+     *
+     * @param plan 停靠计划中的站点根方块坐标（空列表 = 当前没有计划）
+     * @param baseFloorY 本线路基准层高度（格）；{@code Integer.MIN_VALUE} 表示没有基准层
+     */
+    public void applyState(List<BlockPos> plan,int baseFloorY) {
+        applyPlanned(plan);
+        if(setBaseFloor(baseFloorY)) clearAndInit(); // 编号口径变了：重铺按钮（保留当前页）
+    }
+
+    /**
+     * 记录基准层并换算成站点下标。
+     *
+     * @param baseFloorY 基准层高度（格）
+     * @return 是否发生了变化（true 时调用方需要重铺按钮）
+     */
+    private boolean setBaseFloor(int baseFloorY) {
+        int index=FloorIndicator.baseIndex(stops.stream().map(BlockPos::getY).toList(),baseFloorY);
+        boolean changed=index!=baseIndex||baseFloorY!=this.baseFloorY;
+        this.baseFloorY=baseFloorY; this.baseIndex=index;
+        return changed;
     }
 
     /**
@@ -124,8 +155,9 @@ public class ElevatorScreen extends Screen {
             int y=gridBottom-(fromBottom+1)*BUTTON-fromBottom*GAP;
             BlockPos stop=stops.get(i);
             // 按钮上只印楼层编号（i+1）；具体高度与方块坐标放进悬停提示，避免方块里塞满文字。
-            addDrawableChild(new StationButton(x,y,i+1,stop.getY(),stop.asLong(),
-                    Text.translatable("screen.easyelevator.station",i+1,stop.getY()),
+            String label=FloorIndicator.label(i,baseIndex); // 编号：基准层 = 1，其上 2,3…，其下 B1,B2…
+            addDrawableChild(new StationButton(x,y,label,stop.getY(),stop.asLong(),
+                    Text.translatable("screen.easyelevator.station",label,stop.getY()),
                     button->ClientPlayNetworking.send(new ElevatorNetworking.SelectStop(entityId,stop))));
         }
         // 底部一行：翻页（< >）、开门、关门、完成。翻页用 clearAndInit() 重建控件并保留 page；
@@ -148,14 +180,14 @@ public class ElevatorScreen extends Screen {
     }
 
     /** 查找面板绑定的轿厢。@return 世界/实体未就绪或 id 已不对应轿厢时返回 null，调用方需判空。 */
-    private CabinEntity cabin() {
-        return client!=null && client.world!=null && client.world.getEntityById(entityId) instanceof CabinEntity c ? c : null;
+    private AbstractCabinEntity cabin() {
+        return client!=null && client.world!=null && client.world.getEntityById(entityId) instanceof AbstractCabinEntity c ? c : null;
     }
 
     /**
      * 每刻检查面板是否仍然有效。副作用：轿厢消失、玩家离开世界或玩家已经不在轿厢里时自动关闭界面。
      *
-     * <p>为什么不用 {@link CabinEntity#containsPassenger}：那是服务端权威的严格包围盒（下沿只留 0.14 格），
+     * <p>为什么不用 {@link AbstractCabinEntity#containsPassenger}：那是服务端权威的严格包围盒（下沿只留 0.14 格），
      * 而客户端上轿厢与乘客的位置来自不同时刻的网络包——电梯<b>下行</b>时乘客会比同步到的轿厢地板多落一点，
      * 相对高度瞬时跌到 0.14 格以下，于是面板刚打开就被判成"已离开轿厢"而立刻关闭（上行时只会拉高，不会触发）。
      * 这里改用面向 UI 的宽松判定 {@link #staysInside}：只在真正走出轿厢范围时才关闭。
@@ -178,7 +210,7 @@ public class ElevatorScreen extends Screen {
      * @param player 本机玩家
      * @return 判定为"仍可作为面板操作者"时为 true
      */
-    private static boolean staysInside(CabinEntity cabin,PlayerEntity player) {
+    private static boolean staysInside(AbstractCabinEntity cabin,PlayerEntity player) {
         return !player.isSpectator() && !player.hasVehicle()
                 && Math.abs(player.getX()-cabin.getX())<=KEEP_HORIZONTAL
                 && Math.abs(player.getZ()-cabin.getZ())<=KEEP_HORIZONTAL
@@ -195,7 +227,7 @@ public class ElevatorScreen extends Screen {
      *
      * @param cabin 面板绑定的轿厢；为 null（实体暂时未同步）时两个键都禁用
      */
-    private void updateDoorButtons(CabinEntity cabin) {
+    private void updateDoorButtons(AbstractCabinEntity cabin) {
         boolean atStation=false;
         if(cabin!=null) for(BlockPos stop:stops) if(parkedAt(cabin,stop.getY())) { atStation=true; break; }
         // 开门：只有"停稳在某一层"才可用（运行途中经过楼层时不能按，也不会闪一下可用）
@@ -216,7 +248,7 @@ public class ElevatorScreen extends Screen {
      * @param cabin 轿厢
      * @return 已经停稳时为 true
      */
-    private static boolean stopped(CabinEntity cabin) {
+    private static boolean stopped(AbstractCabinEntity cabin) {
         return cabin.phase()!=ElevatorController.Phase.MOVING || !cabin.hasTarget();
     }
 
@@ -227,7 +259,7 @@ public class ElevatorScreen extends Screen {
      * @param stationY 站点高度（方块 Y，格）
      * @return 正停在该站点时为 true
      */
-    private static boolean parkedAt(CabinEntity cabin,int stationY) {
+    private static boolean parkedAt(AbstractCabinEntity cabin,int stationY) {
         return stopped(cabin) && Math.abs(cabin.getY()-stationY)<=ElevatorParameters.SYNC_POSITION_EPSILON;
     }
 
@@ -251,7 +283,7 @@ public class ElevatorScreen extends Screen {
         int floor=cabin==null?0:cabin.floorNumber();
         context.fill(width/2-26,panelTop+19,width/2+26,panelTop+37,FLOOR_PANEL_COLOR);
         context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.floor",floor>0?Integer.toString(floor):"--"),
+                Text.translatable("screen.easyelevator.floor",FloorIndicator.format(floor)),
                 width/2,panelTop+24,FLOOR_TEXT_COLOR);
         if(cabin!=null) {
             // 状态行："Y 坐标（格，保留 1 位小数）+ Phase 翻译键 phase.easyelevator.<小写阶段名>"。
@@ -292,28 +324,28 @@ public class ElevatorScreen extends Screen {
      * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
      */
     private final class StationButton extends ButtonWidget {
-        private final int floor;    // 楼层编号（1 = 最底层），同时是按钮上的数字
+        private final String label;  // 楼层编号文本（基准层 1、其上 2,3…、其下 B1,B2…），同时是按钮上的字
         private final int stationY; // 该站点高度（方块 Y，格），用于判断"轿厢当前停靠层"
         private final long packed;  // 站点根方块的打包坐标，用于与停靠计划比对
 
         /**
          * @param x 按钮左上角 X（像素）
          * @param y 按钮左上角 Y（像素）
-         * @param floor 楼层编号（1 起），印在按钮上
+         * @param label 楼层编号文本（例如 "1"、"B2"），印在按钮上
          * @param stationY 站点高度（方块 Y，格），用于当前层高亮与提示
          * @param packed 站点根方块的打包坐标（{@code BlockPos.asLong()}），用于停靠计划高亮
          * @param tooltip 悬停提示（楼层编号 + 具体高度）
          * @param onPress 点击回调：发送 SelectStop 请求
          */
-        StationButton(int x,int y,int floor,int stationY,long packed,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(Integer.toString(floor)),onPress,DEFAULT_NARRATION_SUPPLIER);
-            this.floor=floor; this.stationY=stationY; this.packed=packed;
+        StationButton(int x,int y,String label,int stationY,long packed,Text tooltip,PressAction onPress) {
+            super(x,y,BUTTON,BUTTON,Text.literal(label),onPress,DEFAULT_NARRATION_SUPPLIER);
+            this.label=label; this.stationY=stationY; this.packed=packed;
             setTooltip(Tooltip.of(tooltip));
         }
 
         /** @return 轿厢是否正停在这一层（必须已停稳：运行途中经过某一层不算，也不会闪一下绿色）。 */
         private boolean isCurrentFloor() {
-            CabinEntity cabin=cabin();
+            AbstractCabinEntity cabin=cabin();
             return cabin!=null && parkedAt(cabin,stationY);
         }
 
@@ -344,7 +376,7 @@ public class ElevatorScreen extends Screen {
         @Override
         public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
             builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,
-                    Text.translatable("screen.easyelevator.station",floor,stationY));
+                    Text.translatable("screen.easyelevator.station",label,stationY));
         }
     }
 }

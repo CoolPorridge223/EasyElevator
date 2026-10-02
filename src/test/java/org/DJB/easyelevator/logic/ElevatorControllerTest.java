@@ -20,27 +20,39 @@ import java.util.Set;
  */
 public final class ElevatorControllerTest {
     /**
-     * 最小可用的假 Environment + 假轿厢：用字段代替世界查询，用一个控制器实例代替 CabinEntity。
-     * 与服务端真实注入点（CabinEntity#tick 里的匿名 Environment）语义一一对应：
+     * 最小可用的假 Environment + 假轿厢：用字段代替世界查询，用一个控制器实例代替 AbstractCabinEntity。
+     * 与服务端真实注入点（AbstractCabinEntity#tick 里的匿名 Environment）语义一一对应：
      * valid = 目的站的楼层门是否仍然完整且同线路，canMove = 井道/线路是否可通过，
      * doorwayBlocked = 门口是否有活体（防夹），arrived = 到站事件。
      */
     private static final class Simulation implements ElevatorController.Environment {
-        final ElevatorController control = new ElevatorController(); // 被测状态机
+        final ElevatorController control; // 被测状态机（速度由构造参数决定：普通 0.20 / 高速 0.50 格/刻）
         final Set<ElevatorController.Stop> valid = new HashSet<>(); // 当前“世界里仍存在”的站点；Stop.id 是 BlockPos.asLong()
         final List<Integer> arrivals = new ArrayList<>(); // 记录 arrived() 回调的站点高度（格），用于断言到站顺序与次数
         double y; boolean clear=true, doorway; // y = 轿厢底部高度（格，绝对 double）；clear = 井道畅通；doorway = 门口有活体
+        /** 以普通轿厢速度（{@link ElevatorParameters#SPEED}）构造仿真。 */
+        Simulation() { this(ElevatorParameters.SPEED); }
+        /** 以指定速度构造仿真：高速轿厢用 {@link ElevatorParameters#HIGH_SPEED}，用来验证"只有速度不同"。 */
+        Simulation(double speed) { control = new ElevatorController(speed); }
         /** 登记一个站点（视为门完整、线路未变、区块已加载）并发出请求；y 是发出请求时的轿厢高度，用于“已在当前楼层”判定。 */
         void request(long id,int floor) { var s=new ElevatorController.Stop(id,floor);valid.add(s);check(control.request(s,y),"request accepted"); }
         /**
+         * 按一次楼层门上的方向按钮（厅外呼叫）：登记站点后提交带方向的呼叫。
+         * 与真实门一样，呼叫会一直保留在状态机里（门上的按钮保持点亮），直到轿厢到站开门。
+         */
+        void callHall(long id,int floor,boolean up) {
+            valid.add(new ElevatorController.Stop(id,floor));
+            check(control.callHall(new ElevatorController.HallCall(id,floor,up),y),"hall call accepted");
+        }
+        /**
          * 推进给定刻数，同时在每一刻复查两条核心不变量：
-         * 单刻位移不超过 SPEED（0.20 格/刻），以及门未完全关闭（door() != 0）时位置绝不变化。
+         * 单刻位移不超过本车速度（普通 0.20 / 高速 0.50 格/刻），以及门未完全关闭（door() != 0）时位置绝不变化。
          */
         void ticks(int count) {
             for(int i=0;i<count;i++) {
                 double old=y; y=control.tick(y,this);
-                // 1e-6 格的容差用于吸收 double 加法误差；SPEED 本身是 0.20 格/刻。
-                check(Math.abs(y-old)<=ElevatorController.SPEED+.000001,"speed bounded");
+                // 1e-6 格的容差用于吸收 double 加法误差；速度取本实例自己的步长，因此高速车也受同一条不变量约束。
+                check(Math.abs(y-old)<=control.speed()+.000001,"speed bounded");
                 if(y!=old) check(control.door()==0,"never moves with doors open");
             }
         }
@@ -67,6 +79,35 @@ public final class ElevatorControllerTest {
         // 必须恰好走 4 格（0.20 格/刻 × 20 刻），说明降级后重新起步不丢速度、也没有额外停顿。
         speed.control.restore(ElevatorController.Phase.MOVING,0,new ElevatorController.Stop(1,100),List.of());
         speed.ticks(20);check(Math.abs(speed.y-4)<1e-12,"20 moving ticks travel exactly four blocks");
+        // 三型轿厢共用一个状态机，差别只有注入的速度：普通/观光 0.20、高速 = 2.5 倍 = 0.50 格/刻 = 10 格/秒。
+        // 速度是实例状态（构造时注入、运行中不变），因此不同型号互不影响。
+        check(ElevatorParameters.HIGH_SPEED == ElevatorParameters.SPEED * 2.5,"high speed is exactly 2.5x the standard speed");
+        check(ElevatorParameters.HIGH_SPEED == .50,"high speed is ten blocks per second");
+        check(new ElevatorController().speed() == ElevatorParameters.SPEED,"default speed is the standard cabin speed");
+        check(new ElevatorController(ElevatorParameters.HIGH_SPEED).speed() == ElevatorParameters.HIGH_SPEED,"speed is injected per instance");
+        // 非正数/非有限的速度退化为默认值：坏存档或误改常量都不会让轿厢永远到不了站。
+        check(new ElevatorController(0).speed() == ElevatorParameters.SPEED
+                && new ElevatorController(Double.NaN).speed() == ElevatorParameters.SPEED,"invalid speed falls back to the default");
+        var fast = new Simulation(ElevatorParameters.HIGH_SPEED); fast.request(1,100);
+        fast.control.restore(ElevatorController.Phase.MOVING,0,new ElevatorController.Stop(1,100),List.of());
+        // 同样 20 刻：高速车走 0.50 × 20 = 10 格，正好是普通车的 2.5 倍（4 格）。
+        fast.ticks(20);check(Math.abs(fast.y-10)<1e-12,"20 high-speed ticks travel exactly ten blocks");
+        // 两车并存时速度互不串台：高速车跑完 20 刻后，新建的普通车 20 刻仍然只走 4 格。
+        var standardAfterFast = new Simulation(); standardAfterFast.request(1,100);
+        standardAfterFast.control.restore(ElevatorController.Phase.MOVING,0,new ElevatorController.Stop(1,100),List.of());
+        standardAfterFast.ticks(20);check(Math.abs(standardAfterFast.y-4)<1e-12,"per-instance speed does not leak between cabins");
+        // 高速车最后一步同样必须精确吸附到站点高度（不跨过、不停在差一点的位置）：单步 0.5 格 < 1 格，所以整格站点不会被跳过。
+        for(double remaining:new double[]{.49999999, .00001, .00000005}) {
+            var preciseFast = new Simulation(ElevatorParameters.HIGH_SPEED); preciseFast.y=5-remaining;
+            // 先 request 一次把站点登记进 valid 集合（真实世界里等价于"这扇门确实存在"），否则 tick 开头
+            // 会把目的站判为已失效；随后 restore 显式写入目标，直接考察最后一步的对齐行为。
+            preciseFast.request(1,5);
+            preciseFast.control.restore(ElevatorController.Phase.MOVING,0,new ElevatorController.Stop(1,5),List.of());
+            preciseFast.ticks(1);check(preciseFast.y==5 && preciseFast.arrivals.equals(List.of(5)),"high-speed sub-step exact arrival without overshoot");
+        }
+        // 高速车同样受"门未关闭不得移动"约束：门开着时一步都不能走。
+        var fastDoor = new Simulation(ElevatorParameters.HIGH_SPEED); fastDoor.request(1,20); fastDoor.ticks(20); double still=fastDoor.y;
+        check(still==0 && fastDoor.control.phase()==ElevatorController.Phase.OPEN,"high-speed cabin waits with doors open");
         // 最后一步的余量取三种量级：略小于 SPEED、1e-5 格、以及 5e-8 格（小于 POSITION_EPSILON = 1e-7 格）。
         // 都不能过冲，也不能因“步长太小”而卡住不动。
         for(double remaining:new double[]{.19999999, .00001, .00000005}) {
@@ -77,9 +118,10 @@ public final class ElevatorControllerTest {
             // 单刻内必须精确落在 5.0（等于站点高度，而不是“接近”），并恰好触发一次到站回调。
             precise.ticks(1);check(precise.y==5 && precise.arrivals.equals(List.of(5)),"sub-step exact arrival without overshoot or deadzone");
         }
-        // 同一目的站重复请求只保留一次；不同高度的请求按调用顺序（FIFO）处理，且支持下行。
+        // 同一目的站重复请求只保留一次；不同高度的请求按"运行方向上的位置顺序"停靠（真实电梯不会越过
+        // 同方向的楼层再去更远的那层），并且支持下行。
         var s=new Simulation();s.request(1,5);s.request(1,5);s.request(2,-3);s.ticks(400);
-        check(s.arrivals.equals(List.of(5,-3)),"FIFO, deduplication, bidirectional exact arrival");
+        check(s.arrivals.equals(List.of(5,-3)),"deduplication, position-ordered service, bidirectional exact arrival");
         // 到站后门完全打开并进入 OPEN（停留 DWELL_TICKS = 40 刻）。
         check(s.y==-3 && s.control.phase()==ElevatorController.Phase.OPEN,"ends open at destination");
 
@@ -106,13 +148,13 @@ public final class ElevatorControllerTest {
         s=new Simulation();s.request(1,10);s.request(2,5);s.valid.remove(new ElevatorController.Stop(2,5));s.ticks(300);
         check(s.arrivals.equals(List.of(10)),"removed queued stop pruned");
 
-        // 存档恢复：把 (Phase, Door, Target, Queue) 交给一个全新控制器，等价于 CabinEntity 的 NBT 载入。
+        // 存档恢复：把 (Phase, Door, Target, Queue) 交给一个全新控制器，等价于 AbstractCabinEntity 的 NBT 载入。
         // 若存档时正在 MOVING，restore() 会降级为 BLOCKED 并关门，因此必须先重验线路再继续；
-        // 这里线路仍然有效，于是行程与队列都完整保留（先到 8 再到 2）。
-        s=new Simulation();s.request(1,8);s.request(2,2);s.ticks(85);
+        // 这里线路仍然有效，于是行程与队列都完整保留（存档时正驶向 2 层，8 层还在队里，读档后依次停靠）。
+        s=new Simulation();s.request(1,2);s.request(2,8);s.ticks(65);
         var restored=new Simulation();restored.valid.addAll(s.valid);restored.y=s.y;
         restored.control.restore(s.control.phase(),s.control.door(),s.control.target(),s.control.pending());
-        restored.ticks(400);check(restored.arrivals.equals(List.of(8,2)),"reload preserves trip and queue");
+        restored.ticks(400);check(restored.arrivals.equals(List.of(2,8)),"reload preserves trip and queue");
 
         // 请求当前所在楼层：只重置停留计时，不入队、不关门、不产生到站回调。
         s=new Simulation();s.request(1,0);s.ticks(100);check(s.arrivals.isEmpty() && s.control.phase()==ElevatorController.Phase.OPEN,"current floor remains open");
@@ -147,7 +189,71 @@ public final class ElevatorControllerTest {
         check(s.y==10 && s.arrivals.contains(10),"departure resumes after the open button is released");
         // 显示轨迹（客户端乘客镜头与轿厢模型共用）的插值、缺包、乱序、精度与复位行为。
         testTimeline();
-        System.out.println("PASS: 4 blocks/sec, sub-step exact arrival, frame interpolation/precision, FIFO/dedup, up/down arrival, door interlock, obstacle pause/resume, anti-crush, manual door open/close, deleted stations, save/reload, current floor, queue limit.");
+        // 厅外方向呼叫（楼层门上的上/下按钮）与集选调度。
+        testHallCalls();
+        System.out.println("PASS: 4 blocks/sec, 2.5x high-speed cabin (10 blocks/sec) with identical door/lock/arrival rules, sub-step exact arrival, frame interpolation/precision, position-ordered service, up/down arrival, door interlock, obstacle pause/resume, anti-crush, manual door open/close, deleted stations, save/reload, current floor, queue limit, directional hall calls (collective control, no starvation, button lit until arrival), en-route reordering (a nearer same-direction request inserted while moving is served first).");
+    }
+    /**
+     * 厅外呼叫（楼层门的上行 / 下行按钮）的调度行为测试。
+     *
+     * <p>覆盖现实电梯的"集选控制"要点：轿厢内选站是目的层（任意方向都服务），厅外呼叫带方向、只被顺路的
+     * 那趟接走；呼叫在到站开门前一直保留（门上按钮保持点亮），到站即清；反方向的孤立呼叫也必须最终被服务
+     * （绝不饥饿、绝不空转）。时间单位仍是刻，高度单位是格。
+     */
+    private static void testHallCalls() {
+        // ① 顺路：车在 0 层，轿厢内先选 10 层，厅外按 5 层"上行"、8 层"下行"。
+        //    上行途中只接上行呼叫与选站 → 先 5 再 10；到顶掉头下行时才接 8 的下行呼叫。
+        var s=new Simulation();
+        s.request(3,10); s.callHall(1,5,true); s.callHall(2,8,false);
+        s.ticks(700);
+        check(s.arrivals.equals(List.of(5,10,8)),"collective control: serve up calls and car calls going up, the down call on the way back");
+        check(s.control.hallCalls().isEmpty(),"every hall call ends up served");
+        check(s.control.travel()==ElevatorController.Travel.NONE,"idle resets the service direction");
+        // ② 反方向孤立呼叫：车在 2 层、只有 8 层的"下行"呼叫。车必须空车上行到 8 才能接上他，
+        //    到站即清（不允许因为方向不一致而永远不派车）。
+        s=new Simulation(); s.y=2; s.callHall(1,8,false);
+        s.ticks(400);
+        check(s.arrivals.equals(List.of(8)),"an isolated opposite-direction call is still served (no starvation)");
+        check(s.control.hallCalls().isEmpty(),"the isolated call is cleared on arrival");
+        // ③ 按钮保持点亮：登记后一直留在状态机里，直到轿厢真的到站开门才清掉。
+        s=new Simulation(); s.callHall(1,5,true);
+        s.ticks(80);
+        check(s.control.hallCalls().size()==1,"the button stays lit while the car is on its way");
+        s.ticks(300);
+        check(s.control.hallCalls().isEmpty()&&s.arrivals.equals(List.of(5)),"the call clears exactly when the car arrives");
+        // ④ 车已停在本层且门开着时按呼叫：当场算完成（只续满停留），不会"先红一下再灭"。
+        s=new Simulation(); s.y=5; s.valid.add(new ElevatorController.Stop(1,5));
+        check(s.control.callHall(new ElevatorController.HallCall(1,5,true),5),"a call at the open floor completes at once");
+        check(s.control.hallCalls().isEmpty()&&s.control.phase()==ElevatorController.Phase.OPEN,"no pending call is left behind");
+        // ⑤ 同一站点同一方向重复按只保留一条；上/下是两条独立呼叫。
+        s=new Simulation(); s.callHall(1,5,true); s.callHall(1,5,true);
+        check(s.control.hallCalls().size()==1,"repeated presses of the same button merge");
+        s.callHall(1,5,false);
+        check(s.control.hallCalls().size()==2,"up and down calls at one station are independent");
+        // ⑥ 楼层门被拆：该站的呼叫随之取消（按钮所在的门都没了）。
+        s=new Simulation(); s.callHall(1,5,true); s.valid.clear(); s.ticks(1);
+        check(s.control.hallCalls().isEmpty(),"removing the landing door cancels its hall calls");
+        // ⑦ 存档往返：呼叫与服务方向一起保存，读档后继续服务（门还没被拆）。
+        s=new Simulation(); s.callHall(1,5,true); s.ticks(60);
+        var restored=new Simulation(); restored.valid.addAll(s.valid);
+        restored.control.restore(s.control.phase(),s.control.door(),s.control.target(),s.control.pending(),
+                s.control.hallCalls(),s.control.travel());
+        restored.ticks(400);
+        check(restored.arrivals.equals(List.of(5)),"hall calls survive save/reload and are served after it");
+        check(restored.control.hallCalls().isEmpty(),"the reloaded call is cleared on arrival");
+        // ⑧ 顺路重排（运行途中插入）：车已驶向 10 层，走到 2 层时有人在 5 层按了上行 —— 必须先在 5 层停，
+        //    而不是径直开过（这是"插入即重排"的核心行为）。
+        s=new Simulation(); s.request(3,10); s.ticks(65);           // 65 刻：门已关好、车刚离开 0 层（y=1.0）
+        check(s.y>0&&s.y<10,"car is on its way to the far floor");
+        s.callHall(1,5,true);                                       // 运行途中按 5 层上行
+        s.ticks(400);
+        check(s.arrivals.equals(List.of(5,10)),"a nearer on-the-way call overtakes the current destination");
+        // ⑨ 同样地，运行途中按轿厢内选站也会被插到前面：先 5 后 10。
+        s=new Simulation(); s.request(3,10); s.ticks(65); s.request(4,5); s.ticks(400);
+        check(s.arrivals.equals(List.of(5,10)),"a nearer car call inserted en route is served first");
+        // ⑩ 反方向的呼叫不会被"顺路"改道：车向上驶向 10 层时，5 层的下行呼叫要等掉头后才接。
+        s=new Simulation(); s.request(3,10); s.ticks(65); s.callHall(1,5,false); s.ticks(400);
+        check(s.arrivals.equals(List.of(10,5)),"an opposite-direction call is not served on the way up");
     }
     /**
      * MotionTimeline（客户端乘客镜头与轿厢模型共用的显示轨迹）的行为测试。

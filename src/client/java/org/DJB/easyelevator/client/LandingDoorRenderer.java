@@ -19,6 +19,7 @@ import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.LandingDoorGeometry;
+import org.DJB.easyelevator.logic.FloorIndicator;
 import org.joml.Matrix4f;
 
 /**
@@ -104,11 +105,12 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      */
     private static void drawFloorDisplay(LandingDoorBlockEntity door,BlockState state,MatrixStack matrices,VertexConsumerProvider buffers,int light) {
         int floor=door.cabinFloor();
-        if(floor<=0) return; // 本线路没有轿厢：什么都不画，避免显示成"0 层"
+        if(floor==0) return; // 本线路没有轿厢：什么都不画，避免显示成"0 层"（负数 = 地下 B1、B2…，要显示）
         Direction facing=state.get(LandingDoorBlock.FACING);
         TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
         Text statusText=Text.translatable("status.easyelevator."+door.cabinStatus().key());
-        Text floorText=Text.literal(Integer.toString(floor));
+        // 楼层号统一走 FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…，与选站面板、轿厢内面板同一口径。
+        Text floorText=Text.literal(FloorIndicator.format(floor));
         int statusWidth=textRenderer.getWidth(statusText), floorWidth=textRenderer.getWidth(floorText);
         float start=-(statusWidth+STATUS_GAP+floorWidth)/2f; // 整组居中的起点
         // 位置：从方块中心沿朝向推出"半格（到门面）+ 0.02 格"；门面在朝向轴上正向为 1.0、反向为 0.0，

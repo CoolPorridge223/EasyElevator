@@ -8,7 +8,7 @@ import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -19,7 +19,7 @@ import java.util.List;
  * <p>职责：描述一条线路（line）——一段垂直连续、朝向一致的电梯轨道列，以及这条线上扫描出的站点（stop）列表。
  * 本身是纯数据 record，但 {@link #scan} 与 {@link #matches} 需要读取世界。</p>
  *
- * <p>在整体架构中的位置：ElevatorRailBlock 与 CabinEntity 都通过 scan() 从被点击/自身所在的轨道方块
+ * <p>在整体架构中的位置：ElevatorRailBlock 与 AbstractCabinEntity 都通过 scan() 从被点击/自身所在的轨道方块
  * 反推出整条线路，再用它确定运行范围、站点集合与轿厢归属；线路朝向同时是轿厢所在方向与轿厢门朝向。</p>
  *
  * <p>关键不变量：x/z 固定，不支持转弯/斜轨/分岔；[bottom, top] 范围内每一格都是同朝向电梯轨道；
@@ -97,8 +97,8 @@ public record ElevatorLine(int x, int z, int bottom, int top, Direction facing, 
      * 说明：先用略大于井道的包围盒粗筛（X/Z 各 ±2 格，Y 覆盖 bottom-1 到 top+4，因为轿厢是 3x3x3），
      * 再按 railX/railZ 与 Y 范围精筛；Y 上下各放宽 0.01 格以容忍双精度位置误差。
      */
-    public List<CabinEntity> cabins(World world) {
-        return world.getEntitiesByClass(CabinEntity.class, new Box(centerX()-2, bottom-1, centerZ()-2, centerX()+2, top+4, centerZ()+2),
+    public List<AbstractCabinEntity> cabins(World world) {
+        return world.getEntitiesByClass(AbstractCabinEntity.class, new Box(centerX()-2, bottom-1, centerZ()-2, centerX()+2, top+4, centerZ()+2),
                 c -> !c.isRemoved() && c.railX() == x && c.railZ() == z && c.getY() >= bottom - .01 && c.getY() <= top + .01);
     }
 }

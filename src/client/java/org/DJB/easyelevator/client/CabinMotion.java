@@ -3,7 +3,7 @@ package org.DJB.easyelevator.client;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.MathHelper;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.MotionTimeline;
 import org.DJB.easyelevator.network.ElevatorNetworking;
@@ -18,9 +18,9 @@ import java.util.WeakHashMap;
  */
 public final class CabinMotion {
     // 弱键映射：轿厢实体被移除或区块卸载后 Track 可被 GC 回收，避免客户端长时间积累无效时间线。
-    private static final Map<CabinEntity, Track> TRACKS = new WeakHashMap<>();
+    private static final Map<AbstractCabinEntity, Track> TRACKS = new WeakHashMap<>();
     // 本机玩家当前乘坐的轿厢：仅当收到带有效 riderOffset 的 MotionFrame 时记录，供相机平滑使用；不参与任何逻辑判定。
-    private static CabinEntity localRiderCabin;
+    private static AbstractCabinEntity localRiderCabin;
     /** 单个轿厢的客户端运动状态：时间线 + 最近一次同步的快照。 */
     private static final class Track {
         final MotionTimeline timeline = new MotionTimeline();
@@ -40,7 +40,7 @@ public final class CabinMotion {
         var client = MinecraftClient.getInstance();
         // 世界未就绪、Y 非有限值、或 id 已不对应轿厢（实体被移除/复用）时直接丢弃，防止脏样本污染时间线。
         if (client.world == null || !Double.isFinite(frame.y())
-                || !(client.world.getEntityById(frame.entityId()) instanceof CabinEntity cabin)) return;
+                || !(client.world.getEntityById(frame.entityId()) instanceof AbstractCabinEntity cabin)) return;
         Track track = TRACKS.computeIfAbsent(cabin, c -> new Track());
         long now = client.world.getTime();
         // MotionTimeline.add 内部用 (本地刻 - 服务端刻) 对齐时钟；首个样本用实体当前 Y 作为"前一刻"锚点。
@@ -57,7 +57,7 @@ public final class CabinMotion {
      * @return 同步数据新鲜时返回时间线在"本地刻 - INTERPOLATION_DELAY_TICKS"处的插值值，否则回退原版插值
      * 副作用：无（不写实体位置、不发包），服务端权威位置保持原样。
      */
-    public static double renderY(CabinEntity cabin, float delta) {
+    public static double renderY(AbstractCabinEntity cabin, float delta) {
         double vanilla = MathHelper.lerp(delta, cabin.lastRenderY, cabin.getY());
         Track track = TRACKS.get(cabin);
         // 超过 MOTION_STALE_TICKS 未收到包（掉线、卡顿、超出追踪范围）即放弃时间线，退回原版相对位置渲染；
@@ -73,7 +73,7 @@ public final class CabinMotion {
      */
     public static double cameraOffset(Entity focused, float delta) {
         var client = MinecraftClient.getInstance();
-        CabinEntity cabin = localRiderCabin;
+        AbstractCabinEntity cabin = localRiderCabin;
         // 只处理本机第一人称主体；其它实体视角（副相机、回放）不介入，防止污染旁观视角。
         if (focused != client.player || cabin == null) return 0;
         Track track = TRACKS.get(cabin);

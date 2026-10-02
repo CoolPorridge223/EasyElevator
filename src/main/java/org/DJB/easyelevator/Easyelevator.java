@@ -19,7 +19,10 @@ import net.minecraft.util.Identifier;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.HighSpeedCabinEntity;
+import org.DJB.easyelevator.entity.ObservationCabinEntity;
 import org.DJB.easyelevator.item.CabinItem;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 
@@ -28,10 +31,13 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  *
  * <p>在整体架构中的位置：本类只负责“把对象登记进原版注册表并暴露全局单例”，不含任何电梯逻辑；
  * 运行逻辑由 {@link org.DJB.easyelevator.logic.ElevatorController}（纯 Java 状态机）与
- * {@link org.DJB.easyelevator.entity.CabinEntity}（世界适配层）承担。</p>
+ * {@link org.DJB.easyelevator.entity.AbstractCabinEntity}（世界适配层，三个型号的父类）承担。</p>
  *
- * <p>三个游戏内组件：电梯轨道 {@link #RAIL}、楼层电梯门 {@link #LANDING_DOOR}（注册 ID 仍为
- * {@code easyelevator:call_button}）、电梯轿厢 {@link #CABIN}（实体）与 {@link #CABIN_ITEM}（生成用物品）。</p>
+ * <p>游戏内组件：电梯轨道 {@link #RAIL}、楼层电梯门 {@link #LANDING_DOOR}（注册 ID 仍为
+ * {@code easyelevator:call_button}），以及三种共用父类 {@link AbstractCabinEntity} 的轿厢——
+ * 普通 {@link #CABIN} / {@link #CABIN_ITEM}、高速 {@link #HIGH_SPEED_CABIN} / {@link #HIGH_SPEED_CABIN_ITEM}
+ * （速度 2.5 倍，外观不变）、观光 {@link #OBSERVATION_CABIN} / {@link #OBSERVATION_CABIN_ITEM}
+ * （四面玻璃，性能不变）。三种轿厢的实体 ID 与物品 ID 一一对应。</p>
  *
  * <p>注册顺序约束：所有注册都必须在 {@link #onInitialize()} 内、且晚于类加载时创建的静态单例字段，
  * 否则可能出现“注册了未初始化的实例”或 Fabric API 未就绪的问题。注册 ID 一经发布不可更改，
@@ -54,10 +60,8 @@ public class Easyelevator implements ModInitializer {
      */
     public static final BlockEntityType<LandingDoorBlockEntity> LANDING_DOOR_BE = Registry.register(Registries.BLOCK_ENTITY_TYPE,
             id("landing_door"), FabricBlockEntityTypeBuilder.create(LandingDoorBlockEntity::new, LANDING_DOOR).build());
-    /** 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。 */
-    public static final Item CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1));
     /**
-     * 电梯轿厢实体类型单例。
+     * 普通电梯轿厢实体类型单例（注册 ID {@code easyelevator:cabin}）。
      *
      * <p>碰撞箱固定 3x3（宽 3.0 格、高 3.0 格）；{@code maxTrackingRange(10)} 单位为区块，
      * 即 10 * 16 = 160 格；{@code trackingTickInterval(1)} 表示每刻都向追踪者同步位置，
@@ -66,6 +70,36 @@ public class Easyelevator implements ModInitializer {
     public static final EntityType<CabinEntity> CABIN = Registry.register(Registries.ENTITY_TYPE, id("cabin"),
             EntityType.Builder.<CabinEntity>create(CabinEntity::new, SpawnGroup.MISC)
                     .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:cabin"));
+    /**
+     * 高速电梯轿厢实体类型单例（注册 ID {@code easyelevator:high_speed_cabin}）。
+     *
+     * <p>与 {@link #CABIN} 逐项相同，只是实体类在构造时把速度设为 {@link
+     * org.DJB.easyelevator.logic.ElevatorParameters#HIGH_SPEED}（2.5 倍 = 10 格/秒）；
+     * 尺寸、追踪范围、渲染外观与普通轿厢完全一致，因此旧建筑与井道无需任何改动。</p>
+     */
+    public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN = Registry.register(Registries.ENTITY_TYPE, id("high_speed_cabin"),
+            EntityType.Builder.<HighSpeedCabinEntity>create(HighSpeedCabinEntity::new, SpawnGroup.MISC)
+                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:high_speed_cabin"));
+    /**
+     * 观光电梯轿厢实体类型单例（注册 ID {@code easyelevator:observation_cabin}）。
+     *
+     * <p>碰撞与追踪参数与 {@link #CABIN} 相同（性能一致），差别只在客户端渲染：四面墙与门扇
+     * 用半透明玻璃材质绘制，保留四个角柱、地板与顶板。</p>
+     */
+    public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN = Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"),
+            EntityType.Builder.<ObservationCabinEntity>create(ObservationCabinEntity::new, SpawnGroup.MISC)
+                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:observation_cabin"));
+    /**
+     * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
+     *
+     * <p>三个物品只在"生成哪一种轿厢 / 回收哪一件"上不同，逻辑共用 {@link CabinItem}；
+     * 实体类型用 Supplier 延迟读取，避免与上方静态字段的初始化顺序耦合。</p>
+     */
+    public static final Item CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> CABIN);
+    /** 高速轿厢生成物品单例：右键轨道生成高速轿厢（外观与普通一致，速度 2.5 倍）。 */
+    public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> HIGH_SPEED_CABIN);
+    /** 观光轿厢生成物品单例：右键轨道生成观光轿厢（四面玻璃，性能与普通一致）。 */
+    public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> OBSERVATION_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
     /** 到站音效单例：轿厢精确到站（误差 <= 1e-7 格）时播放，音量使用 EVENT_VOLUME = 0.8f。 */
@@ -128,12 +162,18 @@ public class Easyelevator implements ModInitializer {
         // 使旧存档中的方块状态、旧物品堆以及旧配方/掉落表在升级后继续有效。
         block("call_button", LANDING_DOOR);
         Registry.register(Registries.ITEM, id("cabin"), CABIN_ITEM);
-        // 自定义物品栏分组：图标固定用轿厢物品；entries 回调在分组内容被构建时执行，
-        // 因此这里只放入“可被玩家直接获得”的三件物品，避免依赖注册顺序或每次打开物品栏都重建列表。
+        Registry.register(Registries.ITEM, id("high_speed_cabin"), HIGH_SPEED_CABIN_ITEM);
+        Registry.register(Registries.ITEM, id("observation_cabin"), OBSERVATION_CABIN_ITEM);
+        // 自定义物品栏分组：图标固定用普通轿厢物品；entries 回调在分组内容被构建时执行，
+        // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、三种轿厢），
+        // 避免依赖注册顺序或每次打开物品栏都重建列表。
         Registry.register(Registries.ITEM_GROUP, id("main"), FabricItemGroup.builder()
                 .displayName(Text.translatable("itemGroup.easyelevator"))
                 .icon(() -> new ItemStack(CABIN_ITEM))
-                .entries((context, entries) -> { entries.add(RAIL); entries.add(LANDING_DOOR); entries.add(CABIN_ITEM); }).build());
+                .entries((context, entries) -> {
+                    entries.add(RAIL); entries.add(LANDING_DOOR);
+                    entries.add(CABIN_ITEM); entries.add(HIGH_SPEED_CABIN_ITEM); entries.add(OBSERVATION_CABIN_ITEM);
+                }).build());
         // 网络注册必须晚于实体注册：payload 与处理逻辑会按实体 ID 查找已登记的轿厢。
         ElevatorNetworking.register();
     }

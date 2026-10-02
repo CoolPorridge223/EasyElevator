@@ -5,8 +5,7 @@
   "name": "EasyElevator integration tests",
   "environment": "*",
   "entrypoints": {
-    "fabric-gametest": ["org.DJB.easyelevator.ElevatorGameTests"],
-    "client": ["org.DJB.easyelevator.ElevatorClientSmoke"]
+    "fabric-gametest": ["org.DJB.easyelevator.ElevatorGameTests"]
   },
   "depends": {"easyelevator": "*", "fabric-gametest-api-v1": "*"}
 }

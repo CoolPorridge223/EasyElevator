@@ -56,6 +56,70 @@ public final class BoxMesh {
     }
 
     /**
+     * 画一个<b>零厚度的矩形面</b>（单位：格）：与 YZ 平面平行（X 固定），由 Y、Z 两个方向的范围定义。
+     *
+     * <p>为什么需要单面：玻璃这类"只有一层可见表面"的几何如果做成薄板长方体，正反两面都会被画一遍，
+     * 半透明叠加后透明度翻倍、画面发灰；做成单面则每层玻璃只叠一次，与真实玻璃窗一致。
+     * 代价是单面在<b>剔除背面</b>的层上从背面看不见，因此调用方必须配合禁止剔除的层
+     * （本模组的观光玻璃层即 {@code DISABLE_CULLING}），否则从轿厢内侧看玻璃会整片消失。
+     *
+     * <p>法线固定取该轴的负方向：实体半透明着色用的是光照贴图，法线不参与着色，
+     * 这里给出一个确定值只是为了顶点格式完整、且与 {@link #cuboid} 的写法保持一致。
+     *
+     * @param m 渲染矩阵栈
+     * @param v 顶点消费者
+     * @param x 该面所在的 X 平面（格）
+     * @param y1 矩形在 Y 方向的一角（内部自动取 min/max，调用方不必保证顺序）
+     * @param z1 矩形在 Z 方向的一角
+     * @param y2 矩形在 Y 方向的另一角
+     * @param z2 矩形在 Z 方向的另一角
+     * @param light 打包后的光照值
+     * @param color 顶点颜色（ARGB）
+     */
+    public static void planeX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color) {
+        float lo=Math.min(y1,y2),hi=Math.max(y1,y2),a=Math.min(z1,z2),b=Math.max(z1,z2);
+        quad(m,v,light,color,-1,0,0,new float[]{x,lo,a,x,lo,b,x,hi,b,x,hi,a});
+    }
+
+    /**
+     * 画一个零厚度的矩形面（单位：格）：与 XZ 平面平行（Y 固定，即水平面），由 X、Z 的范围定义。
+     *
+     * @param m 渲染矩阵栈
+     * @param v 顶点消费者
+     * @param y 该面所在的 Y 平面（格）
+     * @param x1 矩形在 X 方向的一角
+     * @param z1 矩形在 Z 方向的一角
+     * @param x2 矩形在 X 方向的另一角
+     * @param z2 矩形在 Z 方向的另一角
+     * @param light 打包后的光照值
+     * @param color 顶点颜色（ARGB）
+     * @see #planeX(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     */
+    public static void planeY(MatrixStack m,VertexConsumer v,float y,float x1,float z1,float x2,float z2,int light,int color) {
+        float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(z1,z2),b=Math.max(z1,z2);
+        quad(m,v,light,color,0,-1,0,new float[]{lo,y,a,hi,y,a,hi,y,b,lo,y,b});
+    }
+
+    /**
+     * 画一个零厚度的矩形面（单位：格）：与 XY 平面平行（Z 固定，即竖直的正面/背面），由 X、Y 的范围定义。
+     *
+     * @param m 渲染矩阵栈
+     * @param v 顶点消费者
+     * @param z 该面所在的 Z 平面（格）
+     * @param x1 矩形在 X 方向的一角
+     * @param y1 矩形在 Y 方向的一角
+     * @param x2 矩形在 X 方向的另一角
+     * @param y2 矩形在 Y 方向的另一角
+     * @param light 打包后的光照值
+     * @param color 顶点颜色（ARGB）
+     * @see #planeX(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     */
+    public static void planeZ(MatrixStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color) {
+        float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(y1,y2),b=Math.max(y1,y2);
+        quad(m,v,light,color,0,0,-1,new float[]{lo,a,z,lo,b,z,hi,b,z,hi,a,z});
+    }
+
+    /**
      * 画一个四边形面。
      *
      * @param m 渲染矩阵栈

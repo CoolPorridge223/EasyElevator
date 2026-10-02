@@ -7,7 +7,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 import java.util.HashMap;
@@ -25,7 +25,12 @@ public class EasyelevatorClient implements ClientModInitializer {
     /** 客户端初始化。副作用：注册实体渲染器与两个 S2C 包处理器，并挂载客户端刻与断线事件回调；不改世界状态。 */
     @Override
     public void onInitializeClient() {
+        // 三种轿厢（普通 / 高速 / 观光）共用同一个渲染器：泛型参数取共同的父类，
+        // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙）由实体自身的 glassWalls() 决定，
+        // 而不是按实体类型分支——将来加型号时这里只需要多一行注册。
         EntityRendererRegistry.register(Easyelevator.CABIN,CabinRenderer::new);
+        EntityRendererRegistry.register(Easyelevator.HIGH_SPEED_CABIN,CabinRenderer::new);
+        EntityRendererRegistry.register(Easyelevator.OBSERVATION_CABIN,CabinRenderer::new);
         // 楼层门门扇是连续滑动的几何，方块模型做不到逐帧插值，因此交给方块实体渲染器绘制（门框仍由方块模型画）。
         BlockEntityRendererRegistry.register(Easyelevator.LANDING_DOOR_BE,LandingDoorRenderer::new);
         // 网络回调不在主线程：所有客户端状态修改都必须回到客户端线程（context.client().execute）执行，避免数据竞争。
@@ -39,14 +44,23 @@ public class EasyelevatorClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.PanelState.ID,(payload,context)->
                 context.client().execute(()->{
                     if(context.client().currentScreen instanceof ElevatorScreen screen && screen.entityId()==payload.entityId())
-                        screen.applyPlanned(payload.planned());
+                        screen.applyState(payload.planned(),payload.baseFloorY());
+                }));
+        // 厅外呼叫面板：右键楼层门时服务端下发 OpenHallPanel，这里直接开界面（内容全部来自包，不信任本地状态）。
+        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenHallPanel.ID,(payload,context)->
+                context.client().execute(()->context.client().setScreen(new LandingDoorScreen(payload))));
+        // 点亮状态刷新（登记成功 / 轿厢到站清扫 / 门被拆）：只更新"已经为这个站点打开的面板"，绝不会主动弹界面。
+        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.HallPanelState.ID,(payload,context)->
+                context.client().execute(()->{
+                    if(context.client().currentScreen instanceof LandingDoorScreen screen && screen.station().equals(payload.station()))
+                        screen.applyState(payload.up(),payload.down());
                 }));
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             // 先清理：实体卸载/移除或 Phase 离开 MOVING（到站、受阻、卡在门口）就停止运行声并移出映射；
             // removeIf 内返回 true 表示删除该条目，与 stop() 一样都是幂等的。
             sounds.entrySet().removeIf(entry->{
                 var e=client.world==null?null:client.world.getEntityById(entry.getKey());
-                if(!(e instanceof CabinEntity cabin) || cabin.isRemoved() || cabin.phase()!=ElevatorController.Phase.MOVING) {
+                if(!(e instanceof AbstractCabinEntity cabin) || cabin.isRemoved() || cabin.phase()!=ElevatorController.Phase.MOVING) {
                     client.getSoundManager().stop(entry.getValue());return true;
                 }
                 return false;
@@ -54,7 +68,7 @@ public class EasyelevatorClient implements ClientModInitializer {
             if(client.world==null) return;
             // 再补充：只为本刻处于 MOVING 的轿厢建立音效；computeIfAbsent 保证不会重复播放同一条循环。
             // 用实体 id 而非实体引用作键，避免实体对象在卸载后被旧映射长期持有。
-            for(var e:client.world.getEntities()) if(e instanceof CabinEntity cabin && cabin.phase()==ElevatorController.Phase.MOVING)
+            for(var e:client.world.getEntities()) if(e instanceof AbstractCabinEntity cabin && cabin.phase()==ElevatorController.Phase.MOVING)
                 sounds.computeIfAbsent(cabin.getId(),id->{var sound=new CabinRunningSound(cabin);client.getSoundManager().play(sound);return sound;});
         });
         // 断线：停止所有循环音效并清空映射，同时丢弃 CabinMotion 的插值历史与本地乘客标记，

@@ -7,6 +7,8 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.StateManager;
 import net.minecraft.state.property.BooleanProperty;
@@ -24,10 +26,11 @@ import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.BlockView;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.network.ElevatorNetworking;
 
 /**
  * A 3x3 landing door. The bottom centre is the one and only station/controller.
@@ -268,10 +271,10 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * 都不超过给定容差；轿厢不处于 MOVING/BLOCKED（断轨、障碍、目的站被拆时门一律关闭，
      * 绝不在半空开门）。
      *
-     * <p>为什么按车体世界坐标匹配、而不是 {@link CabinEntity#railX()} / {@code railZ()}：
+     * <p>为什么按车体世界坐标匹配、而不是 {@link AbstractCabinEntity#railX()} / {@code railZ()}：
      * 那两个字段只是普通成员、没有进 DataTracker，客户端上恒为 0；用它匹配会让客户端永远找不到
      * 在站轿厢，表现就是"轿厢门开得好好的、楼层门却不动"。车体中心由轨道坐标 +0.5 + FACING*2 复算
-     * （与 {@link ElevatorLine#centerX} 一致，也与 {@link CabinEntity#initialize} 写入的位置一致），
+     * （与 {@link ElevatorLine#centerX} 一致，也与 {@link AbstractCabinEntity#initialize} 写入的位置一致），
      * 同一朝向下这个中心唯一对应一条轨道，因此按位置匹配与服务端按轨道字段匹配等价，
      * 而且两边都成立。
      *
@@ -286,7 +289,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param tolerance 位置匹配容差（格），X / Y / Z 三个方向都用它
      * @return 在站轿厢；没有或不唯一时返回 null
      */
-    private static CabinEntity dockedCabin(World world,BlockPos origin,double tolerance) {
+    private static AbstractCabinEntity dockedCabin(World world,BlockPos origin,double tolerance) {
         if(!complete(world,origin)) return null;
         BlockState state=world.getBlockState(origin);
         BlockPos rail=railPos(state,origin);
@@ -294,12 +297,12 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
         if(!ElevatorLine.matches(world,rail,facing)) return null;
         // 轿厢中心水平位置 = 轨道中心 + 朝向 * 2 格；查询盒取 ±1.6 格（比轿厢 3 格略宽）以容纳边界情况
         double x=rail.getX()+.5+facing.getOffsetX()*2,z=rail.getZ()+.5+facing.getOffsetZ()*2;
-        var cars=world.getEntitiesByClass(CabinEntity.class,new Box(x-1.6,origin.getY()-.01,z-1.6,x+1.6,origin.getY()+3,z+1.6),
+        var cars=world.getEntitiesByClass(AbstractCabinEntity.class,new Box(x-1.6,origin.getY()-.01,z-1.6,x+1.6,origin.getY()+3,z+1.6),
                 c->!c.isRemoved() && c.facing()==facing
                         && Math.abs(c.getX()-x)<=tolerance && Math.abs(c.getZ()-z)<=tolerance
                         && Math.abs(c.getY()-origin.getY())<=tolerance);
         if(cars.size()!=1) return null; // 该线路必须恰好一辆；0 辆或数据异常时保持关门
-        CabinEntity car=cars.getFirst();
+        AbstractCabinEntity car=cars.getFirst();
         // 到站精度已在上面的过滤里复检；这里只排除"还在运行 / 受阻暂停"的相位
         if(car.phase()==ElevatorController.Phase.MOVING || car.phase()==ElevatorController.Phase.BLOCKED) return null;
         return car;
@@ -316,7 +319,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @return 有唯一在站轿厢且其门进度 &gt; 0（正在打开或已打开）时为 true
      */
     private static boolean mayOpen(World world,BlockPos origin) {
-        CabinEntity car=dockedCabin(world,origin,ElevatorParameters.POSITION_EPSILON);
+        AbstractCabinEntity car=dockedCabin(world,origin,ElevatorParameters.POSITION_EPSILON);
         return car!=null && car.doorProgress(1)>0;
     }
 
@@ -335,7 +338,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @return 0（全关）..1（全开）
      */
     public static float leafProgress(World world,BlockPos origin) {
-        CabinEntity car=dockedCabin(world,origin,ElevatorParameters.SYNC_POSITION_EPSILON);
+        AbstractCabinEntity car=dockedCabin(world,origin,ElevatorParameters.SYNC_POSITION_EPSILON);
         return car==null?0f:MathHelper.clamp(car.doorProgress(1),0f,1f);
     }
 
@@ -370,7 +373,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     /**
      * Only this car's own landing faces are permitted to overlap its front shell.
      *
-     * <p>供 {@link CabinEntity#spaceClear} 使用：轿厢 3×3 井道与自家楼层门门框必然重叠，
+     * <p>供 {@link AbstractCabinEntity#spaceClear} 使用：轿厢 3×3 井道与自家楼层门门框必然重叠，
      * 这类方块要放行；判定条件是同一 FACING、同一轨道 XZ，并且该部件所属的整扇门完整
      * （残门不享有豁免，仍算障碍）。其他线路或其他方向的门一律视为障碍。
      *
@@ -380,7 +383,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param car 正在移动的轿厢
      * @return 该方块是本轿厢自己的完整楼层门部件时为 true
      */
-    public static boolean belongsToCabin(World world,BlockPos p,BlockState state,CabinEntity car) {
+    public static boolean belongsToCabin(World world,BlockPos p,BlockState state,AbstractCabinEntity car) {
         BlockPos rail=railPos(state,p);
         return state.get(FACING)==car.facing() && rail.getX()==car.railX() && rail.getZ()==car.railZ()
                 && complete(world,root(state,p));
@@ -391,7 +394,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      *
      * <p>服务端权威：客户端分支不做事，只统一返回 {@code SUCCESS}（播放手臂摆动、
      * 阻止后续交互）。请求前先要求整扇门完整、才能扫描出线路；线路不存在或不是
-     * 恰好一辆轿厢时发提示（无轿厢 / 多轿厢），否则把 {@link CabinEntity#requestStop}
+     * 恰好一辆轿厢时发提示（无轿厢 / 多轿厢），否则把 {@link AbstractCabinEntity#requestStop}
      * 的受理结果反馈给玩家（已排队 / 无效站点）。
      *
      * <p>副作用：给玩家发 actionbar 消息；受理成功时改动轿厢请求队列（不直接开门——
@@ -408,12 +411,63 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
         if(!world.isClient) {
             BlockPos origin=root(state,pos);
-            ElevatorLine line=complete(world,origin)?ElevatorLine.scan(world,railPos(state,pos)):null;
-            var cabins=line==null?java.util.List.<CabinEntity>of():line.cabins(world);
-            if(cabins.size()!=1) player.sendMessage(Text.translatable(cabins.isEmpty()?"message.easyelevator.no_cabin":"message.easyelevator.multiple_cabins"),true);
-            else player.sendMessage(Text.translatable(cabins.getFirst().requestStop(origin)?"message.easyelevator.called":"message.easyelevator.invalid_stop"),true);
+            // 潜行右键 = 把这一站设为基准层（1 层）并按它重新编号整条线路；
+            // 普通右键 = 弹出厅外呼叫面板（上 / 下 / 关闭三个按钮），不再"右键直接呼叫"。
+            if(player.isSneaking()) setFloorBase(world,origin,player);
+            else openHallPanel(world,origin,player);
         }
         return ActionResult.SUCCESS;
+    }
+
+    /**
+     * 弹出厅外呼叫面板（服务端 -> 客户端）。
+     *
+     * <p>为什么要面板而不是直接呼叫：真实电梯的厅外按钮是"上行 / 下行"两个方向，方向决定调度
+     * （见 {@link ElevatorController} 的集选规则），因此必须先让玩家选方向。面板初值由服务端给出，
+     * 关掉再打开也能看到该站当前的呼叫是否仍然点亮。
+     *
+     * <p>纯客户端表现 + 一次发包：不改方块状态、不改状态机。线路还不完整或没有轿厢时照样打开面板，
+     * 玩家按按钮后会收到"没有轿厢 / 多个轿厢"的提示，比"右键没反应"更容易理解。
+     *
+     * @param world 世界（服务端）
+     * @param origin 被点击门的根方块坐标（站点）
+     * @param player 点击的玩家
+     */
+    private static void openHallPanel(World world,BlockPos origin,PlayerEntity player) {
+        if(!(player instanceof ServerPlayerEntity serverPlayer)) return; // 只有服务端玩家实体能收包
+        boolean up=false,down=false;
+        if(complete(world,origin)) {
+            ElevatorLine line=ElevatorLine.scan(world,railPos(world.getBlockState(origin),origin));
+            var cabins=line==null?java.util.List.<AbstractCabinEntity>of():line.cabins(world);
+            if(cabins.size()==1) { up=cabins.getFirst().hasHallCall(origin,true); down=cabins.getFirst().hasHallCall(origin,false); }
+        }
+        ServerPlayNetworking.send(serverPlayer,new ElevatorNetworking.OpenHallPanel(origin.toImmutable(),up,down));
+    }
+
+    /**
+     * 潜行右键：把这一站设为整条线路的基准层（1 层），上下游站点随之重新编号（其上 2、3…，其下 B1、B2…）。
+     *
+     * <p>标记写在基准门自己的方块实体里（{@link LandingDoorBlockEntity#setBaseFloor}），因此随区块存档；
+     * 一条线路最多一扇门带标记，设置时会把同一线路上其它门的标记清掉。拆掉基准门就回到默认编号
+     * （最低站点 = 1 层）。
+     *
+     * <p>副作用：改动最多 N 个门的方块实体 NBT（N = 站点数）；并把选站面板推一次，
+     * 让已经打开的面板立刻用新的编号重排按钮。轿厢内的层号与门框顶部的层号由每刻重算的同步字段驱动，
+     * 下一个服务端刻就会自动跟上。
+     *
+     * @param world 世界（服务端）
+     * @param origin 被潜行右键的门的根方块坐标（新的基准层）
+     * @param player 操作的玩家
+     */
+    private static void setFloorBase(World world,BlockPos origin,PlayerEntity player) {
+        if(!complete(world,origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+        ElevatorLine line=ElevatorLine.scan(world,railPos(world.getBlockState(origin),origin));
+        if(line==null || !line.stops().contains(origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+        for(BlockPos stop:line.stops())
+            if(world.getBlockEntity(stop) instanceof LandingDoorBlockEntity door) door.setBaseFloor(stop.equals(origin));
+        // 编号变了：让已经打开的选站面板立刻重排（门框与轿厢内的层号由每刻重算的同步字段驱动）。
+        for(AbstractCabinEntity cabin:line.cabins(world)) ElevatorNetworking.syncPanel(cabin,cabin.plannedStops());
+        player.sendMessage(Text.translatable("message.easyelevator.floor_base_set"),true);
     }
 
     /**

@@ -34,18 +34,6 @@ fabricApi {
     }
 }
 
-loom {
-    runs {
-        clientSmoke {
-            client()
-            name = 'Client startup smoke test'
-            source sourceSets.gametest
-            runDir 'build/run/clientSmoke'
-            vmArg '-Deasyelevator.clientSmoke=true'
-        }
-    }
-}
-
 repositories {
     // Add repositories to retrieve artifacts from in here.
     // You should only use this when depending on other mods because

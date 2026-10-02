@@ -4,7 +4,7 @@ import net.minecraft.client.sound.MovingSoundInstance;
 import net.minecraft.client.sound.SoundInstance;
 import net.minecraft.sound.SoundCategory;
 import org.DJB.easyelevator.Easyelevator;
-import org.DJB.easyelevator.entity.CabinEntity;
+import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 
@@ -15,12 +15,12 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
  * 因此运行声的启停与原子的状态机 Phase 严格一致，不会出现"门开着还在响"的情况。
  */
 public final class CabinRunningSound extends MovingSoundInstance {
-    private final CabinEntity cabin; // 声源跟随的轿厢；每刻读取其位置与 Phase
+    private final AbstractCabinEntity cabin; // 声源跟随的轿厢；每刻读取其位置与 Phase
     /** 创建一条随轿厢移动的循环运行音效，并立即把声源定位到轿厢当前位置。
      * @param cabin 目标轿厢
      * 副作用：注册到客户端 SoundManager 的由调用方负责；本构造只设置循环、音量（RUNNING_VOLUME）与音高（SOUND_PITCH）。
      */
-    public CabinRunningSound(CabinEntity cabin) {
+    public CabinRunningSound(AbstractCabinEntity cabin) {
         // 类别 BLOCKS：与方块类音效共用音量滑块；SoundInstance.createRandom() 提供随机种子以避免多条音效相位完全同步。
         super(Easyelevator.RUNNING,SoundCategory.BLOCKS,SoundInstance.createRandom());
         // repeatDelay = 0 刻：平滑无缝循环，不留静音间隔。音量 0.6、音高 1f 见 ElevatorParameters。

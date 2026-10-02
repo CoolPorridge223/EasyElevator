@@ -7,7 +7,7 @@ package org.DJB.easyelevator.logic;
  * 以及客户端运动时间线的插值与重置阈值都在这里定义，便于在脱离游戏的前提下单测与统一调参。</p>
  *
  * <p>在整体架构中的位置：logic 包的最底层，不引用任何 Minecraft 类；ElevatorController、
- * ElevatorLine/CabinEntity、client/MotionTimeline 都从这里取值，保证服务端状态机与客户端插值口径一致。</p>
+ * ElevatorLine/AbstractCabinEntity、client/MotionTimeline 都从这里取值，保证服务端状态机与客户端插值口径一致。</p>
  *
  * <p>单位约定：格 = 方块（block），刻 = tick，1 秒 = {@link #TICKS_PER_SECOND} 刻；
  * 速度单位为格/刻。几何常量以轿厢本地坐标系（正面朝 +Z）给出，长度单位均为格。</p>
@@ -17,8 +17,17 @@ public final class ElevatorParameters {
     private ElevatorParameters() { }
     /** 每游戏秒的刻数：Minecraft 固定 20 刻/秒，用于在“秒”与“刻”之间换算。 */
     public static final int TICKS_PER_SECOND = 20;
-    /** 轿厢运行速度：0.20 格/刻 = 4 格/秒，为旧版 0.10 格/刻的两倍。 */
+    /** 轿厢运行速度：0.20 格/刻 = 4 格/秒，为旧版 0.10 格/刻的两倍；普通轿厢与观光轿厢都用它。 */
     public static final double SPEED = 0.20; // 4 blocks/second, twice the original 0.10
+    /**
+     * 高速轿厢运行速度：{@link #SPEED} 的 2.5 倍 = 0.50 格/刻 = 10 格/秒。
+     *
+     * <p>只改速度，不改门时序、到站容限与其它任何参数：外观与普通轿厢完全一致，
+     * 三型轿厢共用同一套状态机与几何，唯一差别是喂给 {@link ElevatorController} 的步长。
+     * 仍满足 {@code 步长 + POSITION_EPSILON <= 1 格}，因此单刻位移不会跨过整格站点，
+     * 到站吸附与井道扫描的精度语义保持不变。
+     */
+    public static final double HIGH_SPEED = SPEED * 2.5;
     /**
      * 到站误差容限：1e-7 格。
      * 双精度运动刻意不引入“最小位移量子”，最后一步不足 {@link #SPEED} 时直接吸附到目标值，

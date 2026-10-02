@@ -101,7 +101,15 @@ for name, want in expected_frame_models.items():
 write(ROOT / 'data/easyelevator/loot_table/blocks/call_button.json',{'type':'minecraft:block','pools':[{'rolls':1,'entries':[{'type':'minecraft:item','name':'easyelevator:call_button'}],'conditions':[{'condition':'minecraft:survives_explosion'},{'condition':'minecraft:block_state_property','block':'easyelevator:call_button','properties':{'column':'1','level':'0'}}]}]})
 
 write(ASSETS / 'models/item/cabin.json', {'parent': 'minecraft:block/cube_all', 'textures': {'all': 'easyelevator:block/blank'}})
+# 高速/观光轿厢：世界里的外观与普通轿厢一致（高速同款白模、观光只是墙变玻璃——都由 CabinRenderer 决定），
+# 因此这里只给物品栏图标一张不同色调的占位贴图，方便在背包里区分型号。
+write(ASSETS / 'models/item/high_speed_cabin.json', {'parent': 'minecraft:block/cube_all', 'textures': {'all': 'easyelevator:block/blank_speed'}})
+write(ASSETS / 'models/item/observation_cabin.json', {'parent': 'minecraft:block/cube_all', 'textures': {'all': 'easyelevator:block/blank_glass'}})
 png(ASSETS / 'textures/block/blank.png', 16, (242,242,242,255))
+# 高速轿厢图标：淡金色，暗示更快的驱动
+png(ASSETS / 'textures/block/blank_speed.png', 16, (236,206,150,255))
+# 观光轿厢图标：淡蓝色玻璃色，与渲染里的玻璃顶点色同一色系
+png(ASSETS / 'textures/block/blank_glass.png', 16, (176,216,240,255))
 # 门扇占位贴图：比门框略暗，让"门框"与"门"在纯白占位阶段也能分辨
 png(ASSETS / 'textures/block/blank_dark.png', 16, (200,200,200,255))
 png(ASSETS / 'textures/entity/cabin.png', 16, (255,255,255,255))
@@ -111,6 +119,8 @@ write(ASSETS / 'sounds.json', {key: {'subtitle': f'subtitles.easyelevator.{key}'
 zh = {
     'itemGroup.easyelevator': '简易电梯', 'block.easyelevator.elevator_rail': '电梯轨道',
     'block.easyelevator.call_button': '电梯门', 'item.easyelevator.cabin': '电梯轿厢', 'entity.easyelevator.cabin': '电梯轿厢',
+    'item.easyelevator.high_speed_cabin': '高速电梯轿厢', 'entity.easyelevator.high_speed_cabin': '高速电梯轿厢',
+    'item.easyelevator.observation_cabin': '观光电梯轿厢', 'entity.easyelevator.observation_cabin': '观光电梯轿厢',
     'message.easyelevator.no_cabin': '这条线路没有轿厢，请先在轨道上放置轿厢。',
     'message.easyelevator.multiple_cabins': '这条线路存在多个轿厢，请移除多余轿厢。',
     'message.easyelevator.called': '呼叫已加入队列。', 'message.easyelevator.invalid_stop': '站点或线路已变化，或请求队列已满，请检查轨道和电梯门。',
@@ -118,6 +128,11 @@ zh = {
     'message.easyelevator.enter': '请进入轿厢后右键选站；空手潜行右键可回收空轿厢。', 'message.easyelevator.selected': '目的站已加入队列。',
     'message.easyelevator.door_no_station': '开门键只在轿厢停在某一层时有效。',
     'message.easyelevator.door_close_locked': '当前不能关门：门已经关好，或轿厢正在运行。',
+    # 厅外呼叫面板（右键楼层门弹出：上 / 下 / 关闭三个按钮竖排）与基准层编号
+    'screen.easyelevator.hall_title': '电梯呼叫', 'screen.easyelevator.hall_up': '上行呼叫', 'screen.easyelevator.hall_down': '下行呼叫',
+    'screen.easyelevator.hall_station': '站点高度 Y = %s', 'screen.easyelevator.close': '关闭',
+    'message.easyelevator.hall_queued': '已登记%s呼叫。',
+    'message.easyelevator.floor_base_set': '已把这一站设为 1 层，其它楼层已按它重新编号。',
     'screen.easyelevator.title': '电梯选站', 'screen.easyelevator.station': '站点 %s  ·  Y = %s',
     'screen.easyelevator.status': '高度 %s  |  %s', 'screen.easyelevator.count': '%s 个站点  ·  第 %s / %s 页',
     'screen.easyelevator.empty': '同一线路尚未安装完整电梯门',
@@ -131,12 +146,18 @@ zh = {
 }
 en = dict(zip(zh, [
     'Easy Elevator','Elevator Rail','Landing Door','Elevator Cabin','Elevator Cabin',
+    'High-Speed Elevator Cabin','High-Speed Elevator Cabin',
+    'Observation Elevator Cabin','Observation Elevator Cabin',
     'No cabin on this line. Place a cabin on the rail first.', 'Multiple cabins on this line. Remove the extra cabin.',
     'Call queued.', 'Station/line changed or queue full. Check the rails and landing doors.',
     'This line already has a cabin.', 'The cabin requires a clear, loaded 3 x 3 x 3 space.',
     'Enter and right-click to select a station. Sneak + empty-hand right-click recovers an empty cabin.', 'Destination queued.',
     'The open-door button only works while the cabin is parked at a station.',
     'Cannot close now: the doors are already shut or the cabin is moving.',
+    'Elevator call','Call going up','Call going down',
+    'Station height Y = %s','Close',
+    '%s call registered.',
+    'This landing is now floor 1; the other floors were renumbered around it.',
     'Select a station','Station %s  /  Y = %s','Height %s  |  %s','%s stations  /  Page %s of %s',
     'No complete landing doors on this line','Floor %s','Open','Close','Doors open','Closing doors','Moving','Opening doors','Paused: check rails or obstacles',
     'Going up','Going down','Parked',
@@ -151,6 +172,10 @@ recipes = {
     'elevator_rail': (['I I','IRI','I I'], {'I':'iron_ingot','R':'redstone'}, 8),
     'call_button': ([' B ','IRI','   '], {'B':'stone_button','I':'iron_ingot','R':'redstone'}, 2),
     'cabin': (['III','IRI','IPI'], {'I':'iron_ingot','R':'redstone','P':'piston'}, 1),
+    # 高速轿厢：驱动核心由红石升级为金锭，其余与普通轿厢相同（外观不变，只是更快）
+    'high_speed_cabin': (['III','IGI','IPI'], {'I':'iron_ingot','G':'gold_ingot','P':'piston'}, 1),
+    # 观光轿厢：把顶排两侧的铁换成玻璃，对应"四面墙换玻璃、四个支撑边保留"
+    'observation_cabin': (['IGI','IRI','IPI'], {'I':'iron_ingot','G':'glass','R':'redstone','P':'piston'}, 1),
 }
 for name, (pattern, keys, count) in recipes.items():
     write(ROOT / f'data/easyelevator/recipe/{name}.json', {'type':'minecraft:crafting_shaped','category':'redstone', 'pattern':pattern,'key':{k:{'item':f'minecraft:{v}'} for k,v in keys.items()},'result':{'id':f'easyelevator:{name}','count':count}})
