@@ -7,3 +7,4 @@ run-test/
 logs/
 .idea/
 *.iml
+.dsh-sigmap.txt

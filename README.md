@@ -135,3 +135,5 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 | `api/` | 到站和状态变化扩展事件 |
 
 游戏内验收步骤见 [docs/TESTING.md](docs/TESTING.md)。
+
+接手开发请先读 [项目开发手册](docs/PROJECT_MANUAL.md)：架构分层、文件引用关系、函数调用关系、关键类与关键函数、对外接口与扩展指南。
