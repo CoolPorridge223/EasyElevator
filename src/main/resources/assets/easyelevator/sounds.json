@@ -5,7 +5,7 @@
   },
   "elevator_arrival": {
     "subtitle": "subtitles.easyelevator.elevator_arrival",
-    "sounds": []
+    "sounds": ["easyelevator:man"]
   },
   "door_open": {
     "subtitle": "subtitles.easyelevator.door_open",
