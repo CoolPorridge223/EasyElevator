@@ -1,6 +1,9 @@
 {
+  "parent": "minecraft:block/block",
   "textures": {
     "all": "easyelevator:block/blank",
+    "plate": "easyelevator:block/blank_plate",
+    "screen": "easyelevator:block/blank_screen",
     "particle": "easyelevator:block/blank"
   },
   "elements": [
@@ -12,7 +15,7 @@
       ],
       "to": [
         3,
-        16,
+        13,
         3
       ],
       "faces": {
@@ -40,6 +43,102 @@
       "from": [
         0,
         13,
+        0
+      ],
+      "to": [
+        3,
+        16,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#plate"
+        },
+        "south": {
+          "texture": "#plate"
+        },
+        "east": {
+          "texture": "#plate"
+        },
+        "west": {
+          "texture": "#plate"
+        },
+        "up": {
+          "texture": "#plate"
+        },
+        "down": {
+          "texture": "#plate"
+        }
+      }
+    },
+    {
+      "from": [
+        3,
+        13,
+        0
+      ],
+      "to": [
+        16,
+        13.25,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#plate"
+        },
+        "south": {
+          "texture": "#plate"
+        },
+        "east": {
+          "texture": "#plate"
+        },
+        "west": {
+          "texture": "#plate"
+        },
+        "up": {
+          "texture": "#plate"
+        },
+        "down": {
+          "texture": "#plate"
+        }
+      }
+    },
+    {
+      "from": [
+        3,
+        13.25,
+        0.75
+      ],
+      "to": [
+        16,
+        15.75,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#screen"
+        },
+        "south": {
+          "texture": "#screen"
+        },
+        "east": {
+          "texture": "#screen"
+        },
+        "west": {
+          "texture": "#screen"
+        },
+        "up": {
+          "texture": "#screen"
+        },
+        "down": {
+          "texture": "#screen"
+        }
+      }
+    },
+    {
+      "from": [
+        3,
+        15.75,
         0
       ],
       "to": [

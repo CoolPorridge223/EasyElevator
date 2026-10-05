@@ -1,18 +1,37 @@
 param([string]$Jdk = $env:JAVA_HOME)
+# NOTE (ASCII-only on purpose): Windows PowerShell 5.1 parses .ps1 files as ANSI unless they have a
+# UTF-8 BOM, so a Chinese comment in a BOM-less script makes it fail with "unexpected token".
+# Any editor that rewrites this file without a BOM would silently break it, so the comments here
+# stay ASCII. The Chinese explanation of what these suites cover lives in docs/TESTING.md.
 $ErrorActionPreference = 'Stop'
 if (-not $Jdk) { throw 'Set JAVA_HOME to a JDK 21 or newer, or pass -Jdk <directory>.' }
+$javac = Join-Path $Jdk 'bin/javac.exe'
+$java = Join-Path $Jdk 'bin/java.exe'
+foreach ($tool in @($javac, $java)) { if (-not (Test-Path -LiteralPath $tool)) { throw "Not a JDK: $Jdk" } }
+
+# Pure-Java checks that need no Minecraft classpath: state machine / motion timeline, station panel
+# layout, floor indicator, run status, sliding-leaf UV, and the telescopic cabin door layout.
+$logicSources = @(
+    'ElevatorParameters', 'ElevatorController', 'MotionTimeline', 'PanelLayout',
+    'FloorIndicator', 'ElevatorStatus', 'LeafUv', 'SlidingDoor', 'FramedLeaf'
+)
+$tests = @('ElevatorControllerTest', 'PanelLayoutTest', 'FloorIndicatorTest', 'ElevatorStatusTest',
+    'LeafUvTest', 'SlidingDoorTest', 'FramedLeafTest')
+$sources = @()
+foreach ($name in $logicSources) { $sources += "src/main/java/org/DJB/easyelevator/logic/$name.java" }
+foreach ($name in $tests) { $sources += "src/test/java/org/DJB/easyelevator/logic/$name.java" }
+
 Push-Location (Split-Path -Parent $PSScriptRoot)
 try {
     New-Item -ItemType Directory -Force build/logic-test | Out-Null
-    # 纯 Java、不需要 Minecraft 类路径的检查：状态机/运动时间线 + 选站面板排布 + 楼层与运行状态显示。
-    & (Join-Path $Jdk 'bin/javac.exe') --release 21 -encoding UTF-8 -d build/logic-test src/main/java/org/DJB/easyelevator/logic/ElevatorParameters.java src/main/java/org/DJB/easyelevator/logic/ElevatorController.java src/main/java/org/DJB/easyelevator/logic/MotionTimeline.java src/main/java/org/DJB/easyelevator/logic/PanelLayout.java src/main/java/org/DJB/easyelevator/logic/FloorIndicator.java src/main/java/org/DJB/easyelevator/logic/ElevatorStatus.java src/test/java/org/DJB/easyelevator/logic/ElevatorControllerTest.java src/test/java/org/DJB/easyelevator/logic/PanelLayoutTest.java src/test/java/org/DJB/easyelevator/logic/FloorIndicatorTest.java src/test/java/org/DJB/easyelevator/logic/ElevatorStatusTest.java
-    if ($LASTEXITCODE -ne 0) { throw 'Logic test compilation failed.' }
-    & (Join-Path $Jdk 'bin/java.exe') -cp build/logic-test org.DJB.easyelevator.logic.ElevatorControllerTest
-    if ($LASTEXITCODE -ne 0) { throw 'State machine tests failed.' }
-    & (Join-Path $Jdk 'bin/java.exe') -cp build/logic-test org.DJB.easyelevator.logic.PanelLayoutTest
-    if ($LASTEXITCODE -ne 0) { throw 'Panel layout tests failed.' }
-    & (Join-Path $Jdk 'bin/java.exe') -cp build/logic-test org.DJB.easyelevator.logic.FloorIndicatorTest
-    if ($LASTEXITCODE -ne 0) { throw 'Floor indicator tests failed.' }
-    & (Join-Path $Jdk 'bin/java.exe') -cp build/logic-test org.DJB.easyelevator.logic.ElevatorStatusTest
-    if ($LASTEXITCODE -ne 0) { throw 'Elevator status tests failed.' }
+    # Native tools write warnings to stderr and $ErrorActionPreference = 'Stop' treats that as a
+    # terminating error, which used to report "compilation failed" while hiding the real javac
+    # output. Relax it for the two native calls only; exit codes are still checked one by one.
+    $ErrorActionPreference = 'Continue'
+    & $javac --release 21 -encoding UTF-8 -d build/logic-test @sources
+    if ($LASTEXITCODE -ne 0) { throw 'Logic test compilation failed (see the javac output above).' }
+    foreach ($test in $tests) {
+        & $java -cp build/logic-test "org.DJB.easyelevator.logic.$test"
+        if ($LASTEXITCODE -ne 0) { throw "$test failed (see the output above)." }
+    }
 } finally { Pop-Location }

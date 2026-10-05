@@ -28,6 +28,7 @@ import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.FloorIndicator;
+import org.DJB.easyelevator.logic.SlidingDoor;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -760,7 +761,12 @@ public abstract class AbstractCabinEntity extends Entity {
      *
      * <p>外壳构成：地板 Y 0..0.2、顶板 Y 2.8..3.0（净高 2.6 格）、两侧壁 |X| 1.3..1.5、背板局部 Z=-1.5..-1.3；
      * 正面一律止于 {@link ElevatorParameters#CABIN_FRONT_Z}=1.3 格，比楼层门后缘 1.3125 格内收 0.0125 格，
-     * 避免门与门框重叠闪烁。门扇局部 Z 为 1.1..1.3（厚 0.2 格），随门进度 p 从中线向两侧缩回。
+     * 避免门与门框重叠闪烁。
+     *
+     * <p>门是<b>两扇对开滑门</b>（{@link SlidingDoor}），门洞就是整个正面（|X| ≤ 1.3）：
+     * 两扇门扇外缘固定在侧壁内侧，内缘随进度向两侧移开，全开时宽度归零、门洞全通。
+     * 与楼层门同一套做法，因此里外两道门看起来一致。碰撞与渲染取自同一份纯算术，
+     * 所以"看得见的门"就是"挡得住人的门"：关门时两扇拼满正面（只留中缝），全开时不再生成门扇。
      *
      * @return 每刻新建的列表；调用方只读，不可缓存（门进度每刻变化）
      */
@@ -773,10 +779,12 @@ public abstract class AbstractCabinEntity extends Entity {
         boxes.add(localBox(-1.5,.2,-1.5,-1.3,2.8,front));
         boxes.add(localBox(1.3,.2,-1.5,1.5,2.8,front));
         boxes.add(localBox(-1.3,.2,-1.5,1.3,2.8,-1.3));
-        float p = dataTracker.get(DOOR); // 读同步字段而非 controller：客户端与服务端据同一份门进度生成碰撞与模型
-        if (p < .999f) { // 全开（p 到 1）时不再生成门扇；0.999 阈值避免浮点残留导致门扇宽度不为 0
-            boxes.add(localBox(-1.3,.2,doorBack,-1.3*p,2.8,front)); // 左扇：p=0 时覆盖 -1.3..0（半扇），p=1 时缩到中线宽度为 0
-            boxes.add(localBox(1.3*p,.2,doorBack,1.3,2.8,front)); // 右扇与左扇镜像
+        float p=dataTracker.get(DOOR); // 读同步字段而非 controller：客户端与服务端据同一份门进度生成碰撞与模型
+        if(SlidingDoor.visible(p)) { // 全开时两扇宽度归零，不再生成门扇（0.999 阈值避免浮点残留）
+            for(boolean right:new boolean[]{false,true}) {
+                double[] x=SlidingDoor.panelX(right,p);
+                boxes.add(localBox(x[0],.2,doorBack,x[1],2.8,front));
+            }
         }
         return boxes;
     }

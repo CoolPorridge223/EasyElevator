@@ -24,7 +24,7 @@ import org.DJB.easyelevator.logic.ElevatorStatus;
  * 同样的平滑滑动。
  *
  * <p>进度来源：直接取在站轿厢的门进度（{@link LandingDoorBlock#leafProgress}），
- * 所以楼层门的两扇门扇与轿厢自带的两扇门扇同刻同值、同速同向，开关门完全同步；
+ * 所以楼层门的两扇门扇与轿厢门（两扇对开滑门）同刻同值、同速同向，开关门完全同步；
  * 没有轿厢精确停靠在本层时恒为 0（门扇全关，门洞被完全封住）。
  *
  * <p>为什么不发同步包：进度是"已同步的轿厢门进度 + 已同步的 OPEN 方块状态"的纯函数，
@@ -57,6 +57,9 @@ public final class LandingDoorBlockEntity extends BlockEntity {
 
     /** 本线路轿厢的运行状态（上行/下行/停靠）：与 {@link #cabinFloor} 一起构成门框顶部的显示内容。 */
     private ElevatorStatus cabinStatus = ElevatorStatus.IDLE;
+
+    /** 本线路轿厢是不是观光型号（玻璃舱壁）：决定这扇门的门扇是钢门还是"铁框 + 玻璃"门。 */
+    private boolean glassDoors;
 
     /**
      * @param pos 根方块坐标（整扇门只有这一个部件持有方块实体）
@@ -97,6 +100,9 @@ public final class LandingDoorBlockEntity extends BlockEntity {
         AbstractCabinEntity cabin=state.isOf(Easyelevator.LANDING_DOOR) ? cabinOf(world,state) : null;
         cabinFloor=cabin==null ? 0 : cabin.floorNumber();
         cabinStatus=cabin==null ? ElevatorStatus.IDLE : cabin.status();
+        // 观光线路上的门扇也跟着变成玻璃门（整条线路统一：门是哪一扇由线路上的轿厢决定，
+        // 这样一条轨道上的所有楼层门看起来才一致；没有轿厢时退回钢门）
+        glassDoors=cabin!=null && cabin.glassWalls();
         sampledTick=now;
     }
 
@@ -139,6 +145,17 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @return 本线路轿厢的运行状态（上行/下行/停靠），渲染门框顶部显示时使用；每刻更新一次
      */
     public ElevatorStatus cabinStatus() { sample(); return cabinStatus; }
+
+    /**
+     * 本线路的门扇是否应该画成"铁框 + 玻璃"（观光轿厢的线路）。
+     *
+     * <p>判据是线路上那辆轿厢的 {@code glassWalls()}：一条轨道上的所有楼层门共用同一个结论，
+     * 因此观光轿厢所在线路的每一层都是玻璃门，其它线路照旧是钢门。没有轿厢时返回 false（钢门）。
+     * 与楼层号/运行状态一样每刻只查一次并缓存，客户端就地算得出一致结果，不需要同步包。
+     *
+     * @return 门扇用玻璃门时 true
+     */
+    public boolean glassDoors() { sample(); return glassDoors; }
 
     /**
      * @return 本门是否为这条线路的基准层（1 层）；编号计算全在服务端完成，因此这个值只在服务端有意义

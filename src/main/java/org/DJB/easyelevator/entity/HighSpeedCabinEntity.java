@@ -12,8 +12,10 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
  * <p>与普通轿厢的唯一差别是速度：{@link ElevatorParameters#HIGH_SPEED} = {@link ElevatorParameters#SPEED} × 2.5
  * = 0.50 格/刻 = <b>10 格/秒</b>（普通为 4 格/秒）。
  *
- * <p><b>外观与普通轿厢完全相同</b>：几何、碰撞、门序、白模渲染一个像素都不变；
- * 因为外观不体现速度，玩家只能从到站时间（和选站面板里的高度读数）察觉差别。
+ * <p><b>世界里的外观与普通轿厢完全相同</b>：几何、内饰、材质、碰撞、门序一个像素都不变
+ * （同一个渲染分支 {@code CabinRenderer.drawStandardShell}）；因为外观不体现速度，
+ * 玩家只能从到站时间（和选站面板里的高度读数）察觉差别。两者只有<b>物品栏图标</b>不同
+ * （高速型的图标用金色板 {@code blank_speed}，并带三个速度箭头）。
  *
  * <p>不变的约束（速度只影响"每刻走多远"，不影响别的任何语义）：
  * <ul>

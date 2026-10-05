@@ -75,8 +75,9 @@ EasyElevator/
 │   └─ BUILD_AND_PACKAGING.md   构建与打包说明书
 ├─ tools/
 │   ├─ build.ps1                本机 Gradle 快捷构建（校验 JDK 21）
-│   ├─ test-logic.ps1           脱离游戏的纯 Java 逻辑测试
-│   └─ generate_placeholders.py 占位素材生成脚本
+│   ├─ test-logic.ps1           脱离游戏的纯 Java 逻辑测试（UTF-8 **with BOM**：PS 5.1 按 ANSI 解析无 BOM 脚本）
+│   ├─ generate_art.py          模型与贴图生成 + 几何自检（纯 Python 3）
+│   └─ generate_data.py         方块状态/语言/配方/掉落表/音效钩子生成（纯 Python 3）
 ├─ src/
 │   ├─ main/java/org/DJB/easyelevator/     服务端与公共逻辑（权威侧）
 │   ├─ main/resources/                     方块状态、模型、贴图、语言、配方、战利品表、音效、mixin 配置
@@ -311,14 +312,19 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | 文件 | 职责 | 直接依赖（项目内） |
 | --- | --- | --- |
 | [client/EasyelevatorClient.java](../src/client/java/org/DJB/easyelevator/client/EasyelevatorClient.java) | 客户端入口：注册渲染器、S2C 处理器、刻回调、断线清理 | Easyelevator, entity, logic, network |
-| [client/CabinRenderer.java](../src/client/java/org/DJB/easyelevator/client/CabinRenderer.java) | 轿厢白模/观光玻璃、轿内面板文字 | Easyelevator, entity, logic, CabinMotion, BoxMesh, StatusArrow |
+| [client/CabinRenderer.java](../src/client/java/org/DJB/easyelevator/client/CabinRenderer.java) | 轿厢外壳 + 内饰数据表 + 观光分格玻璃 + 材质图集分格、轿内面板文字 | Easyelevator, entity, logic, CabinMotion, BoxMesh, StatusArrow |
 | [client/LandingDoorRenderer.java](../src/client/java/org/DJB/easyelevator/client/LandingDoorRenderer.java) | 楼层门门扇 + 门框顶部层号/箭头 | Easyelevator, block, logic, BoxMesh, StatusArrow |
 | [client/ElevatorScreen.java](../src/client/java/org/DJB/easyelevator/client/ElevatorScreen.java) | 轿厢内选站面板（网格/翻页/开关门） | entity, logic, network |
 | [client/LandingDoorScreen.java](../src/client/java/org/DJB/easyelevator/client/LandingDoorScreen.java) | 厅外呼叫面板（▲/▼/×） | network |
 | [client/CabinMotion.java](../src/client/java/org/DJB/easyelevator/client/CabinMotion.java) | 客户端运动时间线管理 + 相机补偿量 | entity, logic(MotionTimeline, ElevatorParameters), network |
 | [client/CabinRunningSound.java](../src/client/java/org/DJB/easyelevator/client/CabinRunningSound.java) | 跟随轿厢的循环运行音效 | Easyelevator, entity, logic |
 | [client/StatusArrow.java](../src/client/java/org/DJB/easyelevator/client/StatusArrow.java) | 闪烁上下箭头字符（两处显示同源） | logic.ElevatorStatus |
-| [client/BoxMesh.java](../src/client/java/org/DJB/easyelevator/client/BoxMesh.java) | 共享顶点绘制工具（长方体 / 零厚单面） | 无 |
+| [client/GlassLayers.java](../src/client/java/org/DJB/easyelevator/client/GlassLayers.java) | 玻璃专用渲染层（轿厢用实体图集、楼层门用方块玻璃贴图；只写颜色不写深度、禁止剔除） | 无 |
+| [client/FramedGlassDoor.java](../src/client/java/org/DJB/easyelevator/client/FramedGlassDoor.java) | 画铁框加中间玻璃的门扇：铁框在不透明层、玻璃在玻璃层（布局取自 logic/FramedLeaf） | 无 |
+| [client/BoxMesh.java](../src/client/java/org/DJB/easyelevator/client/BoxMesh.java) | 共享顶点绘制工具（长方体 / 零厚单面 / 图集 UV 分格 / **逐面** UV 分格） | 无 |
+| [logic/LeafUv.java](../src/main/java/org/DJB/easyelevator/logic/LeafUv.java) | 楼层门叶的"随门滑动"UV：可见区间 = 1-进度、断面取一小段、映射进贴图；轿厢门板的镜像规则（纯算术，可脱机测试）。**方向只由"哪一扇"决定，与朝向无关**（见 `BoxMesh` 的逐面首顶点约定） | 无 |
+| [logic/FramedLeaf.java](../src/main/java/org/DJB/easyelevator/logic/FramedLeaf.java) | 铁框玻璃门扇的布局：把门扇矩形切成四条边框 + 中间玻璃，边框随门扇变窄按比例缩（纯算术，可脱机测试） | 无 |
+| [logic/SlidingDoor.java](../src/main/java/org/DJB/easyelevator/logic/SlidingDoor.java) | 轿厢两扇对开滑门的布局：门洞 = 整个正面、外缘固定、先导端随进度外移、门区 Z、净开度与可见性（纯算术，可脱机测试）；与楼层门 LandingDoorGeometry.leafEdge 同一套做法 | 无 |
 | [client/EasyelevatorDataGenerator.java](../src/client/java/org/DJB/easyelevator/client/EasyelevatorDataGenerator.java) | 数据生成入口（当前为空 pack） | 无 |
 | [mixin/client/CameraMixin.java](../src/client/java/org/DJB/easyelevator/mixin/client/CameraMixin.java) | 第一人称镜头高度补偿 | CabinMotion |
 
@@ -350,12 +356,12 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [easyelevator.mixins.json](../src/main/resources/easyelevator.mixins.json) | `mixin/EntityViewMixin`（required） | Loader |
 | [easyelevator.client.mixins.json](../src/client/resources/easyelevator.client.mixins.json) | `mixin.client.CameraMixin`（client，required） | Loader |
 | [assets/easyelevator/blockstates/elevator_rail.json](../src/main/resources/assets/easyelevator/blockstates/elevator_rail.json) | 4 朝向 × y 旋转 | 轨道方块模型 |
-| [assets/easyelevator/blockstates/call_button.json](../src/main/resources/assets/easyelevator/blockstates/call_button.json) | 楼层门 9 个方块的 `facing × column × level × open` 变体 → `landing_door_frame_*.json` | 楼层门门框（常驻几何） |
-| [assets/easyelevator/models/block/landing_door_frame_*.json](../src/main/resources/assets/easyelevator/models/block/) | 门框立柱/门楣的方块模型（亮白贴图） | 方块模型系统 |
-| [assets/easyelevator/models/block/elevator_rail.json](../src/main/resources/assets/easyelevator/models/block/elevator_rail.json) | 细柱轨道模型 | 方块模型系统 |
-| [assets/easyelevator/models/item/*.json](../src/main/resources/assets/easyelevator/models/item/) | 5 个物品图标（复用方块模型） | 物品模型系统 |
-| [assets/easyelevator/textures/block/blank*.png](../src/main/resources/assets/easyelevator/textures/block/) | 占位贴图：`blank`/白模`blank_dark`/玻璃`blank_glass`/高速`blank_speed` | 模型与渲染器 |
-| [assets/easyelevator/textures/entity/cabin.png](../src/main/resources/assets/easyelevator/textures/entity/cabin.png) | 轿厢整张白模贴图（透明度来自顶点色） | `CabinRenderer.TEXTURE` |
+| [assets/easyelevator/blockstates/call_button.json](../src/main/resources/assets/easyelevator/blockstates/call_button.json) | 楼层门 9 个方块的 `facing × column × level × open` 变体 → `landing_door_frame_*.json`（底行取 `*_bottom` 三件） | 楼层门门框（常驻几何） |
+| [assets/easyelevator/models/block/landing_door_frame_*.json](../src/main/resources/assets/easyelevator/models/block/) | 9 个门框模型：底行立柱底座+门槛、中行立柱/门洞、顶行立柱+门楣（门楣中间是凹进去的显示屏 `blank_screen`） | 方块模型系统 |
+| [assets/easyelevator/models/block/elevator_rail.json](../src/main/resources/assets/easyelevator/models/block/elevator_rail.json) | 轨道模型：底座法兰 + 四颗螺栓 + 双导轨 + 中间齿条 + 抱箍（X/Z 限制在 3..13，与 `ElevatorRailBlock.getOutlineShape` 一致） | 方块模型系统 |
+| [assets/easyelevator/models/item/*.json](../src/main/resources/assets/easyelevator/models/item/) | 5 个物品图标：轨道/门复用方块模型，三个轿厢共用 `cabin_body.json`（1/3 比例迷你轿厢） | 物品模型系统 |
+| [assets/easyelevator/textures/block/blank*.png](../src/main/resources/assets/easyelevator/textures/block/) | 方块贴图：`blank`（门框/轨道亮钢）、`blank_door`（门扇深色阳极氧化）、`blank_plate`（机加工深色板）、`blank_screen`（门楣显示屏）、`blank_speed`（高速图标金板）、`blank_glass`（观光图标玻璃板） | 模型与渲染器 |
+| [assets/easyelevator/textures/entity/cabin.png](../src/main/resources/assets/easyelevator/textures/entity/cabin.png) | 轿厢 4×4 材质图集（格号 = `CabinRenderer.Mat` 的枚举顺序；玻璃透明度来自顶点色） | `CabinRenderer.TEXTURE`、`MATERIAL_UV` |
 | [assets/easyelevator/sounds.json](../src/main/resources/assets/easyelevator/sounds.json) | 4 个音效 ID（当前 `sounds: []` 静音占位） | `Easyelevator.sound()` |
 | [assets/easyelevator/lang/*.json](../src/main/resources/assets/easyelevator/lang/) | 翻译键（en_us / zh_cn） | 所有界面与消息 |
 | [data/easyelevator/recipe/*.json](../src/main/resources/data/easyelevator/recipe/) | 5 个配方 | 原版合成 |
@@ -595,9 +601,14 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
     │          ├─ track==null || world.time - receivedAt > MOTION_STALE_TICKS → vanilla
     │          └─ MotionTimeline.sample(world.time + delta, vanilla)
     ├─ multiply(绕 Y 旋转到 FACING)
-    ├─ 不透明层：drawStandard 或 drawObservationShell + 轿内操作面板
+    ├─ 不透明层：drawStandardShell 或 drawObservationShell
+    │     + drawParts（内饰表 STANDARD_PARTS / OBSERVATION_PARTS，两张表末尾 6 行是同一个面板）
+    │     + drawDoorway（门槛与门楣）+ drawLeaves（两扇滑门，仅普通/高速）
     ├─ 文字层：drawFloorDisplay（StatusArrow.glyph + FloorIndicator.format）
-    └─ 半透明层（仅观光）：drawObservationGlass
+    │     两行按"行心"定位：yOffset = -(行心 + fontHeight*scale/2)/scale
+    └─ 半透明层（仅观光）：drawObservationGlass（压条/中梃由 OBSERVATION_PARTS 提供）
+
+  光照：lit = withLamp(采样光照) = 世界光照与 15 级方块光的较大者（顶灯照厢内，不动世界数据）
 
   LandingDoorRenderer.render(door, tickDelta, ...)
     ├─ drawFloorDisplay（door.cabinFloor / door.cabinStatus / StatusArrow）
@@ -882,14 +893,15 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 类 | 关键成员 | 要点 |
 | --- | --- | --- |
 | `EasyelevatorClient` | `sounds: Map<int, CabinRunningSound>` | 注册 3 个轿厢渲染器（同一 `CabinRenderer::new`）与 1 个方块实体渲染器；5 个 S2C 处理器都走 `context.client().execute`；END_CLIENT_TICK 清理+补充运行声；DISCONNECT 停止音效并 `CabinMotion.clear()` |
-| `CabinRenderer<T>` | `TEXTURE`、`GLASS_LAYER`、`GLASS_COLOR`、`GLASS_DOOR_COLOR`、字号/行锚点 | 只画不模拟；**分层顺序硬约束**：不透明（外壳+面板）→ 文字 → 半透明玻璃；玻璃层专用「只写颜色不写深度」（`COLOR_MASK`），否则楼层门被剔除 |
-| `LandingDoorRenderer` | `TEXTURE=blank_dark`、`FLOOR_SCALE=.02f`、`TEXT_Y=-4f`、`STATUS_GAP=6f` | 先画层号再画门扇（全开无门扇直接返回）；门扇用带剔除层；`rendersOutsideBoundingBox=true`（门扇会滑出根方块那格，默认剔除会让它提前消失） |
+| `CabinRenderer<T>` | `TEXTURE`、`GLASS_LAYER`、`GLASS_COLOR`、`LAMP_LEVEL=15`/`withLamp`（厢内照明）、`Mat`/`MATERIAL_UV`（4×4 图集分格，`DOOR` 格给门扇）、`STANDARD_PARTS`/`OBSERVATION_PARTS`（内饰数据表，最后 6 行必须相同）、行心 `ARROW_LINE_CENTRE/FLOOR_LINE_CENTRE`、字号 | 只画不模拟；**分层顺序硬约束**：不透明（外壳+内饰+门口+门扇）→ 文字 → 半透明玻璃；玻璃层专用「只写颜色不写深度」（`COLOR_MASK`），否则楼层门被剔除；观光舱不画实心门扇 |
+| `BoxMesh` | `FULL_UV`、`float[] uv`（六面同一分格）与 `float[][] faceUv`（**逐面**分格，顺序 -Z,+Z,-X,+X,+Y,-Y） | 长方体网格 / 零厚度单面；UV 矩形默认铺满整张图，传分格即取图集一格；**逐面分格用于滑门**（大面随门滑动、断面固定一小段）；平面单面的 UV 方向与顶点顺序绑定（`planeZ` 从 +X 侧起步，u 才沿 X 增长） |
+| `LandingDoorRenderer` | `TEXTURE=blank_door`、`FLOOR_SCALE=.016f`、`SCREEN_CENTRE_Y=2.90625`、`SCREEN_INSET=.75/16`、`TEXT_STANDOFF=.008`、`STATUS_GAP=6f` | 先画层号再画门扇（全开无门扇直接返回）；文字按行心定位（`draw` 的 y 是顶边）；门扇 UV 只取"还露在外面"的一段（贴图随门板滑而不是被压扁）；`rendersOutsideBoundingBox=true`（门扇会滑出根方块那格，默认剔除会让它提前消失） |
 | `ElevatorScreen` | `BUTTON=20,GAP=4`、`MAX_COLUMNS/ROWS=8`、`PADDING=16,HEADER=64,FOOTER=40`、配色常量 | 站点自行按 Y→X→Z 排序；`init()` 算网格与面板矩形并铺控件；`tick()` 用宽松 `staysInside` 自动关闭；`render` 每帧刷新区按钮可用性；`renderBackground` 只做淡黑叠加（不用模糊） |
 | `LandingDoorScreen` | `BUTTON=20,GAP=6,PADDING=10` | 按钮数 = 显示的方向数 + 1（关闭）；`pending` 决定是否红色 |
 | `CabinMotion` | `TRACKS: WeakHashMap<AbstractCabinEntity, Track>`、`localRiderCabin` | `receive` 入时间线；`renderY` 过期（> `MOTION_STALE_TICKS`）回退原版插值；`cameraOffset` 多重条件校验后给补偿量 |
 | `CabinRunningSound` | `cabin` | `super(Easyelevator.RUNNING, BLOCKS, createRandom())`；`repeat=true, repeatDelay=0`；`tick()` 中实体移除或非 MOVING → `setDone()` |
 | `StatusArrow` | `BLINK_MS=500`、`UP="▲"`、`DOWN="▼"` | `moving / lit / glyph / width`；用墙钟毫秒而非游戏刻（暂停菜单里仍闪） |
-| `BoxMesh` | — | `cuboid`×2、`planeX/Y/Z`、私有 `quad`；UV 固定铺满（第 1、2 顶点 u=1，第 3、4 v=0） |
+| `BoxMesh` | `FULL_UV = {0,0,1,1}` | `cuboid`×4（裸坐标 / `Box` × 有无 UV 矩形）、`planeX/Y/Z` 各两个重载、私有 `quad`；UV 矩形按"第 0 顶点 (u0,v1)、第 2 顶点 (u1,v0)"落到四个角，因此默认值时就是原版 (0,1)(1,1)(1,0)(0,0)；`planeZ` 的顶点从 +X 侧起步，u 才沿 X 增长 |
 
 
 ---
@@ -976,11 +988,13 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 想替换 | 改哪里 | 详见 |
 | --- | --- | --- |
-| 轨道模型 | `assets/easyelevator/models/block/elevator_rail.json` | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
-| 楼层门**门框**（常驻） | `assets/easyelevator/models/block/landing_door_frame_*.json` + `blockstates/call_button.json` | 同上 |
+| 轨道模型 | `assets/easyelevator/models/block/elevator_rail.json` + `ElevatorRailBlock.getOutlineShape`（轮廓必须覆盖模型可见范围，右键才点得到） | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
+| 楼层门**门框**（常驻） | `assets/easyelevator/models/block/landing_door_frame_*.json`（底行 `*_bottom`）+ `blockstates/call_button.json` + `tools/generate_data.py` 的 `FRAME_MODELS` | 同上 |
 | 楼层门**门扇**（可动） | `LandingDoorRenderer` + `LandingDoorGeometry`（几何与碰撞同源） | 同上 |
-| 轿厢模型（三种共用） | `CabinRenderer`（`drawStandard` / `drawObservationShell` / `drawObservationGlass`） | 同上 |
+| 轿厢模型（三种共用） | `CabinRenderer`：`drawStandardShell` / `drawObservationShell` / `drawDoorway` / `drawLeaves` / `drawObservationGlass` + 内饰表 `STANDARD_PARTS` / `OBSERVATION_PARTS` | 同上 |
+| 轿厢材质 | `textures/entity/cabin.png`（4×4 图集）+ `CabinRenderer.Mat` / `MATERIAL_UV`；方块贴图见 `textures/block/` | 同上 |
 | 观光玻璃颜色/通透度 | `CabinRenderer.GLASS_COLOR / GLASS_DOOR_COLOR`（顶点色 ARGB） | 同上 |
+| 厢内照明 | `CabinRenderer.withLamp` 把渲染光照抬到"世界光照与 15 级方块光的较大者"（`LAMP_LEVEL`）；不放置光源方块、不动世界数据 | 同上 |
 | 音效音频 | `assets/easyelevator/sounds.json` 的 `sounds` 数组 + ogg 文件 | 同上 |
 | 门动画取值 | 轿厢 `doorProgress(tickDelta)`；楼层门 `openProgress(tickDelta)`，0 关 1 开 | 同上 |
 
@@ -1127,7 +1141,9 @@ ElevatorGameTests ── 真服务端世界（IDEA 运行配置）
 
 ### 10.4 换模型 / 贴图 / 音效
 
-见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md)。要点：门框走方块模型，门扇走方块实体渲染器；轿厢是硬编码白模（`BoxMesh`），换模型即改 `CabinRenderer`。
+见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md)。要点：门框走方块模型，门扇走方块实体渲染器；轿厢是硬编码的几何数据表（`BoxMesh` + `CabinRenderer` 的两张 PARTS 表），换模型即改那两张表或换 `CabinRenderer`。
+
+**模型与贴图都由脚本生成，别手改单个文件**：`python tools/generate_art.py` 写全部模型与贴图（并做几何自检），`python tools/generate_data.py` 写方块状态/语言/配方/掉落表/音效钩子。只换外观时改脚本再跑，两个脚本都可重复运行。
 
 ### 10.5 改调度策略
 

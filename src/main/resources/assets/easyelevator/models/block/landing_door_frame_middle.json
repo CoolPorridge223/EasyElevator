@@ -1,6 +1,9 @@
 {
+  "parent": "minecraft:block/block",
   "textures": {
     "all": "easyelevator:block/blank",
+    "plate": "easyelevator:block/blank_plate",
+    "screen": "easyelevator:block/blank_screen",
     "particle": "easyelevator:block/blank"
   },
   "elements": []

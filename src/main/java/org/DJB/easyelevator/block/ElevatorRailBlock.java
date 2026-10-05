@@ -70,11 +70,14 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
     }
 
     /**
-     * 轮廓（选中框）形状：6/16 格见方、占满 1 格高的立柱，与轨道模型元素
-     * 5..11 × 0..16 × 5..11 保持一致。
+     * 轮廓（选中框）形状：10/16 格见方、占满 1 格高的方柱，与轨道模型的可见范围
+     * 3..13 × 0..16 × 3..13 保持一致（模型里有底座法兰、四颗地脚螺栓、双导轨、齿条与抱箍，
+     * 最外沿就是 3/16 与 13/16）。轮廓形状同时决定右键射线命中，
+     * 因此它必须覆盖整个看得见的模型——否则点得到法兰却点不到导轨。
      *
-     * <p>只重写轮廓形状、保留默认的整格碰撞，是刻意的：选中框与细柱模型一致，
-     * 但轨道仍按 1 格整方块阻挡实体，参与碰撞与井道空间判定。
+     * <p>只重写轮廓形状、保留默认的整格碰撞，是刻意的：选中框与模型一致，
+     * 但轨道仍按 1 格整方块阻挡实体、参与碰撞与井道空间判定（井道豁免靠的是
+     * {@code ElevatorLine.matches} 的断轨检查与实体包围盒内缩，不是缩小碰撞）。
      *
      * @param s 当前方块状态
      * @param w 世界视图
@@ -84,6 +87,6 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
      */
     @Override
     protected VoxelShape getOutlineShape(BlockState s, BlockView w, BlockPos p, ShapeContext c) {
-        return Block.createCuboidShape(5, 0, 5, 11, 16, 11);
+        return Block.createCuboidShape(3, 0, 3, 13, 16, 13);
     }
 }

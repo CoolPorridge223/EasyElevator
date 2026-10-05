@@ -68,7 +68,8 @@ public final class ElevatorParameters {
      * 与楼层门框留约 0.0125 格间隙，避免门与门框面重叠导致的渲染闪烁（z-fighting）。
      */
     public static final double CABIN_FRONT_Z = 1.3;
-    /** 轿厢门背面 Z 坐标 = 正面内收 0.2 格；门扇厚度方向占据 [CABIN_DOOR_BACK_Z, CABIN_FRONT_Z]。 */
+    /** 轿厢门区的背面 Z 坐标 = 正面内收 0.2 格；门区占据 [CABIN_DOOR_BACK_Z, CABIN_FRONT_Z]，
+     * 伸缩门板在里面分两层（每层厚 0.095 格），见 {@link SlidingDoor}。 */
     public static final double CABIN_DOOR_BACK_Z = CABIN_FRONT_Z - .2;
     /**
      * 客户端插值延迟 2 刻（约 100 毫秒）：采样时回退这么久再做插值，用来吸收网络抖动。

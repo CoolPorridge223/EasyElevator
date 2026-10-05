@@ -21,7 +21,7 @@ import java.util.List;
  *
  * <p>为什么不直接依赖 {@link AbstractCabinEntity} 自身的实体碰撞箱：3x3x3 轿厢必须是空心的，玩家要从正面走进井道；
  * 而实心实体框会把整个 3x3x3 填满，导致无法进入。因此实体框只保留原版用途，真正的可碰撞几何由
- * {@link AbstractCabinEntity#collisionBoxes()} 给出的地板、顶板、侧壁与两扇轿厢门组成。
+ * {@link AbstractCabinEntity#collisionBoxes()} 给出的地板、顶板、侧壁与两扇滑门组成。
  *
  * <p>关键不变量/约束：
  * <ul>

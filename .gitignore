@@ -8,3 +8,4 @@ logs/
 .idea/
 *.iml
 .dsh-sigmap.txt
+__pycache__/

@@ -49,12 +49,23 @@
 | 参数/规则 | 默认值 | 修改位置及联动 |
 | --- | --- | --- |
 | 轨道走向 | 同 X/Z、连续、朝向一致的竖直列 | `ElevatorLine.scan/matches` |
-| 轿厢型号 | 三种：普通 `easyelevator:cabin`（4 格/秒、白模）、高速 `easyelevator:high_speed_cabin`（10 格/秒、外观与普通逐面相同）、观光 `easyelevator:observation_cabin`（4 格/秒、四面玻璃保留四个支撑边） | `entity/AbstractCabinEntity` 为共同父类；三个子类只声明速度（构造注入）、回收物品与 `glassWalls()` |
+| 轿厢型号 | 三种：普通 `easyelevator:cabin`（4 格/秒、拉丝不锈钢内舱）、高速 `easyelevator:high_speed_cabin`（10 格/秒、世界里的外观与普通逐面相同，只有物品图标是金色带速度标记）、观光 `easyelevator:observation_cabin`（4 格/秒、四面玻璃分格窗，保留四个支撑边） | `entity/AbstractCabinEntity` 为共同父类；三个子类只声明速度（构造注入）、回收物品与 `glassWalls()` |
 | 每线路轿厢数量 | 1（三种型号一起计数） | `CabinItem`、`AbstractCabinEntity.requestStop`、运行检查 |
-| 轿厢外观开关 | `glassWalls()` = false/true（仅观光为 true）；**纯客户端渲染提示**，不参与任何判定，也不进存档与网络包 | `CabinRenderer.drawStandard` / `drawObservationShell` + `drawObservationGlass` |
-| 观光玻璃几何 | 每个面都是**零厚度单面**（正反都可见）：左右侧墙贴在墙心 X=∓1.4、后墙 Z=-1.4、两扇门 Z=轿厢正面-0.01；四周与角柱/地板/顶板各留 0.01 格缝（Y=0.21..2.79、Z=-1.29..门背面-0.01、后墙 X=∓1.29）；四根角柱 0.2×0.2 保持不透明 | 单面每层只叠一次透明度；换成 0.12 格厚薄板会正反各叠一次而发灰。0.01 格缝是为了不与不透明面共面——共面时浮点深度差会造成"玻璃与框架衔接处闪烁"。只影响绘制；碰撞仍取 `collisionBoxes()` 的 0.2 格实心墙 |
+| 轿厢外观开关 | `glassWalls()` = false/true（仅观光为 true）；**纯客户端渲染提示**，不参与任何判定，也不进存档与网络包 | `CabinRenderer.drawStandardShell` / `drawObservationShell` + `drawObservationGlass` |
+| 轿厢内饰件 | 18 件（普通/高速）：三面踢脚线、三面不锈钢扶手、一圈顶棚灯槽 + 灯槽框 + 自发光顶灯、操纵面板六件（边框/面板/下沉显示窗/三颗按钮）；观光舱 31 件 = 同样的扶手/灯槽/顶灯/面板六件 + 玻璃上下压条 6 + 横向中梃 3 + 竖向分格 6 + 面板安装座 1 | `CabinRenderer.STANDARD_PARTS` / `OBSERVATION_PARTS`（每行 `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标） |
+| 内饰三条不变量 | ① 全部待在净空 X ±1.3、Y 0.2..2.8、Z -1.3..门背面之内（允许向外壳嵌 0.002 格）；② 与外壳或彼此相接的面必须错开 0.002 格以上，**不允许共面**；③ 材质格号 0..15、自发光 0/1 | `python tools/generate_art.py` 的 `check_cabin_parts` 会解析 Java 源里的两张表并逐条校验，不合格直接报错 |
+| 两舱共用面板 | 两张 PARTS 表的**最后 6 行必须逐字相同**（操纵面板）：观光舱的侧壁是玻璃，但层号与呼梯键一样要有，漏掉就会出现"红字浮在空中" | `check_cabin_parts` 断言 `STANDARD_PARTS[-6:] == OBSERVATION_PARTS[-6:]` |
+| 顶点色 | 轿厢全部不透明件与玻璃都用白色顶点色，颜色与细节完全来自贴图；玻璃的通透度来自 `GLASS_COLOR` / `GLASS_DOOR_COLOR` 的 alpha | 改配色只需重画 `textures/entity/cabin.png` |
+| 轿厢门布局（两扇对开滑门） | 门洞半宽 `DOORWAY_HALF=1.3`（**门洞 = 整个轿厢正面**）、外缘内收 `OUTER_INSET=0.001`、外缘位置 `OUTER_EDGE=1.299`、中缝半宽 `SEAM=0.005`；门区 Z `DOOR_Z_BACK=1.1`..`DOOR_Z_FRONT=1.3`（0.2 格，门扇前表面与轿厢正面齐平） | `logic/SlidingDoor`：`panelX(右?, 进度)` 给出两扇的横向区间——**外缘固定在 ±OUTER_EDGE、内缘（先导端）从 SEAM 线性移到 OUTER_EDGE**，`clearHalfWidth(进度)` 给出净开度，`visible(进度)` 决定全开时是否还生成门扇。**改这里等于同时改渲染与碰撞**（`CabinRenderer.drawDoors` 与 `AbstractCabinEntity.collisionBoxes` 都调同一份函数）。与楼层门（`LandingDoorGeometry.leafEdge`）是同一套"外缘固定、内缘外移"的做法，所以里外两道门看起来一致；`OUTER_INSET` 用于避免门扇外缘与侧壁内表面共面。回归测试 `SlidingDoorTest` 钉住"关门拼满正面只留中缝、外缘不动、内缘线性外移、两扇镜像、全开归零且门洞全通、不越出轿厢、与门框留 0.0125 格" |
+| 观光玻璃几何 | 每个面都是**零厚度单面**（正反都可见）：左右侧墙贴在墙心 X=∓1.4、后墙 Z=-1.4、两扇门 Z=轿厢正面-0.01；四周与角柱/地板/顶板各留 0.01 格缝（Y=0.21..2.79、Z=-1.29..门背面-0.01、后墙 X=∓1.29）；四根角柱 0.2×0.2 保持不透明；不透明的上下压条（Y 0.198..0.36 / 2.64..2.802）、一道横向中梃（Y 1.42..1.48）与每面两道竖向分格**横跨玻璃平面**，把每面分成 2×3 格窗 | 单面每层只叠一次透明度；换成 0.12 格厚薄板会正反各叠一次而发灰。0.01 格缝是为了不与不透明面共面——共面时浮点深度差会造成"玻璃与框架衔接处闪烁"。只影响绘制；碰撞仍取 `collisionBoxes()` 的 0.2 格实心墙 |
 | 观光玻璃渲染层 | 专用层 `easyelevator_cabin_glass`：照抄原版 `entity_translucent`（同着色器、贴图、混合、禁止剔除），只把写掩码换成 `COLOR_MASK`（**只写颜色、不写深度**） | `CabinRenderer.GLASS_LAYER`。世界渲染顺序是**实体 → 方块实体**（`WorldRenderer.render` 里 "entities" 早于 "blockentities"），而玻璃比楼层门更靠近观察者；玻璃若写深度，之后才绘制的楼层门会被深度测试整片剔除（"坐观光轿厢看不见每层电梯门"）。只写颜色后玻璃不遮挡任何后画几何，自身仍受深度测试约束 |
-| 观光玻璃通透度 | 墙面 `GLASS_COLOR` = 0x40BFE4F5（每面 25%）、门扇 `GLASS_DOOR_COLOR` = 0x59A8D2EC（每面 35%）；单面各叠一次，隔着轿厢看穿两面约 44%；alpha 全在顶点色里，贴图仍是一张全白图 | `CabinRenderer`；调通透度只改这两个常量 |
+| 观光玻璃通透度 | 墙面 `GLASS_COLOR` = 0x40BFE4F5（每面 25%，左右侧墙与后墙）、门扇玻璃 `GLASS_DOOR_COLOR` = 0x59A8D2EC（每面 35%，铁框中间那块）；单面各叠一次，隔着轿厢看穿两面约 44%；alpha 全在顶点色里，图集/方块玻璃贴图只提供一层极淡底色 | `CabinRenderer` + `client/GlassLayers`；调通透度只改这两个常量 |
+| 铁框玻璃门扇（几何） | 边框 `FramedLeaf.FRAME` = 2/16 格（≈12 厘米）；门扇变窄时边框最多占宽度 `FRAME_MAX_RATIO` = 0.34、上下横框最多占高度 `RAIL_MAX_RATIO` = 0.2（否则玻璃会被挤成负宽度、门快开完时闪一下）；玻璃是门扇厚度中线上的零厚度单面。楼层门的玻璃色 `LandingDoorRenderer.GLASS_COLOR` = 0x66A8D2EC | 几何 `logic/FramedLeaf`（纯算术，回归测试 `FramedLeafTest`），绘制 `client/FramedGlassDoor`，玻璃层 `client/GlassLayers.DOOR`；门是不是玻璃门由线路上的轿厢决定（`LandingDoorBlockEntity.glassDoors()`），观光线路的每一层都是玻璃门 |
+| 铁框玻璃门扇（贴图） | **每一块构件的 UV 取用范围都跟着它自己的尺寸走**（与普通电梯门门扇用 `LeafUv.leafRange` 让贴图窗口随门板收窄是同一套思路）：竖框 `FramedLeaf.stileUv(窗口, 边框宽/门扇宽)` 只取横向那一段、纵向取整段；横框 `railUv(窗口, 边框高/门扇高)` 反过来；玻璃面 `paneUv(格子, 玻璃宽, 玻璃高)` 按宽高比取（u 取宽/高那段、v 取整段），使横竖像素密度一致；每块构件的四周断面再用 `LeafUv.centredThinSlice` 取中心一小块 | `logic/FramedLeaf`。**不这么做就会出现实机反馈的"贴图拉伸"**：整张贴图铺到 2/16 格宽的竖框上，整块门板贴图被压成一条"条形码"。改这几个比例时，`FramedLeafTest` 会断言"竖框取用宽度 = 边框占门扇的比例""横框取用高度 = 边框占门扇的比例""玻璃 UV 的宽高比 = 玻璃面的宽高比" |
+| 轿厢材质图集 | 一张 4×4 共 16 格的 `textures/entity/cabin.png`，格号 = `CabinRenderer.Mat` 的枚举顺序（WALL/TRIM/DARK/FLOOR/CEIL/LAMP/RAIL/SILL/PANEL/BEZEL/BUTTON/GLASS/ACCENT + 三个备用格） | `CabinRenderer.Mat/MATERIAL_UV`、`BoxMesh` 的 UV 矩形重载；换格数或顺序必须同步 `tools/generate_art.py` 的 `ATLAS_TILES`，否则脚本报错 |
+| 厢内照明 | 顶灯按 **15 级方块光**参与渲染：`withLamp(light)` 取"采样世界光照"与"15 级方块光"的较大者（只抬方块光分量、天光原样保留），**不放置光源方块、不改世界数据** | `CabinRenderer.LAMP_LEVEL / withLamp`。实体不参与方块光照，所以灯罩画得再亮也照不亮井道；抬高渲染光照值是唯一不改存档/联机行为的做法。井道再暗厢内都有稳定亮度，白天也不会被压成偏黄 |
+| 顶棚自发光 | 顶灯灯罩那一行自发光标志 = 1，用 `LightmapTextureManager.MAX_LIGHT_COORDINATE` 绘制，因此永远比它照亮的舱内亮一档 | `CabinRenderer.drawParts` |
+| 面板文字行位 | 两行用**行心**定位：箭头 +0.08 格、楼层号 −0.10 格（相对面板中心）；字体坐标由 `yOffset = -(行心 + fontHeight*scale/2)/scale` 换算（`TextRenderer.draw` 的 y 是**顶边**而不是中心） | `CabinRenderer.ARROW_LINE_CENTRE / FLOOR_LINE_CENTRE / drawPanelLine`。落位：箭头的字格 Y=1.481..1.679、楼层号 Y=1.319..1.481，都在显示窗 1.31..1.73 内且不与按钮（1.21..1.29）相撞 |
 | 站点数量来源 | 每扇完整的3×3楼层门产生一个站点 | `ElevatorLine.scan`、`LandingDoorBlock.complete` |
 | 厅外呼叫 | 每站两个方向各一条（▲ 上行 / ▼ 下行），带方向入状态机，最多 128 条；到站开门时清除该站两条，门被拆也清除 | `ElevatorController.HallCall/callHall`、`AbstractCabinEntity.requestHallCall` |
 | 方向记忆 | 停车待命（门开着等乘客）**不清空服务方向**：`travel` 只在真的没有请求时才不再变化，`select` 第 ③ 步先看"当前方向前方还有没有活"——先服务顺路的（选站 + 同向厅外呼叫），没有则连反方向厅外呼叫也顺路接走，**只有该方向前方确实空了才掉头**（`oldestAheadHallCall`，按登记先后取**最早**那条）。于是"5 层按下行叫来轿厢 → 乘客按 6 层 + 1 层有呼叫"会先下 1 层再上 6 层；五层以下无呼叫时才直接上行 | `ElevatorController.select/nearestAheadAny/tick(OPEN)` |
@@ -70,11 +81,13 @@
 | 水平轨道到轿厢中心偏移 | 2 格 | `ElevatorLine.centerX/centerZ`、`AbstractCabinEntity.initialize` |
 | 轿厢预留范围 / 模型尺寸 | 预留3×3×3；模型宽3 × 深2.8 × 高3 格（三种型号完全相同） | `Easyelevator.CABIN/HIGH_SPEED_CABIN/OBSERVATION_CABIN` dimensions 保留预留范围；正面内收避免与楼层门重叠 |
 | 局部坐标 | 原点底部中心，+Z 门口 | `AbstractCabinEntity.localBox`、`CabinRenderer` |
-| 地板厚度/表面 | 0.2 格；相对 Y=0.2 | `collisionBoxes`、白模 renderer |
+| 地板厚度/表面 | 碰撞面 0.2 格（相对 Y=0.2）；渲染分成两层：深色基座 Y=0..0.19（四周立面用 DARK，因为侧面高 0.2×宽 3 格，铺装贴图铺上去会被纵向压成横条纹），铺面 Y=0.188..0.2 且四周缩进 0.01 格（留一圈阴影缝，像地板嵌在底座里），铺面顶面仍正好是 Y=0.2，与 `collisionBoxes()` 一致 | `CabinRenderer.drawFloor`（两种外观共用）；两层互嵌 0.002 格、绝不共面 |
 | 侧壁厚度 | 0.2 格 | 外缘 ±1.5，内缘 ±1.3 |
 | 顶板 | 相对 Y=2.8..3.0 | 轿厢净高 2.6 格 |
 | 轿厢正面前缘 | 局部 Z=1.3 | `ElevatorParameters.CABIN_FRONT_Z`，渲染与碰撞共用；楼层门后缘 Z=1.3125，间隙0.0125格 |
-| 门口 | X=-1.3..1.3，Y=0.2..2.8，Z=1.1..1.3 | 双扇门各占一半；后缘 `CABIN_DOOR_BACK_Z`，厚度仍0.2格 |
+| 门口 | X=-1.3..1.3，Y=0.2..2.8，Z=1.1..1.3 | 门区仍厚 0.2 格（后缘 `CABIN_DOOR_BACK_Z`），里面放**四扇伸缩门板**：每侧两扇各 0.647 格、分两层（0.095 格厚，层间 0.01 格缝），净开度 1.3 格 |
+| 门口常驻构件 | 金属门槛：底部 0.198 格起、顶面 0.23 格（比地板面高 0.03 格），左右外嵌进侧壁 0.002 格、前后各缩 0.01 格；门楣导轨箱：Y 2.72..2.802，背面缩进门扇背面 0.002 格、前缘缩 0.01 格 | `CabinRenderer.drawDoorway`。两者都藏在门扇后面，门开时露出；四周的内缩/外嵌是为了不与门扇或外壳共面（共面片在禁止剔除的层上会抢深度） |
+| 操纵面板 | 深色边框 X 1.26..1.302 / Y 1.10..1.90 / Z 0.20..0.90；亮面板 X 1.25..1.28；下沉显示窗 X 1.246..1.252 / Y 1.31..1.73 / Z 0.30..0.80；三颗按钮 X 1.221..1.251 / Y 1.21..1.29，Z 分别 0.32..0.40、0.46..0.54、0.60..0.68；观光舱在面板与玻璃之间多一块安装座 X 1.300..1.399 / Y 1.12..1.88 / Z 0.22..0.88 | 两张 PARTS 表的最后六行（逐字相同）；红字画在 X=1.243（显示窗前 0.003 格），见 `drawPanelLine` |
 | 乘客横向包围盒边界 | 中心 ±1.31 格 | `containsPassenger`、`insideFootprint`；非旁观、未骑乘 |
 | 乘客脚部高度范围 | 相对 Y≥0.14 且 <2.7 | `containsPassenger` |
 | 乘客名册 | UUID + 相对轿厢底部中心的偏移（格），随实体 NBT 的 `Riders` 一起存档 | `writeCustomDataToNbt` / `readCustomDataFromNbt`；读档后据此等乘客归位 |
@@ -123,7 +136,10 @@
 | 开门键语义 | 纯门操作、**不进队列**：门已全开 → 续满停留；正在关门 → 反向重新打开（中断关门）；门已全关但停在本层 → 直接开门。服务端受理条件＝`status()==IDLE` 且车体精确停在某站点（`AbstractCabinEntity.doorCommand`、`ElevatorController.forceOpen`），因此不会把本层排进呼叫队列、也不会开走再回来 |
 | 关门键语义 | 立刻结束停留并关门；门已全开或正在开门时受理（正在开门则反向关闭），门已关着时拒绝。允许队列为空时关门停在本层等待下一次呼叫，关门途中防夹仍然生效 |
 | 楼层显示 | 选站面板的**左上角**放一块深底红字的"数码管"（宽 40 × 高 30 像素，内凹三层框，与右侧"高度"（距顶 24 像素）与"页数"（38 像素）两行的整体垂直居中，左内边距 16 像素），层号**放大 2 倍**、**只显示层号本身**（3 / B1 / --）、**不带阴影**（带阴影会整体偏右下 1 像素，放大 2 倍后看起来像没居中，故按"文字宽度一半"手动居中后用 `drawText(...,shadow=false)` 绘制）；右侧"高度"与"页数"两行对齐到指示牌右侧区域的水平中心。**楼层门框顶部**与**轿厢内模拟面板**同样用红字显示层号。轿厢内面板两行：**第一行方向箭头（字号 0.022，行锚点 -8 像素）、第二行到达层数（字号 0.018，行锚点 +6 像素）**，各自水平居中。世界内文字统一走"局部坐标 + 最高亮度 + 负 Y 缩放（字体内部 Y 向下，同原版告示牌 `setTextAngles`）+ `POLYGON_OFFSET`"（`LandingDoorRenderer`、`CabinRenderer`） |
-| 门框顶部排版 | 横向一行"[方向箭头] [楼层号]"（中间留白 6 像素），起点取负的半个总宽，因此箭头在左、层数在右、整组居中。箭头宽度按字符本身固定预留（`StatusArrow.width`），因此闪烁时楼层号不会左右跳动。位置在门楣正中面外 0.02 格，只从走廊一侧可见 |
+| 门框顶部排版 | 横向一行"[方向箭头] [楼层号]"（中间留白 6 像素），起点取负的半个总宽，因此箭头在左、层数在右、整组居中。箭头宽度按字符本身固定预留（`StatusArrow.width`），因此闪烁时楼层号不会左右跳动。文字贴在**凹进去的显示屏面**上（见下一行的屏幕尺寸），只从走廊一侧可见 |
+| 门楣显示屏 | 屏幕是门楣中间**凹进 0.75/16 格**的一件（Y=13.25..15.75/16，Z=0.75/16..3/16），净高 0.15625 格；上下各留 0.25/16 的压边当边框，左右由立柱顶部的深色收头封边。字号 `FLOOR_SCALE=.016`（字模约 0.112 格、箭头约 0.128 格），文字中心取屏幕中线 **Y=2.90625（= 2 + 14.5/16）**，字面离屏幕 0.008 格 | 模型见 `tools/generate_art.py` 的 `header_bands`（`check_door_models` 断言屏幕必须凹进且不低于 `MIN_SCREEN_HEIGHT=2.4/16`，否则数字会溢出屏幕）；文字见 `LandingDoorRenderer.drawFloorDisplay`。**中线是 14.5/16 而不是 13.5/16**：写成 13.5 会让整行字下移 1/16 格，字模下半截被压边挡住、剩下的一截露在门洞里，看起来就是"数字穿透" |
+| 门扇贴图随门滑动（**楼层门**） | 门板**大面**只取"此刻还露在外面"的那一段：区间由 `logic/LeafUv.leafRange(进度, 右扇?)` 给出——左扇 `u0=1`（先导端）、`u1=进度`；右扇 `u0=1-进度`、`u1=0`；再经 `LeafUv.toUv` 映射进贴图。门板**四周断面**另给固定的一小段 `LeafUv.edgeRange(右扇?, EDGE_WIDTH=0.06)` | `logic/LeafUv` + `LandingDoorRenderer.render`（楼层门叶是"越开越窄"的盒子，所以贴图要按可见段取，否则会被压扁）。**这里没有朝向参数**：`BoxMesh` 把 UV 矩形的 u0 交给每个面的**第一个顶点**，而四种朝向下"朝走廊那一面"的第一个顶点分别落在左扇的先导端、右扇的门框端（`doorBox` 的朝向镜像正好抵消），所以贴图方向只由"哪一扇"决定——1.5.6 实机反馈"四个朝向只有一个门贴图是对的"就是因为当时按朝向翻端（`South`/`West` 两个朝向被反着贴）。另外：断面只用一小段，否则断面会把整张贴图挤进去，看起来像"贴图被截断"；非有限进度按全关处理，绝不把 NaN 写进顶点。轿厢门不走这条路（见上"轿厢门布局"） |
+| 门扇可读性（贴图线索） | 楼层门叶 `blank_door.png` 两侧各有一条亮折边，轿厢门板图集 `DOOR` 格右侧也有一组明暗竖线当折边：门板整体平移时这条线就是眼睛跟得住的运动线索（纯色门板在任何进度下看起来都一样，会误以为"门没动"） | `tools/generate_art.py` 的 `tex_door_leaf` / `tile_door`；`LeafUv.EDGE_WIDTH` 控制断面取多宽 |
 | 运行方向显示 | 用字符表示：上行 `▲`(U+25B2)、下行 `▼`(U+25BC)、停靠留空；亮灭由墙钟毫秒驱动（`StatusArrow.BLINK_MS` = 500，亮 0.5 s / 灭 0.5 s，门框与轿厢面板由同一个 `StatusArrow` 计算因此同相）。用墙钟而不是游戏刻：暂停菜单里游戏刻停止，箭头仍会继续闪 |  `client/StatusArrow`、`LandingDoorRenderer`、`CabinRenderer` |
 | 运行状态判定 | 由同步数据推导，无额外同步字段：只有 MOVING 且有目的站才判上行/下行（比当前高度高＝上行、低＝下行，差值小于 `SYNC_POSITION_EPSILON` 视为已到站），其余相位（开门/开门中/关门中/暂停/关着门停靠）一律"停靠"（`logic/ElevatorStatus`） |
 | 翻译键 | `status.easyelevator.up` = 电梯上行、`status.easyelevator.down` = 电梯下行、`status.easyelevator.idle` = 停靠（`en_us` 为 Going up / Going down / Parked） |

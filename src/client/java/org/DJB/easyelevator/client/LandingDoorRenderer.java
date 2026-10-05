@@ -21,15 +21,18 @@ import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.LandingDoorGeometry;
 import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.FloorIndicator;
+import org.DJB.easyelevator.logic.LeafUv;
 import org.joml.Matrix4f;
 
 /**
  * 楼层门渲染器：按连续进度把两扇门扇画出来，并在门框顶部显示轿厢当前楼层。
  *
  * <p>分工：门框（左右立柱 3/16 格宽、门楣 3/16 格高）是常驻几何，由方块模型
- * {@code landing_door_frame_*.json} 绘制；两扇可动门扇位于门洞内、会随进度收拢，
- * 方块模型无法在渲染时插值，因此交给方块实体渲染器逐帧画。框用亮白贴图、扇用暗白贴图，
- * 于是"门框"与"门"在视觉上分得开。
+ * {@code landing_door_frame_*.json} 绘制（亮钢 {@code blank} + 底座/门槛 {@code blank_plate}
+ * + 门楣显示屏 {@code blank_screen}）；两扇可动门扇位于门洞内、会随进度收拢，
+ * 方块模型无法在渲染时插值，因此交给方块实体渲染器逐帧画。
+ * 扇用深色阳极氧化 {@code blank_door}，那一张图里自带面板压边、中缝与踢脚板，
+ * 于是"门框"与"门"在视觉上分得开、门扇本身也有细节。
  *
  * <p>动画来源：{@link LandingDoorBlockEntity#openProgress(float)}，它逐刻采样的就是
  * 在站轿厢的门进度，因此楼层门门扇与 {@link CabinRenderer} 画的轿厢门扇
@@ -40,14 +43,37 @@ import org.joml.Matrix4f;
  * 因此画面与碰撞不会脱节。
  */
 public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlockEntity> {
-    /** 门扇贴图：暗白占位贴图，与门框模型的亮白形成层次。换正式素材时替换这一张即可。 */
-    private static final Identifier TEXTURE=Easyelevator.id("textures/block/blank_dark.png");
+    /** 门扇贴图：深色阳极氧化钢板，比门框的亮钢暗一档，形成层次。
+     *  贴图纵轴映射到门扇高度（v=0 在上、v=1 在下），因此图里的踢脚板正好落在门扇底部。 */
+    private static final Identifier TEXTURE=Easyelevator.id("textures/block/blank_door.png");
+    /** 铁框玻璃门扇的玻璃色（ARGB）：比观光舱壁略不透一点，隔着玻璃仍能看清井道与轿厢。 */
+    private static final int GLASS_COLOR=0x66A8D2EC;
 
-    /** 门框顶部文字的字号（格/像素：0.02 × 字体 9 像素高 ≈ 0.18 格，正好落在 3/16 格高的门楣上）与颜色（红色）。 */
-    private static final float FLOOR_SCALE=.02f;
+    /**
+     * 门楣显示屏上的字号（格/像素）、颜色与排版参数。
+     *
+     * <p>显示屏是门楣中间那条**凹进去**的深色玻璃（方块模型 {@code landing_door_frame_top*}
+     * 里 Y=13.25..15.75/16、Z=0.75/16 起的那一件），屏幕净高 2.5/16 = 0.15625 格。
+     * 字号取 {@code .016} 时：楼层号字模约 7 像素 = 0.112 格、方向箭头约 8 像素 = 0.128 格，
+     * 都留有余量；之前用 {@code .02} 时字模 0.18 格、比整条门楣还高，数字会溢出屏幕压在钢框上
+     * （1.5.6 实机反馈的"数字有点突兀"就是这个）。
+     */
+    private static final float FLOOR_SCALE=.016f;
     private static final int FLOOR_COLOR=0xFFFF4040;
-    /** 状态文本与楼层号之间的留白（像素），以及整行的纵向锚点（像素；实测取 -4 时正落在门楣中部）。 */
-    private static final float STATUS_GAP=6f, TEXT_Y=-4f;
+    /** 方向箭头与楼层号之间的留白（像素）。 */
+    private static final float STATUS_GAP=6f;
+    /**
+     * 显示屏中线的高度（根方块局部 Y，格）：顶行 13.25..15.75/16 的中点是 <b>14.5/16</b>，再加 2 格层高。
+     *
+     * <p>注意中点不是 13.5：13.5 是屏幕下沿往上 0.25/16 处，写成 13.5 会让整行字下移 1/16 格，
+     * 字模下半截跑到屏幕之外——被压边挡住的部分看不见，露在门洞里的那一截就成了"穿透"的横杠
+     * （1.5.6 第二轮实机反馈）。改这个常量请连同上下的压边一起量。
+     */
+    private static final float SCREEN_CENTRE_Y=2+14.5f/16f;
+    /** 显示屏面（凹进面）相对方块面的深度（格），必须与模型里的 {@code SCREEN_INSET} 一致（0.75/16）。 */
+    private static final double SCREEN_INSET=.75/16;
+    /** 文字离屏面留的空隙（格）：太小会与屏幕面抢深度，太大会看成浮在空中。 */
+    private static final double TEXT_STANDOFF=.008;
 
     /** 门扇不做顶点着色（保持贴图原色，由光照决定明暗）。
      * @param context 渲染器上下文（本渲染器不需要额外资源） */
@@ -75,14 +101,40 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         float progress=door.openProgress(tickDelta);
         // 全开时两扇门扇宽度归零、完全躲进门框立柱后面，没有可见几何，直接跳过
         if(progress>=.999f) return;
-        Box left=LandingDoorGeometry.leafBox(state.get(LandingDoorBlock.FACING),progress,false);
-        Box right=LandingDoorGeometry.leafBox(state.get(LandingDoorBlock.FACING),progress,true);
+        Direction facing=state.get(LandingDoorBlock.FACING);
+        Box left=LandingDoorGeometry.leafBox(facing,progress,false);
+        Box right=LandingDoorGeometry.leafBox(facing,progress,true);
         if(left==null&&right==null) return;
         // getEntityCutout 会剔除背面：门扇是实心长方体，背向的面本来看不见；
         // 顺带让"门扇外缘与门框内缘贴合"处的共面三角形不再互相闪烁。
         VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutout(TEXTURE));
-        if(left!=null) BoxMesh.cuboid(matrices,out,left,light,0xFFFFFFFF);
-        if(right!=null) BoxMesh.cuboid(matrices,out,right,light,0xFFFFFFFF);
+        // 观光轿厢所在的线路：所有楼层门的门扇都换成"铁框 + 中间玻璃"（判据来自门方块实体，见 glassDoors()）。
+        // 玻璃必须画在不透明层之后、而且必须在返回前只写玻璃层（换层会结束上一层缓冲，见 BoxMesh 类注释）。
+        boolean glass=door.glassDoors();
+        // 门扇是"盒子越收越窄"画出来的：照旧把整张贴图铺上去，贴图会随开门被横向挤压。
+        // 大面只取"此刻还露在外面"的那一段（靠门框那一端固定、移动端被门框挡住），断面另给一小段贴图，
+        // 换算集中在 logic/LeafUv 里（纯算术 + 单测）。
+        // 注意这里**没有**朝向参数：BoxMesh 把 UV 的 u0 交给每个面的第一个顶点，而四种朝向下
+        // "朝走廊那一面"的第一个顶点分别落在左扇的先导端、右扇的门框端（doorBox 的镜像正好抵消），
+        // 因此贴图方向只由"哪一扇"决定。之前按 SOUTH/WEST 翻端，导致四个朝向里只有两个是对的。
+        boolean plateAlongZ=facing==Direction.NORTH||facing==Direction.SOUTH;
+        if(glass) {
+            // 铁框玻璃门：不透明层只画铁框，玻璃在同一层的末尾单独画（见下面 glassPanes）
+            if(left!=null) FramedGlassDoor.frame(matrices,out,left,plateAlongZ,BoxMesh.FULL_UV,light);
+            if(right!=null) FramedGlassDoor.frame(matrices,out,right,plateAlongZ,BoxMesh.FULL_UV,light);
+            VertexConsumer panes=buffers.getBuffer(GlassLayers.DOOR);
+            if(left!=null) FramedGlassDoor.glass(matrices,panes,left,plateAlongZ,BoxMesh.FULL_UV,light,GLASS_COLOR);
+            if(right!=null) FramedGlassDoor.glass(matrices,panes,right,plateAlongZ,BoxMesh.FULL_UV,light,GLASS_COLOR);
+            return; // 已经切到玻璃层，不能再往 out 写顶点
+        }
+        if(left!=null)
+            BoxMesh.cuboid(matrices,out,left,light,0xFFFFFFFF,LeafUv.slabUv(
+                    LeafUv.toUv(LeafUv.leafRange(progress,false),BoxMesh.FULL_UV),
+                    LeafUv.toUv(LeafUv.edgeRange(false,LeafUv.EDGE_WIDTH),BoxMesh.FULL_UV),plateAlongZ));
+        if(right!=null)
+            BoxMesh.cuboid(matrices,out,right,light,0xFFFFFFFF,LeafUv.slabUv(
+                    LeafUv.toUv(LeafUv.leafRange(progress,true),BoxMesh.FULL_UV),
+                    LeafUv.toUv(LeafUv.edgeRange(true,LeafUv.EDGE_WIDTH),BoxMesh.FULL_UV),plateAlongZ));
     }
 
     /**
@@ -92,8 +144,10 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      * 楼层号在右、整组在门宽中点居中。状态文本宽度随内容变化（"停靠"比"电梯上行"窄），所以每帧重算，
      * 不会出现固定左边距导致的偏心。
      *
-     * <p>位置：从方块中心沿朝向推出"半格（到门面）+ 0.02 格"的距离，正好贴在门面外侧；高度取门楣中部
-     * （局部 Y=2.9）。方块实体渲染器传进来的矩阵<b>已经平移到方块原点</b>，因此只能用方块内局部坐标。
+     * <p>位置：从方块中心沿朝向推出"半格（到方块面）− 屏幕凹陷 + 0.008 格空隙"，因此红字正好贴在
+     * 凹进去的显示屏面上（而不是浮在方块面之外）；高度取屏幕中线，字体坐标再下移半个字高
+     * （{@link TextRenderer#draw} 的 y 是这一行的**顶边**）。方块实体渲染器传进来的矩阵
+     * <b>已经平移到方块原点</b>，因此只能用方块内局部坐标。
      *
      * <p>副作用：只向顶点缓冲写入文字（与门扇共用渲染管线传入的缓冲，由管线统一 flush），
      * 不改世界状态、不发包。
@@ -118,21 +172,23 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         // 箭头宽度始终按字符本身预留（停靠时不占位），这样闪烁的半个周期里楼层号不会左右跳动。
         int statusWidth=moving?StatusArrow.width(textRenderer):0, floorWidth=textRenderer.getWidth(floorText);
         float start=-(statusWidth+STATUS_GAP+floorWidth)/2f; // 整组居中的起点
-        // 位置：从方块中心沿朝向推出"半格（到门面）+ 0.02 格"；门面在朝向轴上正向为 1.0、反向为 0.0，
-        // 这样四种朝向都正好贴在门面外侧，不会浮在门外半格、也不会嵌进方块内部。
-        double offset=.5+.02;
+        // 位置：从方块中心沿朝向推出"半格（到方块面）− 屏幕凹陷 + 一点空隙"，因此红字正好贴在
+        // 凹进去的显示屏面上（而不是浮在方块面之外）。四种朝向的偏移量同一个公式，因为
+        // "沿朝向往外"在正向与反向朝向上刚好互为镜像。
+        double offset=.5-SCREEN_INSET+TEXT_STANDOFF;
         matrices.push();
-        // 高度取门楣中部（门楣在局部 Y=2.8125..3.0），文字正好落在门框顶部那条横梁上
-        matrices.translate(.5+facing.getOffsetX()*offset,2.9,.5+facing.getOffsetZ()*offset);
+        // 高度取显示屏中线：字体坐标的 y 是这一行的**顶边**，所以再下移半个字高，两行才会被屏幕装住。
+        matrices.translate(.5+facing.getOffsetX()*offset,SCREEN_CENTRE_Y,.5+facing.getOffsetZ()*offset);
         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(facing) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
         // Y 轴取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒。
         matrices.scale(FLOOR_SCALE,-FLOOR_SCALE,FLOOR_SCALE);
         Matrix4f matrix=matrices.peek().getPositionMatrix();
-        // 最高亮度：井道或走廊再暗也能看清红字。POLYGON_OFFSET 与原版告示牌一致，避免与门框面片闪烁。
+        float textY=-textRenderer.fontHeight/2f; // 行心 → 顶边（见上）
+        // 最高亮度：井道或走廊再暗也能看清红字。POLYGON_OFFSET 与原版告示牌一致，避免与屏幕面片闪烁。
         // 只在"正在运行 + 闪烁的亮相"画箭头；灭相与停靠都不画，位置由上面的 statusWidth 固定住。
         if(!arrowText.getString().isEmpty())
-            textRenderer.draw(arrowText,start,TEXT_Y,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        textRenderer.draw(floorText,start+statusWidth+STATUS_GAP,TEXT_Y,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+            textRenderer.draw(arrowText,start,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+        textRenderer.draw(floorText,start+statusWidth+STATUS_GAP,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
         matrices.pop();
     }
 

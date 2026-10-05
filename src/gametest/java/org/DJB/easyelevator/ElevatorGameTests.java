@@ -161,6 +161,7 @@ public class ElevatorGameTests implements FabricGameTest {
                 cabin.readNbt(saved);
                 var shells=cabin.collisionBoxes();
                 // 碰撞壳组成：地板、顶盖、左右侧壁、后壁恒为 5 个；门未全开时再加两扇滑动门，共 7 个。
+                // 门洞就是整个正面（与楼层门同一套做法），全开时两扇宽度归零、不再生成。
                 require(shells.size()==(progress==1?5:7),"Check both shell and sliding leaves");
                 // 楼层门现在也是连续滑动的：全关（0）、半开（0.5）、全开（1）三种门扇位置都要与轿厢壳保持间隙。
                 // 直接调用 LandingDoorGeometry.shape（与渲染、碰撞同源的纯几何），绕开方块实体与联锁改写。

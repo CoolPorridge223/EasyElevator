@@ -22,6 +22,11 @@ Push-Location $projectRoot
 try {
     $env:JAVA_HOME = (Resolve-Path -LiteralPath $Jdk).Path
     $env:GRADLE_USER_HOME = Join-Path $projectRoot '.gradle-user-home'
+    # Gradle/javac 会把告警（例如"使用了已过时的 API"）写到 stderr，而 $ErrorActionPreference = 'Stop'
+    # 会把原生命令的 stderr 当成终止错误：一旦调用方把输出接进管道（`| Select-String ...`），
+    # 脚本就会在构建其实成功的情况下抛 NativeCommandError。这里只对这一次原生调用放宽，
+    # 失败与否仍旧按退出码判断（下面那行 throw）。
+    $ErrorActionPreference = 'Continue'
     & (Join-Path $projectRoot 'gradlew.bat') $Task --console=plain
     if ($LASTEXITCODE -ne 0) { throw "Gradle task '$Task' failed (exit $LASTEXITCODE)." }
 } finally {

@@ -1,5 +1,12 @@
 # 模型、音效与门动画接口
 
+> **模型与贴图由脚本生成，不要手改单个数不出来源的文件。**
+> `python tools/generate_art.py` 写全部方块/物品模型与贴图，`python tools/generate_data.py`
+> 写方块状态、本地化、配方、掉落表与音效钩子。两个脚本都是纯 Python 3、无第三方依赖、
+> 可重复运行且输出逐字节一致，并且在写文件前会做几何自检（见各自文件头与
+> `check_door_models` / `check_item_models` / `check_cabin_parts` / `check_blockstates`）。
+> 只想换外观（贴图或模型数值）时改脚本再跑；只做资源包覆盖时可以照下表直接替换成品文件。
+
 ## 模型
 
 方块模型可直接替换资源 JSON，注册 ID 不变：
@@ -7,19 +14,65 @@
 | 资源 | 位置（相对 `src/main/resources/assets/easyelevator/`） |
 | --- | --- |
 | 轨道 | `models/block/elevator_rail.json` |
-| 楼层门**门框**（常驻的左右立柱与门楣） | `models/block/landing_door_frame_left.json`、`landing_door_frame_right.json`、`landing_door_frame_top.json`（中列门楣）、`landing_door_frame_top_left.json` / `landing_door_frame_top_right.json`（顶行的立柱+门楣）、`landing_door_frame_middle.json`（门洞，空模型） |
-| 楼层门物品图标（关门状态的整扇门；方块本身已不再使用它） | `models/block/call_button.json` |
-| 物品显示 | `models/item/elevator_rail.json`、`call_button.json`、`cabin.json`、`high_speed_cabin.json`、`observation_cabin.json` |
-| 门框白色贴图（亮白） | `textures/block/blank.png` |
-| 门扇白色贴图（略暗，用于区分框与扇） | `textures/block/blank_dark.png` |
-| 高速轿厢物品图标占位贴图（淡金） | `textures/block/blank_speed.png` |
-| 观光轿厢物品图标占位贴图（淡蓝，与玻璃顶点色同色系） | `textures/block/blank_glass.png` |
+| 楼层门**门框**（常驻的左右立柱与门楣） | 底行 `models/block/landing_door_frame_{left,middle,right}_bottom.json`（立柱底座 + 整条门槛）、中行 `landing_door_frame_{left,middle,right}.json`（立柱 / 门洞空模型）、顶行 `landing_door_frame_top.json`（中列门楣）与 `landing_door_frame_top_left.json` / `landing_door_frame_top_right.json`（顶行立柱 + 门楣） |
+| 楼层门物品图标（关门状态的整扇门切片；方块本身已不再使用它） | `models/block/call_button.json` |
+| 物品显示 | `models/item/elevator_rail.json`、`call_button.json` 直接以方块模型为父；三个轿厢图标共用 `models/item/cabin_body.json`（1/3 比例的迷你轿厢），各自只覆盖 `shell` / `wall` / `door` / `base` / `lamp` 五个贴图变量 |
+| 门框 / 轨道亮钢贴图 | `textures/block/blank.png` |
+| 亮钢门扇贴图（楼层门叶） | `textures/block/blank_door.png`（1.5.6 由 `blank_dark.png` 更名并改亮） |
+| 机加工深色板（立柱底座、门槛、轨道法兰与抱箍） | `textures/block/blank_plate.png` |
+| 门楣**显示屏**（近黑玻璃 + 掠光；横向均匀，因此三列门楣拼起来是同一块连续屏幕。屏幕本身在模型里是**凹进去**的一件，四周由压边与立柱收头当边框） | `textures/block/blank_screen.png` |
+| 高速轿厢图标金板（拉丝金 + 三个速度箭头） | `textures/block/blank_speed.png` |
+| 观光轿厢图标玻璃板（淡蓝玻璃 + 钢框 + 反光） | `textures/block/blank_glass.png` |
 | 厅外呼叫面板（右键楼层门弹出的 ▲ / ▼ / 关闭 三个按钮） | 纯 Java 绘制，见 `client/LandingDoorScreen`；按钮文字用的是 ▲(U+25B2) / ▼(U+25BC) 字符，由原版字体的 Unicode 回退提供，文案键为 `screen.easyelevator.hall_title / hall_up / hall_down / hall_station / close` |
-| 轿厢白色贴图（三种型号共用） | `textures/entity/cabin.png` |
+| 轿厢**材质图集**（三种型号共用一张 4×4 共 16 格） | `textures/entity/cabin.png` |
+| 模组列表图标 | `icon.png` |
 
-轿厢是移动实体，**不是可直接替换 block JSON 的方块**。当前 `CabinRenderer` 用白色立方体绘制地板、顶板、侧壁、两扇门及内部面板；替换为你的 Java/Blockbench 实体模型时，保留注册的 `CabinRenderer`，在其 `render` 内调用你的模型即可。如果将来采用 GeckoLib，需要自行增加适用于 1.21.1 的依赖及动画控制器；当前实现不依赖动画库。
+图集格号由 `CabinRenderer.Mat` 的枚举顺序给出：`WALL`（亮钢舱壁）、`TRIM`（中性饰条：扶手压条、灯槽、门楣）、
+`DARK`（深色阳极氧化：踢脚线、显示窗）、`FLOOR`（拉丝地板）、`CEIL`（顶板）、`LAMP`（灯罩，自发光）、
+`RAIL`（不锈钢扶手）、`SILL`（防滑门槛）、`PANEL`（操纵面板）、`BEZEL`（面板边框）、`BUTTON`（按钮）、
+`GLASS`（玻璃底色）、`ACCENT`（后壁暖色饰板）、`DOOR`（轿厢门扇，右侧带一组会随门滑动的折边竖线）与两个备用格。改配色只要重画对应格子；
+换格数或换顺序必须同时改 `tools/generate_art.py` 的 `ATLAS_TILES`，否则脚本会报错。
 
-`CabinRenderer<T extends AbstractCabinEntity>` 同时服务三种轿厢，外观只分两个分支：**普通与高速**走 `drawStandard`（完全不透明，两者逐面相同，因此高速型号没有独立模型）；**观光**走 `drawObservationShell` + `drawObservationGlass`（地板、顶板、四根角柱不透明，左右侧墙 / 后墙 / 两扇门各画一张 `BoxMesh.planeX/planeZ` 的**零厚度单面玻璃**，正反都可见，颜色常量是 `GLASS_COLOR` / `GLASS_DOOR_COLOR`）。单面而不是薄板，是因为半透明层不剔除背面、薄板会正反各叠一次而发灰；单面必须画在禁止剔除的层上。玻璃通透度全部来自顶点色的 alpha，贴图仍是同一张全白的 `textures/entity/cabin.png`，所以换玻璃观感只需要改这两个常量或换贴图，不必新增资源。玻璃面四周都与不透明结构留 0.01 格缝，避免共面时浮点深度差造成接缝闪烁；**碰撞不跟着变**——外壳仍由 `AbstractCabinEntity.collisionBoxes()` 按 0.2 格厚的实心墙生成。
+轿厢是移动实体，**不是可直接替换 block JSON 的方块**。`CabinRenderer` 用 `BoxMesh` 直接画几何：
+外壳五个长方体与 `AbstractCabinEntity.collisionBoxes()` 逐项对应，内饰件写在两张数据表里
+（`STANDARD_PARTS` / `OBSERVATION_PARTS`，每行 = `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标）。
+替换为你的 Java/Blockbench 实体模型时，保留注册的 `CabinRenderer`，在其 `render` 内调用你的模型即可。
+如果将来采用 GeckoLib，需要自行增加适用于 1.21.1 的依赖及动画控制器；当前实现不依赖动画库。
+
+内饰表有三条硬不变量，改表后必须让 `python tools/generate_art.py` 通过（它会解析 Java 源文件并逐条校验）：
+① 所有件待在净空 `X ±1.3、Y 0.2..2.8、Z -1.3..门背面` 之内（允许向外壳嵌 0.002 格）；
+② 与外壳或彼此相接时，相接面要错开 0.002 格以上，**不允许两个面共面**——轿厢走的是禁止剔除的层，
+共面片会互相抢深度；③ 材质格号 0..15、自发光只能 0/1。
+另外两张表的**最后 6 行必须逐字相同**（操纵面板）：观光舱的侧壁是玻璃，但层号与呼梯键同样要有，
+漏掉就会出现"红字浮在空中"——脚本会断言 `STANDARD_PARTS[-6:] == OBSERVATION_PARTS[-6:]`。
+
+**厢内照明**：实体不参与方块光照，灯罩画得再亮也照不亮井道，所以轿厢走 `CabinRenderer.withLamp`——
+把所有几何用的光照值换成"采样世界光照"与 `LAMP_LEVEL`（15 级方块光）的较大者，等价于在轿厢里挂一盏灯。
+它**只改渲染用的光照值**：不放置光源方块、不改世界数据，因此存档、区块加载与联机行为完全不变；
+天光分量原样保留，白天也不会被压成偏黄。灯罩那一件再单独用
+`LightmapTextureManager.MAX_LIGHT_COORDINATE`，于是"灯罩比周围更亮"，看起来是真的在发光。
+
+`CabinRenderer<T extends AbstractCabinEntity>` 同时服务三种轿厢，外观只分两个分支：**普通与高速**走
+`drawStandardShell` + `STANDARD_PARTS` + `drawDoorway` + `drawLeaves`（完全不透明，两者逐面相同，因此高速型号没有独立模型）；
+**观光**走 `drawObservationShell` + `OBSERVATION_PARTS` + `drawObservationGlass`（地板、顶板、四根角柱、上下压条、
+中梃与竖向分格、扶手、灯槽顶灯与**操纵面板**都不透明，左右侧墙 / 后墙 / 两扇门各画一张
+`BoxMesh.planeX/planeZ` 的**零厚度单面玻璃**，正反都可见，颜色常量是 `GLASS_COLOR` / `GLASS_DOOR_COLOR`）。
+门扇是**铁框玻璃**（周围钢框、中间玻璃）：铁框由四块长方体组成、玻璃是门扇厚度中线上的零厚度单面，
+两者分开画（铁框在不透明层、玻璃在"只写颜色"的 `GlassLayers` 层），布局由纯算术类 `logic/FramedLeaf` 给出。
+**每块构件的 UV 都按它自己的尺寸取**（竖框只取横向那一段、横框只取纵向那一段、玻璃按宽高比取，
+断面取中心一小块）——这与普通电梯门门扇"大面用随门滑动的窗口、断面用 `edgeRange` 小片"是同一套处理；
+照旧把整张贴图铺到 2/16 格宽的竖框上，整块门板贴图会被压成一条"条形码"（1.5.6 实机反馈的"贴图拉伸"）。
+观光舱的侧壁是玻璃，面板悬在玻璃内侧 0.1 格，因此 `OBSERVATION_PARTS` 里多一块"面板安装座"把面板接到玻璃上；
+实心门扇只画在普通/高速分支——观光舱的两扇门就是玻璃单面，若再画一层实心门扇，门会重新变成不透明的。
+单面而不是薄板，是因为半透明层不剔除背面、薄板会正反各叠一次而发灰；单面必须画在禁止剔除的层上。
+压条与中梃**横跨**玻璃平面（玻璃在 X=±1.4 / Z=-1.4），因此玻璃片段被它们正确遮挡，看上去就是 2×3 格的分格窗。
+玻璃通透度全部来自顶点色的 alpha，图集里的玻璃格只提供一层极淡的底色，所以换玻璃观感只需要改这两个常量或重画那一格，
+不必新增资源。玻璃面四周都与不透明结构留 0.01 格缝，避免共面时浮点深度差造成接缝闪烁；
+**碰撞不跟着变**——外壳仍由 `AbstractCabinEntity.collisionBoxes()` 按 0.2 格厚的实心墙生成。
+
+`BoxMesh` 新增了 UV 矩形重载（`cuboid(..., float[] uv)` 与 `planeX/Y/Z` 的同名重载，`{u0,v0,u1,v1}` 归一化 0..1，
+传 `FULL_UV` 即旧行为）。这就是"一张图集画完整个轿厢"的基础：实体渲染每层只有一个正在构建的缓冲，
+换一次贴图就要切一次缓冲、旧引用立刻失效，用 UV 分格可以在同一个缓冲里画完全部材质。
 
 玻璃用的是本项目自建的渲染层 `CabinRenderer.GLASS_LAYER`（`easyelevator_cabin_glass`），它照抄原版 `entity_translucent`，只把写掩码改成"只写颜色、不写深度"。**不要换回 `RenderLayer.getEntityTranslucent`**：世界渲染顺序是实体在前、方块实体在后，玻璃一旦写深度，之后绘制的楼层门（方块实体渲染器）会被深度测试整片剔除，表现为"坐在观光轿厢里看不见每层的电梯门"。
 
@@ -27,9 +80,39 @@
 
 楼层门及门框占轿厢局部 Z=1.3125..1.5。`ElevatorParameters.CABIN_FRONT_Z=1.3` 将地板、顶板、侧壁和轿厢门的前缘统一内收，与楼层门留出 0.0125 格间隙，避免重叠面闪烁。轿厢门厚度仍为 0.2 格，后缘 `CABIN_DOOR_BACK_Z=1.1`。渲染与碰撞共用这些参数；替换模型时也必须保持两层门和外壳之间的间隙。
 
-楼层门采用3×3多方块白模。方块状态 `facing` 表示朝向、`column=0/1/2` 表示横向位置、`level=0/1/2` 表示高度、`open` 是服务端联锁状态（客户端只读，两个取值现在指向同一套门框模型，不再切换外观）。只有 `column=1,level=0` 的底部中心定义站点；资源组合见 `blockstates/call_button.json`。门物品/方块 ID 保留 `easyelevator:call_button`。
+楼层门采用3×3多方块结构。方块状态 `facing` 表示朝向、`column=0/1/2` 表示横向位置、`level=0/1/2` 表示高度、`open` 是服务端联锁状态（客户端只读，两个取值指向同一套门框模型，不再切换外观）。只有 `column=1,level=0` 的底部中心定义站点；资源组合见 `blockstates/call_button.json`（由 `tools/generate_data.py` 生成，并会自检每个被引用的模型文件确实存在）。门物品/方块 ID 保留 `easyelevator:call_button`。
 
-门面拆成"门框 + 两扇可动门扇"：门框是常驻方块模型（亮白 `blank` 贴图），顶行的左右两列是"门楣 + 立柱"的组合模型（`landing_door_frame_top_left` / `top_right`），立柱一直顶到门楣，因此整圈门框是连着的、不会看起来像三段；门扇由 `LandingDoorRenderer` 按连续进度绘制（暗白 `blank_dark` 贴图），几何集中定义在 `block/LandingDoorGeometry.java`，碰撞形状、轮廓与渲染共用同一份数据，因此不会出现画面与碰撞各一套。门扇进度来自根方块的方块实体 `LandingDoorBlockEntity`，逐刻等于在站轿厢的门进度，开关门与轿厢门完全同步；两扇门扇向两侧收拢滑入门框，关门时各占门洞一半、正中只留 1/16 格细门缝（`LandingDoorGeometry.SEAM`，改成 0 即完全贴合）。
+门面拆成"门框 + 两扇可动门扇"：门框是常驻方块模型（亮钢 `blank` + 底座/门槛用 `blank_plate`，门楣正面是凹进去的显示屏 `blank_screen`），底行三列是"立柱底座 + 门槛"的组合模型（`*_bottom`），顶行的左右两列是"门楣 + 立柱"的组合模型（`landing_door_frame_top_left` / `top_right`），立柱一直顶到门楣，因此整圈门框是连着的、不会看起来像三段；门扇由 `LandingDoorRenderer` 按连续进度绘制（深色阳极氧化 `blank_door` 贴图，贴图里自带面板压边、中缝与踢脚板），几何集中定义在 `block/LandingDoorGeometry.java`，碰撞形状、轮廓与渲染共用同一份数据，因此不会出现画面与碰撞各一套。门扇进度来自根方块的方块实体 `LandingDoorBlockEntity`，逐刻等于在站轿厢的门进度，开关门与轿厢门完全同步；两扇门扇向两侧收拢滑入门框，关门时各占门洞一半、正中只留 1/16 格细门缝（`LandingDoorGeometry.SEAM`，改成 0 即完全贴合）。
+
+**屏幕必须留够高度**：门楣显示屏凹进 0.75/16 格、净高 2.5/16 格，字号 0.016（字模约 7 像素 = 0.112 格）。
+屏幕一旦做矮（或字号调大），红色的楼层号就会溢出屏幕压在钢框上——那正是 1.5.6 实机反馈的"数字有点突兀"。
+`tools/generate_art.py` 的 `check_door_models` 会断言屏幕的凹进深度与最小高度（`MIN_SCREEN_HEIGHT`），
+改模型时直接报错而不是默默变丑。
+
+**门扇贴图"随门滑动"而不是被压扁**（楼层门）：门叶是"盒子越开越窄"画出来的，所以 `LandingDoorRenderer`
+给每扇门叶传自己的 UV 矩形，只取此刻还露在外面的那一段（靠门框那一端固定不动，另一端被门框挡住）。
+区间与映射都由 `logic/LeafUv`（纯算术、可脱机测试）给出。轿厢门不是这样：它是**两扇对开滑门**，门板整块
+同一套做法：门洞就是整个正面，外缘固定在侧壁内侧、先导端向两侧移开，全开时门洞全通（`SlidingDoor` +
+`CabinRenderer.drawDoors`，贴图同样按"还露在外面"的那一段取）。
+`LeafUv` 有两个必须记住的约束：
+**① 必须映射进图集格子**——轿厢门用的是 4x4 图集里的 `DARK` 格，直接把区间当整张贴图的 0..1 用会把
+整张图集铺到门上（1.5.6 第三轮实机反馈的"轿厢门贴图完全不对"）；**② 镜像朝向要翻端**——
+`LandingDoorGeometry.doorBox` 对 SOUTH/WEST 做了镜像，同一扇门在这两个朝向下"最小坐标端"换边，
+由 `mirrored` 参数表达。可见宽度恒为 `1-进度`，与"整块门板平移、被墙挡住一部分"逐点等价（误差 0），
+因此花纹密度恒定；回归测试 `LeafUvTest` 盯住这两条。
+
+**第三个约束（1.5.6 实机反馈的"四个朝向只有一个门贴图是对的"）**：`BoxMesh` 把 UV 矩形的 u0 交给每个面的
+**第一个顶点**，而第一个顶点落在哪一端由面的种类固定（-Z 面在 maxX、+Z 面在 minX、-X 面在 minZ、+X 面在 maxZ）。
+四个朝向下"朝走廊那一面"分别是 -Z/+Z/+X/-X，但 `LandingDoorGeometry.doorBox` 同时按朝向把门宽轴镜像了，
+两个镜像正好抵消——所以 u0 在四种朝向下都落在同一个物理端：**左扇的先导端、右扇的门框端**。
+贴图方向因此只由"哪一扇"决定，与朝向无关；当时按 SOUTH/WEST 翻端，恰好把这两个朝向贴反了。
+
+**还有两件事让"滑动"看得见**（否则再正确也像是门被削窄了）：① 门板贴图里那条**折边**
+（`DOOR` 格右侧的明暗竖线、以及 `blank_door` 已有的边框亮线）会随门板一起移动，开门时就是一条亮线扫过门洞、
+最后收进立柱；② 门板**四周断面**另用一小段贴图（`LeafUv.edgeRange`），不然 0.2 格厚的断面会把半张贴图挤进去，
+看起来正好像"贴图被掐断"——这也是 1.5.6 第四轮反馈里"像贴图被截断"的来源。
+
+门槛与**碰撞无关**，它只贴地 0.03 格高、并且前后各内缩 0.01 格，门扇关着时完全被门扇挡住，因此既不会和门扇抢深度、也不需要改 `LandingDoorGeometry`；`LandingDoorBlock.getOutlineShape` / `getCollisionShape` 仍只取那份几何。轨道模型同理：新增的底座法兰、四颗地脚螺栓与抱箍都限制在 `3..13` 的平面范围内，`ElevatorRailBlock.getOutlineShape` 已同步改成 `createCuboidShape(3,0,3,13,16,13)`，保证右键放置轿厢的判定范围覆盖整个看得见的模型（轨道碰撞仍是整格，逻辑不变）。
 
 替换门扇外观时改渲染器里的长方体或换成骨骼模型即可，但必须保留 `LandingDoorBlock` 的服务端联锁与完整性检查，并让碰撞取自 `LandingDoorGeometry`——不要让动画自己决定能否打开，也不要让碰撞与渲染分叉。
 
@@ -45,7 +128,7 @@ var state = cabin.phase();
 // rightDoor.x = closedRightX + progress * travel;
 ```
 
-状态包括 OPEN、CLOSING、MOVING、OPENING、BLOCKED。状态及门进度由服务端计算并同步，进入观察范围的玩家也能看到当前进度。白模门使用横向收回占位动画；换模型后可使用骨骼平移或动画时间轴。渲染动画不能直接触发移动；安全联锁以服务端进度为准。
+状态包括 OPEN、CLOSING、MOVING、OPENING、BLOCKED。状态及门进度由服务端计算并同步，进入观察范围的玩家也能看到当前进度。两扇滑门使用横向收回动画；换模型后可使用骨骼平移或动画时间轴。渲染动画不能直接触发移动；安全联锁以服务端进度为准。
 
 楼层门的门扇现在也走同一套连续进度，替换外观时读同一个值即可：
 
@@ -105,4 +188,7 @@ ElevatorEvents.ARRIVED.register((cabin, floorY) -> {
 }
 ```
 
-运行音频制作成首尾无缝短循环。也可通过资源包覆盖上述资源；替换后重载资源或重启游戏。资源生成脚本 `tools/generate_placeholders.py` 会覆盖占位资源，导入正式素材后不要再次运行。
+运行音频制作成首尾无缝短循环。也可通过资源包覆盖上述资源；替换后重载资源或重启游戏。
+
+`tools/generate_data.py` 会重写 `sounds.json` 为"四个 ID、sounds 为空"的静音声明——**导入正式音频后不要再次运行它**，否则音频条目会被清掉（模型与贴图不受影响，那部分在 `tools/generate_art.py` 里）。
+`tools/generate_art.py` 只写模型与贴图，会重复运行也不会破坏别的东西。
