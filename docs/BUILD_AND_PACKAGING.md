@@ -49,22 +49,17 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\gradlew.bat build
 ```
 
-`--version` 中检查 Gradle=8.14.3，Launcher JVM/Daemon JVM 使用 Java 21。`build` 会编译客户端与服务端、处理资源、运行逻辑测试和服务端 GameTest，再生成重映射的正式 JAR。
+`--version` 中检查 Gradle=8.14.3，Launcher JVM/Daemon JVM 使用 Java 21。`build` 会编译客户端与服务端、处理资源，再生成重映射的正式 JAR。工程内没有自动化测试（`test` / `testClasses` 任务已在 build.gradle 里关闭），`build` 只编译与打包。
 
 | 目标 | 脚本参数 | 对应 Gradle 任务 |
 | --- | --- | --- |
-| 编译、测试、生成 JAR | `-Task build` | `build` |
-| 发布压缩包（先完整验证） | `-Task packageRelease` | `packageRelease` |
+| 编译、生成 JAR | `-Task build` | `build` |
+| 发布压缩包 | `-Task packageRelease` | `packageRelease` |
 | 可编辑工程压缩包 | `-Task packageProject` | `packageProject` |
 | 开发游戏客户端 | `-Task runClient` | `runClient` |
-| 仅服务端集成测试 | `-Task runGameTest` | `runGameTest` |
 | 清理旧构建输出 | `-Task clean` | `clean` |
 
-核心状态机与插值测试可单独执行：
-
-```powershell
-.\tools\test-logic.ps1 -Jdk 'E:\workspace\JAVA\JAVA21'
-```
+改完代码后的验收方式见 [人工验收清单](TESTING.md)：需要真人进游戏逐项确认，没有可替代的离线检查。
 
 ## 4. 给玩家的发布包
 
@@ -88,11 +83,11 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageProject
 ```
 
-输出 `build/distributions/easyelevator-1.5.6-project.zip`。顶层目录是 EasyElevator，包含源代码、测试、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
+输出 `build/distributions/easyelevator-1.5.6-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
 
-打包采用白名单，不包含 `.idea`、`.gradle`、`.gradle-user-home`、`.tools`、`build`、测试世界、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
+打包采用白名单，不包含 `.idea`、`.gradle`、`.gradle-user-home`、`.tools`、`build`、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
 
-`packageProject` 只归档，不自动运行测试。正式交付建议执行：
+`packageProject` 只归档，不运行任何检查。正式交付建议执行：
 
 ```powershell
 $env:JAVA_HOME = 'E:\workspace\JAVA\JAVA21'
@@ -122,4 +117,4 @@ $env:JAVA_HOME = 'E:\workspace\JAVA\JAVA21'
 | 修改贴图没生效 | 检查资源路径，重新打包或在开发客户端重载资源 |
 | 出现旧版本的 JAR | build/libs 可保留旧文件，按当前 mod_version 选择；需要时先 clean 再 build |
 
-日志及测试边界见 [TESTING.md](TESTING.md)。
+日志与人工验收见 [TESTING.md](TESTING.md)。

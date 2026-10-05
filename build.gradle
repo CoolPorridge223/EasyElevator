@@ -25,13 +25,6 @@ fabricApi {
     configureDataGeneration {
         client = true
     }
-    configureTests {
-        createSourceSet = true
-        modId = 'easyelevator-test'
-        enableGameTests = false
-        enableClientGameTests = false
-        eula = false
-    }
 }
 
 repositories {
@@ -111,9 +104,18 @@ tasks.register('packageProject', Zip) {
     }
 }
 
+// 工程内没有测试源码：关掉 java 插件自动创建的 test / testClasses 任务，避免它们出现在 `gradlew tasks`
+// 或日常构建输出里误导使用者。验收改为进游戏按 docs/TESTING.md 的人工清单逐项确认。
+tasks.named('test') {
+    enabled = false
+}
+tasks.named('testClasses') {
+    enabled = false
+}
+
 tasks.register('packageRelease', Zip) {
     group = 'distribution'
-    description = 'Build and test, then package installable jars and documentation.'
+    description = 'Build and package installable jars and documentation.'
     dependsOn 'build'
     archiveFileName = "${project.archives_base_name}-${project.version}-release.zip"
     destinationDirectory = layout.buildDirectory.dir('distributions')
@@ -121,25 +123,6 @@ tasks.register('packageRelease', Zip) {
     from(tasks.named('remapSourcesJar')) { into 'sources' }
     from('docs') { into 'docs' }
     from('README.md', 'LICENSE.txt')
-}
-
-tasks.register('logicTest', JavaExec) {
-    dependsOn testClasses
-    enabled = false
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.DJB.easyelevator.logic.ElevatorControllerTest'
-}
-tasks.named('check') {
-    dependsOn 'logicTest'
-}
-
-// 楼层门几何回归测试：纯算术、不启动游戏，但需要 Minecraft 类路径，所以走 gradle 而不是 tools 脚本。
-// 它是门模型/门尺寸改动后的按需检查（./gradlew.bat geometryTest），不挂到 build/check 上以免拖慢日常构建。
-tasks.register('geometryTest', JavaExec) {
-    dependsOn testClasses
-    enabled = false
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.DJB.easyelevator.block.LandingDoorGeometryTest'
 }
 
 jar {

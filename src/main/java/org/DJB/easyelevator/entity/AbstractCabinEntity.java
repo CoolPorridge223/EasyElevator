@@ -43,14 +43,15 @@ import java.util.UUID;
  * 电梯轿厢的共同父类：3x3x3 的空心轿厢，也是整条线路的服务端权威载体。
  *
  * <p>为什么要有这一层：模组提供三种轿厢——普通轿厢 {@link CabinEntity}、
- * 高速轿厢 {@link HighSpeedCabinEntity}（速度是普通的 {@link ElevatorParameters#HIGH_SPEED} 倍）、
- * 观光轿厢 {@link ObservationCabinEntity}（四面墙换成玻璃）。三者的运动学、乘客处理、门联锁、
- * 存档与同步<b>完全相同</b>，差别只有两项：构造时传入的匀速步长，以及子类覆写的
+ * 高速轿厢 {@link HighSpeedCabinEntity}（巡航速度是普通的 {@link ElevatorParameters#HIGH_SPEED} 倍，
+ * 且加/减速段更长）、观光轿厢 {@link ObservationCabinEntity}（四面墙换成玻璃）。三者的运动学、乘客处理、
+ * 门联锁、存档与同步<b>完全相同</b>，差别只有两项：构造时传入的巡航速度，以及子类覆写的
  * {@link #cabinItem()}（回收时掉落哪一种物品）与 {@link #glassWalls()}（纯客户端渲染提示）。
  * 因此全部逻辑集中在这里，三个子类各自只有十几行，不存在第二份需要同步维护的运动代码。
  *
  * <p>在整体架构中的位置：所有运动学都委托给纯 Java 状态机 {@link ElevatorController}
- * （不引用任何 Minecraft 类，因而可以脱离游戏单测）。本实体每刻在 {@link #tick()} 中通过匿名
+ * （不引用任何 Minecraft 类，因而可以脱离游戏单测）；状态机再把"每刻走多远"委托给 S 形速度曲线
+ * {@link org.DJB.easyelevator.logic.MotionProfile}。本实体每刻在 {@link #tick()} 中通过匿名
  * {@link ElevatorController.Environment} 把世界查询（valid / canMove / doorwayBlocked / arrived）
  * 注入状态机，再把状态机返回的 Y 应用到实体位置；实体自身不保存速度、加速度或插值轨迹。
  * 客户端只读 {@code DataTracker} 同步字段与运动包，不参与任何运动决策。
@@ -72,7 +73,8 @@ import java.util.UUID;
  *
  * <p>几何与单位：局部坐标原点在轿厢底部中心，+Z 指向门口，长度单位一律为格（方块）。
  * 轿厢中心位于轨道朝向前方 2 格，底部 Y 与被点击的轨道相同，因而与站点 Y 对齐。
- * 速度单位为格/刻（1 秒 = 20 刻），见 {@link #speed()}。三个型号的几何、碰撞与同步字段
+ * 速度单位为格/刻（1 秒 = 20 刻），见 {@link #speed()}；它是 S 形曲线的<b>巡航速度上限</b>，
+ * 启动与到站的若干刻里实际步长小于它。三个型号的几何、碰撞与同步字段
  * 完全一致，因此换乘任意型号都不会改变井道尺寸、站点位置或门联锁语义。
  */
 public abstract class AbstractCabinEntity extends Entity {
@@ -98,7 +100,7 @@ public abstract class AbstractCabinEntity extends Entity {
     /** 确定性状态机实例：Phase、门进度、当前目标与请求队列都存放在这里，实体内不重复保存。速度在构造时注入。 */
     private final ElevatorController controller;
 
-    /** 本型轿厢的匀速步长（格/刻）：普通与观光 0.20、高速 0.50；与 {@link ElevatorController#speed()} 同值，供外部读取。 */
+    /** 本型轿厢的巡航速度上限（格/刻）：普通与观光 0.20、高速 0.50；与 {@link ElevatorController#speed()} 同值，供外部读取。 */
     private final double speed;
 
     /** 所属线路的轨道水平坐标（方块坐标）；与 {@link #getY()} 一起构成 {@link ElevatorLine#scan} 的种子，也是线路唯一性的判定依据。 */
@@ -155,9 +157,10 @@ public abstract class AbstractCabinEntity extends Entity {
      * @param type 实体类型（由子类传入各自的注册类型，例如 {@code easyelevator:cabin}、
      *             {@code easyelevator:high_speed_cabin}、{@code easyelevator:observation_cabin}）
      * @param world 所在世界
-     * @param speed 本型轿厢的匀速步长（格/刻）：普通与观光用 {@link ElevatorParameters#SPEED}，
+     * @param speed 本型轿厢的巡航速度上限（格/刻）：普通与观光用 {@link ElevatorParameters#SPEED}，
      *              高速用 {@link ElevatorParameters#HIGH_SPEED}。用构造参数而不是子类覆写方法，
      *              是为了避免"父类构造期间调用子类方法"，也让速度天然成为 final 的只读事实。
+     *              加加速度（jerk）由状态机按该速度推出：高速档更小 ⇒ 加/减速段更长。
      */
     protected AbstractCabinEntity(EntityType<?> type, World world, double speed) {
         super(type, world);
@@ -166,7 +169,7 @@ public abstract class AbstractCabinEntity extends Entity {
         this.controller = new ElevatorController(speed); // 速度在构造时一次性注入状态机，运行中不变
     }
 
-    /** @return 本型轿厢的匀速步长（格/刻）：普通与观光 0.20，高速 0.50；只读，供渲染/面板/测试读取。 */
+    /** @return 本型轿厢的巡航速度上限（格/刻）：普通与观光 0.20，高速 0.50；只读，供渲染/面板/测试读取。 */
     public final double speed() { return speed; }
 
     /**
@@ -514,9 +517,9 @@ public abstract class AbstractCabinEntity extends Entity {
      *   <li>整个过程中<b>不改呼叫队列与目的站</b>：不会把本层排进队列，因此不会出现"先开走、之后再回来"。</li>
      * </ul>
      *
-     * <p>为什么要求 {@link ElevatorStatus#IDLE}：轿厢匀速运行（0.20 或 0.50 格/刻，见 {@link #speed()}）、
-     * 站点高度是整数，运行时高度会精确落在某些楼层上；只看高度会让"运行途中恰好经过某层"也被判成在站点上，
-     * 从而半空开门。因此"是否停稳"必须由相位判断，不能只看坐标。
+     * <p>为什么要求 {@link ElevatorStatus#IDLE}：轿厢以 0.20 或 0.50 格/刻为巡航上限运行（普通/观光 与 高速，
+     * 见 {@link #speed()}），S 形曲线的巡航段会让高度精确经过整数楼层；只看高度会让"运行途中恰好经过某层"
+     * 也被判成在站点上，从而半空开门。因此"是否停稳"必须由相位判断，不能只看坐标。
      *
      * <p>关门键交给 {@link ElevatorController#forceClose()}：允许在队列为空时先把门关上、停在本层等待呼叫。
      *

@@ -13,7 +13,9 @@ import java.util.List;
  *
  * <p>在整体架构中的位置：服务端权威。AbstractCabinEntity（及其三个子类：普通 / 高速 / 观光）每刻调用 {@link #tick(double, Environment)}，
  * 用匿名 Environment 实现把 valid/canMove/doorwayBlocked/arrived 四个世界查询喂进来；
- * 状态机产出的 phase/door/target 再由服务端同步给客户端，客户端只做只读渲染与镜头插值。</p>
+ * 状态机产出的 phase/door/target 再由服务端同步给客户端，客户端只做只读渲染与镜头插值。
+ * <b>运动形状委托给 {@link MotionProfile}</b>：状态机只决定"什么时候能走、往哪走"，每刻向曲线索取
+ * 位移，因此门时序与联锁不受运动形状影响。</p>
  *
  * <p>状态迁移（{@link Phase}）：OPEN -> CLOSING -> MOVING -> OPENING -> OPEN 循环；
  * BLOCKED 表示受阻（断轨、线路朝向不一致、运行区域有方块或实体障碍、区块未加载、目的站门被拆），
@@ -33,7 +35,8 @@ import java.util.List;
  *
  * <p>关键不变量：门未完全关闭（door == 0）不得移动；楼层门只在轿厢精确到站
  * （误差 &lt;= {@link ElevatorParameters#POSITION_EPSILON}）且轿厢门正在打开时才开启联锁；
- * 轿厢选站队列与厅外呼叫列表都不出现重复站点；同一时刻最多只有一个 target。</p>
+ * 轿厢选站队列与厅外呼叫列表都不出现重复站点；同一时刻最多只有一个 target；
+ * 单刻位移恒 ≤ 本型号巡航速度（S 形曲线的速度上限），因此"到站不跨格"的前提继续成立。</p>
  */
 public final class ElevatorController {
     /**
@@ -98,13 +101,38 @@ public final class ElevatorController {
     /** 默认速度的只读副本（单位：格/刻），转发自 {@link ElevatorParameters#SPEED}；普通轿厢即用此值。 */
     public static final double SPEED = ElevatorParameters.SPEED;
     /**
-     * 本实例的匀速步长（单位：格/刻）。
+     * 本实例的巡航速度上限（单位：格/刻）。
      *
      * <p>为什么要做成实例字段：普通 / 高速 / 观光三种轿厢共用同一个状态机，差别只有速度
      * （高速 = {@link ElevatorParameters#HIGH_SPEED} = SPEED 的 2.5 倍）。速度恒定，因此这里
      * 是 final —— 状态机仍然确定、仍然可以脱离游戏单测，只是不再假设"全世界只有一个速度"。
+     *
+     * <p>自 S 形曲线（{@link MotionProfile}）接入后，它不再等于"每刻固定步长"，而是曲线的
+     * <b>巡航速度上限</b>：启动与到站的若干刻里实际步长小于它，中段才等于它。因此
+     * "单刻位移 ≤ speed"这一到站精度前提仍然成立，门时序与联锁完全不受影响。
      */
     private final double speed;
+    /**
+     * 本实例的 S 形速度曲线（Jerk-limited profile）：负责回答"本刻该走多远"。
+     *
+     * <p>状态机只管"什么时候能走、往哪走、门怎么联动"，运动形状全部委托给它。曲线按型号注入
+     * 速度、加速度与 jerk 上限，因此高速梯天然拥有更长的加/减速段（见
+     * {@link ElevatorParameters#HIGH_SPEED_JERK}）。
+     */
+    private final MotionProfile profile;
+    /**
+     * 当前曲线内的时间（刻），每次 {@link MotionProfile#plan} 之后从 0 开始重新计时。
+     *
+     * <p>用它按时间求值而不是"逐刻累加位移"：曲线每刻的位置由 t 唯一决定，因此不会有累加误差，
+     * 也绝不外推；到站时曲线终点就是站点本身，最后一步自然精确落在站点高度上。
+     */
+    private double profileTick;
+    /** 当前曲线的计划终点（格）：用来判断目的站是否变过（顺路改道 / 读档恢复），变了就重新规划。 */
+    private double plannedTarget = Double.NaN;
+    /** 曲线上一次求值得到的速度（格/刻，带符号）；只用于重规划时给曲线一个正确初值。 */
+    private double velocity;
+    /** 曲线上一次求值得到的加速度（格/刻²，带符号）；只用于重规划时给曲线一个正确初值。 */
+    private double acceleration;
     /** 门时序与队列上限的只读副本，转发自 ElevatorParameters（DOOR_TICKS/DWELL_TICKS/MAX_REQUESTS）。 */
     public static final int DOOR_TICKS = ElevatorParameters.DOOR_TICKS,
             DWELL_TICKS = ElevatorParameters.DWELL_TICKS, MAX_REQUESTS = ElevatorParameters.MAX_REQUESTS;
@@ -112,13 +140,13 @@ public final class ElevatorController {
     private final ArrayDeque<Stop> queue = new ArrayDeque<>();
     /** 厅外呼叫列表（按登记顺序）：同一站点同一方向不重复；到站开门或门被拆时清除。 */
     private final List<HallCall> hallCalls = new ArrayList<>();
-    /** 当前正在执行的目的站；为 null 表示空闲（开门停留中或受阻等待请求）。 */
+    /** 当前正在执行的目的站；为 null 表示空闲（开门停留中、或关着门停在本层待命、或受阻等待请求）。 */
     private Stop target;
     /** 当前阶段；初始为 OPEN，即轿厢落成时门是开的，便于立即上人。 */
     private Phase phase = Phase.OPEN;
     /** 门联锁进度：0 = 完全关闭（保留真实碰撞），1 = 完全打开；无量纲。 */
     private float door = 1;
-    /** 开门后的剩余停留刻数；归零且还有请求时才开始关门。 */
+    /** 开门后的剩余停留刻数；归零就关门（没有请求时也一样，关上门停在本层待命）。 */
     private int dwell = DWELL_TICKS;
     /** 当前承诺的服务方向：由 {@link #select(double)} 维护，空闲（没有任何请求）时复位为 {@link Travel#NONE}。 */
     private Travel travel = Travel.NONE;
@@ -138,17 +166,42 @@ public final class ElevatorController {
     public ElevatorController() { this(ElevatorParameters.SPEED); }
 
     /**
-     * 用指定速度构造状态机。
+     * 用指定巡航速度构造状态机。
      *
-     * @param speed 匀速步长（单位：格/刻）；非正数、NaN 或无穷大时退化为
+     * @param speed 巡航速度上限（单位：格/刻）；非正数、NaN 或无穷大时退化为
      *              {@link ElevatorParameters#SPEED}，避免存档载入的坏值让轿厢永远到不了站
      */
-    public ElevatorController(double speed) {
+    public ElevatorController(double speed) { this(speed, MotionProfile.defaultJerk(speed)); }
+
+    /**
+     * 用指定巡航速度与加加速度上限构造状态机。
+     *
+     * @param speed 巡航速度上限（单位：格/刻）；非法时退化为 {@link ElevatorParameters#SPEED}
+     * @param jerk 加加速度上限（单位：格/刻³）；非法时按型号推出（见 {@link MotionProfile#defaultJerk(double)}）。
+     *             jerk 越小，加/减速段越长：高速梯默认取普通梯的 0.4 倍，因此同样升到加速度上限
+     *             需要 2.5 倍的时间，10 格/秒的"推背感"被摊得更开。
+     */
+    public ElevatorController(double speed, double jerk) {
         this.speed = Double.isFinite(speed) && speed > 0 ? speed : ElevatorParameters.SPEED;
+        // 曲线在构造时一次性注入速度/加速度/jerk 上限，运行中不变：状态机仍然完全确定、可脱离游戏单测。
+        this.profile = new MotionProfile(this.speed, ElevatorParameters.MAX_ACCELERATION, jerk);
     }
 
-    /** @return 本实例的匀速步长（单位：格/刻）：普通 0.20、高速 0.50；只读，运行中不变。 */
+    /** @return 本实例的巡航速度上限（单位：格/刻）：普通 0.20、高速 0.50；只读，运行中不变。 */
     public double speed() { return speed; }
+
+    /**
+     * @return 本刻的瞬时速度（单位：格/刻，带符号；向下为负）。
+     *         曲线未运行时为 0；它只反映当前曲线，不参与任何调度或门联锁判定。
+     */
+    public double currentSpeed() { return profile.idle() ? 0 : velocity; }
+
+    /** @return 当前曲线的总时长（刻）：0 表示静止（门开着、已到站、或受阻等待）。 */
+    public double profileTime() { return profile.totalTime(); }
+
+    /** @return 当前曲线内的时间（刻），随每次 tick 前进，到站/重新规划时归零。 */
+    public double profileTick() { return profileTick; }
+
     /** @return 当前状态机阶段（服务端权威，客户端只读同步用于渲染）。 */
     public Phase phase() { return phase; }
     /** @return 门联锁进度 0..1（0 关闭 / 1 打开，无量纲）。 */
@@ -255,8 +308,9 @@ public final class ElevatorController {
     /**
      * 面板"关门"键：立刻结束开门停留并关门；门已经关着时无事可做。
      *
-     * <p>与"到站停留结束"的区别：这里不要求队列非空——真实电梯的关门键可以先把门关上、让轿厢停在
-     * 本层等待下一次呼叫，因此允许把门关到全闭后停在站点（相位停在 MOVING、target 为空）。
+     * <p>与"停留时间自然结束"的区别只有时机：本方法把剩余停留一次清零，因此按下去立刻关门，
+     * 而正常流程是等 {@link ElevatorParameters#DWELL_TICKS} 走完再关。两者关门后的落点完全一致
+     * ——门关到全闭后停在站点（相位停在 MOVING、target 为空），关着门等下一次呼叫。
      * 关门过程中仍然每刻检查门口是否有人，被夹住会重新开门（防夹不因手动操作而失效）。
      *
      * @return 指令是否被接受（门处于打开或开门过程中才接受）
@@ -288,22 +342,27 @@ public final class ElevatorController {
             target = null;
             targetHallDirection = Travel.NONE;
             phase = Phase.BLOCKED;
+            stopMotion(); // 目的站没了：曲线作废，速度/加速度清零，恢复行程时从静止重新规划
         }
         switch (phase) {
             case OPEN -> {
-                // 开门停留倒计时；dwell 归零且还有请求（选站或厅外呼叫）才派发下一站并开始关门。
+                // 开门停留倒计时；归零就关门——无论还有没有请求。
                 if (dwell > 0) dwell--;
                 // 注意：这里**不**把 travel 复位为空闲。停车待命（门开着等乘客）时要保留"刚才是上行还是下行"的
                 // 记忆，否则"被下行呼叫叫到 5 层、乘客进厢按 6 层、楼下还有呼叫"会丢掉下行方向而先去 6 层。
-                if (dwell == 0 && hasRequests()) {
+                if (dwell == 0) {
+                    // 停留时间到：先派发下一站（有请求时才可能选出目标），然后一律关门。
+                    // 一个请求都没有时 select() 返回 null，于是门关到全闭后停在 MOVING 且无目的站
+                    // ——即"关着门停在本层待命"，与手动按关门键的结果完全一致（见 forceClose）。
+                    // 以前这里是"无请求就保持开门"，于是空闲的轿厢会一直敞着门；现在改成关门。
                     target = select(y);
-                    if (target != null) {
-                        if (Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON) {
-                            // 目的站就是本层（例如门开着时另一方向有人按，第 ④ 步掉头后选中它）：
-                            // 车已经在这一层、门也开着，就地把它认领掉并续满停留时间，不必先关一次门再重开。
-                            // 清扫仍然只清这一条呼叫（见 serveStation），另一方向的呼叫各自独立。
-                            serveStation(target.y()); target = null; dwell = DWELL_TICKS;
-                        } else phase = Phase.CLOSING;
+                    if (target != null && Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON) {
+                        // 目的站就是本层（例如门开着时另一方向有人按，第 ④ 步掉头后选中它）：
+                        // 车已经在这一层、门也开着，就地把它认领掉并续满停留时间，不必先关一次门再重开。
+                        // 清扫仍然只清这一条呼叫（见 serveStation），另一方向的呼叫各自独立。
+                        serveStation(target.y()); target = null; dwell = DWELL_TICKS;
+                    } else {
+                        phase = Phase.CLOSING;
                     }
                 }
             }
@@ -323,20 +382,44 @@ public final class ElevatorController {
                 // 顺路改道：运行途中新插入的请求若在同方向前方且比当前目标更近，就先停它
                 // （例如正驶向 10 层时有人在 5 层按了上行——不重排就会径直开过 5 层）。
                 retarget(y);
-                double remaining = target.y() - y;
-                // No minimum movement quantum: even a sub-micrometre final distance is preserved.
-                // 不设“最小位移量子”：最后不足一步的残差也直接走到目标值（而不是原地判到站），
-                // 这样 y 能精确等于 target.y()，双精度到站判定与门联锁的严格相等才有意义。
-                double next = Math.abs(remaining) <= speed + ElevatorParameters.POSITION_EPSILON
-                        ? target.y() : y + Math.copySign(speed, remaining);
-                if (!env.canMove(y, next)) { phase = Phase.BLOCKED; break; }
+                // 规划 S 形曲线：目的站变了（开始、改道、读档恢复）就从"当前位置 + 当前速度/加速度"
+                // 重新规划。曲线接受任意初速度，因此改道不会过冲；曲线终点就是站点本身，
+                // 因此最后一步精确到站，无需最小位移量子或容差兜底。
+                if (profile.idle() || plannedTarget != target.y()) {
+                    plannedTarget = target.y();
+                    profileTick = 0;
+                    // 初速度/初加速度取自当前曲线（不是直接清零）：改道时车可能正以巡航速度前进，
+                    // 必须让新曲线从真实状态接着算，否则会出现"瞬间刹停再起步"或"来不及减速"。
+                    profile.plan(y, velocity, acceleration, target.y());
+                }
+                // 本刻位移由曲线按时间给出：启动时缓慢加速、中段巡航、到站前平滑减速，全程受
+                // 速度/加速度/jerk 三重上限约束（见 MotionProfile）。
+                double step = profile.advance(1, y, profileTick);
+                double next = y + step;
+                velocity = profile.velocityAt(Math.min(profileTick + 1, profile.totalTime()));
+                acceleration = profile.accelerationAt(Math.min(profileTick + 1, profile.totalTime()));
+                if (!env.canMove(y, next)) {
+                    // 受阻：位置与时间轴都不前进（曲线按时间求值，不能"偷偷溜过去"），
+                    // 并把曲线整体作废，恢复后从静止重新规划。
+                    phase = Phase.BLOCKED;
+                    stopMotion();
+                    break;
+                }
                 phase = Phase.MOVING;
+                profileTick++;
                 y = next;
-                // 到站判定用 ==（而不是 epsilon）：接近时已把 next 吸附为 target.y()，
-                // 其余情况由双精度精确比较即可，容差反而会掩盖线路高度不一致的问题。
+                // 曲线走完（曲线已静止在终点）时把它抹平到站点高度：距离小于到站容限的行程会被
+                // MotionProfile 直接判为"已经在目标上"，此时本刻位移为 0，需要由这里补上最后这一丝
+                // 残差（≤ POSITION_EPSILON = 1e-7 格，肉眼与碰撞都不可见），保证精确到站语义不变。
+                // 只在曲线确实走到终点后才吸附：运行中恰好掠过该容限范围时必须继续正常行驶。
+                if (profileTick >= profile.totalTime() && Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON)
+                    y = target.y();
+                // 到站判定用 ==（而不是 epsilon）：曲线终点就是 target.y()，advance 的终点分支
+                // 会把浮点残差一并抹平，因此这里能精确成立；其余情况由双精度精确比较即可。
                 if (y == target.y()) {
                     // 先对齐再回调：保证 arrived 里做门联锁判定时位置已精确落在站点上。
                     y = target.y(); env.arrived(target); serveStation(target.y()); target = null; phase = Phase.OPENING;
+                    stopMotion(); // 到站：曲线使命结束，下一次移动重新规划
                 }
             }
             case OPENING -> {
@@ -346,11 +429,25 @@ public final class ElevatorController {
                     door = 1; phase = Phase.OPEN; dwell = DWELL_TICKS;
                     // Anti-crush reopening preserves the interrupted request.
                     // 防夹重开：被中断的目的站放回队首而不是丢弃，开门停留结束后它会最先被重新派发。
-                    if (target != null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; }
+                    if (target != null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; stopMotion(); }
                 }
             }
         }
         return y;
+    }
+
+    /**
+     * 作废当前 S 形曲线：把速度、加速度与曲线内时间全部清零，并标记"下次移动要重新规划"。
+     *
+     * <p>调用时机都是"行程被中断/取消"：受阻、目的站被拆、防夹重开把目的站放回队列、以及读档恢复。
+     * 曲线本身不接受"半途作废"，因此这里必须一并清零，否则恢复行程时会带着一段属于旧曲线、
+     * 与新目的站方向都未必一致的速度继续跑。
+     */
+    private void stopMotion() {
+        plannedTarget = Double.NaN;
+        velocity = 0;
+        acceleration = 0;
+        profileTick = 0;
     }
 
     /**
@@ -612,6 +709,9 @@ public final class ElevatorController {
         hallCalls.clear(); calls.stream().distinct().limit(MAX_REQUESTS).forEach(hallCalls::add);
         this.travel = travel == null ? Travel.NONE : travel;
         dwell = DWELL_TICKS;
+        // S 形曲线不从存档恢复：载入时不存在"正在运动"的合法状态（既没有上一刻位置也无从继续求值），
+        // 因此曲线一律作废、速度归零，由 tick() 在重新校验线路后从静止重新规划。
+        stopMotion();
         // 载入后门视为关闭，必须先完成关门流程才能移动（与“门未关闭不能移动”的不变量一致）。
         if (phase == Phase.MOVING) { this.phase = Phase.BLOCKED; this.door = 0; }
     }

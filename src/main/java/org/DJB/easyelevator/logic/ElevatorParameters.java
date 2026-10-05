@@ -29,6 +29,35 @@ public final class ElevatorParameters {
      */
     public static final double HIGH_SPEED = SPEED * 2.5;
     /**
+     * 轿厢加速度上限：0.15 格/刻² = 60 格/秒²（1 格/刻² = 400 格/秒²）。
+     *
+     * <p>S 形曲线（{@link MotionProfile}）用它限制"速度变化的快慢"：启动与到站不再是速度突变，
+     * 而是在若干刻内把速度平滑地加上去 / 收回来。注意这是<b>上限</b>而非实际峰值——因为
+     * {@link #JERK} 更紧，短距离行程的实际加速度峰值由 jerk 决定，稳定在约 0.095 格/刻²（≈1.9 m/s²），
+     * 恰好落在真实电梯的舒适区（1.0~1.6 m/s²）稍上方；只有超长行程以最大巡航速度持续加速时才可能逼近本上限。
+     * 三种型号共用同一个上限，因此换型号只改变巡航速度与加/减速段时长，不改变"加速有多猛"。
+     */
+    public static final double MAX_ACCELERATION = 0.15;
+    /**
+     * 普通轿厢的加加速度（jerk）上限：0.045 格/刻³ = 720 格/秒³。
+     *
+     * <p>jerk 决定"加速度本身变化得多快"，也是短行程里真正起作用的约束：实测加速度峰值
+     * ≈ {@code sqrt(jerk·Δv)} = 0.095 格/刻²（Δv = 0.20 的巡航速度差），升到峰值约 2.1 刻（0.10 秒），
+     * 加/减速段各约 4.2 刻（0.21 秒）。数值越大越"干脆"，越小越绵软；改它会同时改变
+     * "舒适度"和"每趟多花多少时间"，因此调整后要复跑 {@code MotionProfileTest}。
+     */
+    public static final double JERK = 0.045;
+    /**
+     * 高速轿厢的加加速度（jerk）上限 = {@link #JERK} × ({@link #SPEED} / {@link #HIGH_SPEED}) = 0.018 格/刻³。
+     *
+     * <p>为什么高速梯必须更小：它以 10 格/秒运行，同样的加速度斜坡会显得突兀得多；现实里越快的电梯，
+     * 加/减速段也越长（乘客在高速下需要更长的过渡时间才不难受）。这里让斜坡时长与巡航速度成反比，
+     * 因此高速梯升到加速度峰值要 5.2 刻（0.26 秒）、加/减速段各约 10.4 刻（0.52 秒），
+     * 是普通梯的 2.5 倍长——这正是"高速型可以拥有更长的加/减速段"的落点，也让 10 格/秒的
+     * "推背感"被摊得更开。两者的加速度峰值同为约 1.9 m/s²，差别只在过渡长短。
+     */
+    public static final double HIGH_SPEED_JERK = JERK * (SPEED / HIGH_SPEED);
+    /**
      * 到站误差容限：1e-7 格。
      * 双精度运动刻意不引入“最小位移量子”，最后一步不足 {@link #SPEED} 时直接吸附到目标值，
      * 但仍保留该容限用于请求判定与门联锁的“精确到站”语义（避免浮点残差被当成未到站）。
@@ -44,7 +73,13 @@ public final class ElevatorParameters {
     public static final double SYNC_POSITION_EPSILON = 0.01;
     /** 开关门单程耗时：20 刻 = 1 秒；门联锁进度 door 每刻推进 1/DOOR_TICKS。 */
     public static final int DOOR_TICKS = 20;
-    /** 开门后至少停留 40 刻 = 2 秒；期间无新请求则保持开门。 */
+    /**
+     * 开门后的最短停留 40 刻 = 2 秒：期间没有新请求到点就自动关门。
+     *
+     * <p>注意"无请求"也会关门：停留时间一到，轿厢一律把门关上并停在本层待命（相位停在 MOVING、
+     * 无目的站），不再敞着门无限等待——与面板上手动按关门键的落点完全一致。有任何新请求
+     * （轿厢内选站或厅外呼叫）都会把停留时间续满，因此有人在门口按按钮时门不会关。
+     */
     public static final int DWELL_TICKS = 40;
     /** 请求队列上限 128：避免失控或恶意请求让队列无界增长，溢出时 ElevatorController.request 返回 false。 */
     public static final int MAX_REQUESTS = 128;

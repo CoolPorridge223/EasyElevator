@@ -17,7 +17,7 @@
 6. 接口介绍（Environment / 事件 API / 网络协议 / 数据接口）
 7. 参数介绍（核心常量、派生公式、联动修改清单）
 8. 存档格式与版本兼容
-9. 构建、运行与测试
+9. 构建与运行
 10. 扩展开发指南（常见改动任务速查）
 11. 常见故障定位
 12. 已知文档漂移与代码不一致
@@ -29,7 +29,7 @@
 
 ### 1.1 项目定位
 
-EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放置一扇 3×3 的楼层门，一件物品在轨道上生成一台 3×3×3 的空心轿厢；轿厢在轨道列（称为**线路 line**）上匀速升降，停靠由「轿厢内选站 + 厅外带方向的呼叫」共同调度，楼层门与轿厢门由同一份连续进度驱动、逐刻同步滑动。
+EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放置一扇 3×3 的楼层门，一件物品在轨道上生成一台 3×3×3 的空心轿厢；轿厢在轨道列（称为**线路 line**）上按 **S 形速度曲线**（启动缓慢加速 → 中段匀速 → 到站前平滑减速）升降，停靠由「轿厢内选站 + 厅外带方向的呼叫」共同调度，楼层门与轿厢门由同一份连续进度驱动、逐刻同步滑动。
 
 | 维度 | 事实 |
 | --- | --- |
@@ -37,7 +37,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 版本 | 1.5.6（见 [gradle.properties](../gradle.properties)） |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威） |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×3 型号（普通 / 高速 / 观光） |
-| 运动方式 | 直上直下匀速；不支持转弯、斜轨、分岔 |
+| 运动方式 | 直上直下；jerk 受限的 S 形曲线（受速度 / 加速度 / 加加速度三重上限）；不支持转弯、斜轨、分岔 |
 | 线路约束 | 同一 X/Z、垂直连续、朝向一致；每条线路最多一台轿厢（三型号合计） |
 | 状态保存 | 轿厢实体 NBT + 楼层门方块实体 NBT |
 
@@ -56,13 +56,13 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | Fabric API | 0.116.17+1.21.1 | `gradle.properties` |
 | 源集拆分 | `splitEnvironmentSourceSets()`（main + client） | `build.gradle` `loom` |
 | 数据生成 | `configureDataGeneration { client = true }` | `build.gradle` |
-| 测试源集 | `configureTests { createSourceSet = true; modId = 'easyelevator-test' }`，GameTest 任务默认关闭 | `build.gradle` |
+| 源集 | `main`（服务端/公共）+ `client`（客户端），由 `loom.splitEnvironmentSourceSets()` 拆分 | `build.gradle` |
 
 ### 1.3 目录结构
 
 ```
 EasyElevator/
-├─ build.gradle                 构建脚本（Loom、源集、打包任务、geometryTest）
+├─ build.gradle                 构建脚本（Loom、源集、打包任务）
 ├─ gradle.properties            版本与坐标
 ├─ settings.gradle              Fabric Maven 仓库
 ├─ gradlew / gradlew.bat        wrapper 入口
@@ -70,22 +70,19 @@ EasyElevator/
 ├─ docs/                        文档（见 1.5）
 │   ├─ PROJECT_MANUAL.md        ← 本文（开发手册）
 │   ├─ PARAMETERS.md            参数手册（数值口径）
-│   ├─ TESTING.md               验收清单（GameTest 与手测步骤）
+│   ├─ TESTING.md               人工验收清单（需要真人进游戏的检查项）
 │   ├─ ASSET_INTEGRATION.md     模型/音效/门动画接口
 │   └─ BUILD_AND_PACKAGING.md   构建与打包说明书
 ├─ tools/
 │   ├─ build.ps1                本机 Gradle 快捷构建（校验 JDK 21）
-│   ├─ test-logic.ps1           脱离游戏的纯 Java 逻辑测试（UTF-8 **with BOM**：PS 5.1 按 ANSI 解析无 BOM 脚本）
 │   ├─ generate_art.py          模型与贴图生成 + 几何自检（纯 Python 3）
 │   └─ generate_data.py         方块状态/语言/配方/掉落表/音效钩子生成（纯 Python 3）
 ├─ src/
 │   ├─ main/java/org/DJB/easyelevator/     服务端与公共逻辑（权威侧）
 │   ├─ main/resources/                     方块状态、模型、贴图、语言、配方、战利品表、音效、mixin 配置
 │   ├─ client/java/org/DJB/easyelevator/   客户端源集（渲染、界面、相机、音效）
-│   ├─ client/resources/                   客户端 mixin 配置
-│   ├─ test/java/org/DJB/easyelevator/     纯 Java 单测（logic 与几何）
-│   └─ gametest/java/org/DJB/easyelevator/ 服务端 GameTest
-└─ run/                        开发运行目录（世界、日志、GameTest 世界）
+│   └─ client/resources/                   客户端 mixin 配置
+└─ run/                        开发运行目录（世界、日志）
 ```
 
 ### 1.4 游戏内组件与注册 ID
@@ -109,7 +106,7 @@ EasyElevator/
 | --- | --- |
 | 架构、调用关系、类职责、对外接口、扩展入口 | **本文** |
 | 某个常量的确切数值、单位、联动关系 | [PARAMETERS.md](PARAMETERS.md) |
-| 怎么在游戏里验收、要跑哪些 GameTest | [TESTING.md](TESTING.md) |
+| 怎么在游戏里验收 | [TESTING.md](TESTING.md) |
 | 换模型/贴图/音效、门动画接口 | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
 | 怎么构建、打包发布版/工程包、IDEA 设置 | [BUILD_AND_PACKAGING.md](BUILD_AND_PACKAGING.md) |
 | 玩家怎么用、搭建设置步骤 | [README.md](../README.md) |
@@ -211,7 +208,7 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 
 | # | 决策 | 为什么这么做（收益） | 代价 / 约束 |
 | --- | --- | --- | --- |
-| 1 | 状态机 `logic/ElevatorController` 是**纯 Java**，世界查询通过 `Environment` 接口注入 | 可脱离游戏单测；行为完全确定；服务端与测试共用一份调度代码 | 每刻多四次接口回调；状态机不认识真实站点，到站校验必须由调用方完成 |
+| 1 | 状态机 `logic/ElevatorController` 是**纯 Java**，世界查询通过 `Environment` 接口注入 | 可脱离游戏单测；行为完全确定；服务端与客户端共用同一份调度代码 | 每刻多四次接口回调；状态机不认识真实站点，到站校验必须由调用方完成 |
 | 2 | 运动用**绝对 double** 自定包同步，绕过原版相对位置包 | 原版 1/4096 格定点量化会让低速运行出现台阶与漂移 | 客户端需要样本缓冲（MotionTimeline）且**绝不外推** |
 | 3 | 门用**连续进度**而非离散方块状态；楼层门进度取自轿厢 | 楼层门与轿厢门逐刻同值、同插值，动画自然；门框常驻、门扇收拢 | 需要方块实体承载进度；渲染层约束严格（见 5.14） |
 | 4 | 轿厢`isCollidable()=false`，空心外壳由 **EntityViewMixin** 注入 | 3×3×3 必须可走进；实心包围盒会把乘客挡在外面 | Mixin 是必装项，注入失败模组启动失败 |
@@ -287,17 +284,18 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | 文件 | 职责 | 直接依赖（项目内） |
 | --- | --- | --- |
 | [Easyelevator.java](../src/main/java/org/DJB/easyelevator/Easyelevator.java) | 全部注册：方块、物品、实体、方块实体、音效、物品栏、网络 | block, entity, item, network |
-| [logic/ElevatorParameters.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorParameters.java) | 编译期常量（速度、门时序、队列上限、几何内收、插值阈值） | 无 |
-| [logic/ElevatorController.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorController.java) | 纯 Java 状态机：相位、门进度、目标、队列、厅外呼叫、集选调度 | ElevatorParameters |
+| [logic/ElevatorParameters.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorParameters.java) | 编译期常量（巡航速度、加速度/jerk 上限、门时序、队列上限、几何内收、插值阈值） | 无 |
+| [logic/MotionProfile.java](../src/main/java/org/DJB/easyelevator/logic/MotionProfile.java) | 纯 Java S 形速度曲线：按峰值速度规划 jerk 受限曲线，按时间求值给出每刻位移 | ElevatorParameters |
+| [logic/ElevatorController.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorController.java) | 纯 Java 状态机：相位、门进度、目标、队列、厅外呼叫、集选调度（运动形状委托 MotionProfile） | ElevatorParameters, MotionProfile |
 | [logic/ElevatorLine.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorLine.java) | 轨道列扫描、站点收集、线路中心、线路轿厢查询 | Easyelevator, LandingDoorBlock, ElevatorRailBlock, AbstractCabinEntity |
 | [logic/ElevatorStatus.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorStatus.java) | 显示状态 UP/DOWN/IDLE 推导 | ElevatorController, ElevatorParameters |
 | [logic/FloorIndicator.java](../src/main/java/org/DJB/easyelevator/logic/FloorIndicator.java) | 楼层编号（基准层 / 地下层）与文本格式化 | ElevatorParameters |
 | [logic/MotionTimeline.java](../src/main/java/org/DJB/easyelevator/logic/MotionTimeline.java) | 有界、不外推的双精度位置时间线 | ElevatorParameters |
 | [logic/PanelLayout.java](../src/main/java/org/DJB/easyelevator/logic/PanelLayout.java) | 选站面板网格与分页的纯算术 | 无 |
-| [entity/AbstractCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/AbstractCabinEntity.java) | 三型号共同父类：位移、乘客、碰撞盒、障碍检测、存档、同步、门命令 | Easyelevator, api.ElevatorEvents, block.LandingDoorBlock, logic.*, network |
-| [entity/CabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/CabinEntity.java) | 普通型号：速度 = SPEED，回收 CABIN_ITEM | AbstractCabinEntity, ElevatorParameters |
-| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：速度 = HIGH_SPEED | AbstractCabinEntity, ElevatorParameters |
-| [entity/ObservationCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/ObservationCabinEntity.java) | 观光型号：速度 = SPEED，`glassWalls()=true` | AbstractCabinEntity, ElevatorParameters |
+| [entity/AbstractCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/AbstractCabinEntity.java) | 三型号共同父类：位移（按状态机给出的位移应用）、乘客、碰撞盒、障碍检测、存档、同步、门命令 | Easyelevator, api.ElevatorEvents, block.LandingDoorBlock, logic.*, network |
+| [entity/CabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/CabinEntity.java) | 普通型号：巡航速度 = SPEED，回收 CABIN_ITEM | AbstractCabinEntity, ElevatorParameters |
+| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：巡航速度 = HIGH_SPEED（jerk 更小 ⇒ 加/减速段更长） | AbstractCabinEntity, ElevatorParameters |
+| [entity/ObservationCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/ObservationCabinEntity.java) | 观光型号：巡航速度 = SPEED，`glassWalls()=true` | AbstractCabinEntity, ElevatorParameters |
 | [block/LandingDoorBlock.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlock.java) | 3×3 门方块：放置、自检、联锁、厅外面板、基准层、拆门 | Easyelevator, entity, logic, network |
 | [block/LandingDoorBlockEntity.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlockEntity.java) | 根方块实体：门扇进度采样、基准层标记、门框显示缓存 | Easyelevator, entity, logic |
 | [block/LandingDoorGeometry.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorGeometry.java) | 门框/门扇纯几何 + 体素形状缓存 | 无（纯算术） |
@@ -322,31 +320,26 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [client/GlassLayers.java](../src/client/java/org/DJB/easyelevator/client/GlassLayers.java) | 玻璃专用渲染层（轿厢用实体图集、楼层门用方块玻璃贴图；只写颜色不写深度、禁止剔除） | 无 |
 | [client/FramedGlassDoor.java](../src/client/java/org/DJB/easyelevator/client/FramedGlassDoor.java) | 画铁框加中间玻璃的门扇：铁框在不透明层、玻璃在玻璃层（布局取自 logic/FramedLeaf） | 无 |
 | [client/BoxMesh.java](../src/client/java/org/DJB/easyelevator/client/BoxMesh.java) | 共享顶点绘制工具（长方体 / 零厚单面 / 图集 UV 分格 / **逐面** UV 分格） | 无 |
-| [logic/LeafUv.java](../src/main/java/org/DJB/easyelevator/logic/LeafUv.java) | 楼层门叶的"随门滑动"UV：可见区间 = 1-进度、断面取一小段、映射进贴图；轿厢门板的镜像规则（纯算术，可脱机测试）。**方向只由"哪一扇"决定，与朝向无关**（见 `BoxMesh` 的逐面首顶点约定） | 无 |
-| [logic/FramedLeaf.java](../src/main/java/org/DJB/easyelevator/logic/FramedLeaf.java) | 铁框玻璃门扇的布局：把门扇矩形切成四条边框 + 中间玻璃，边框随门扇变窄按比例缩（纯算术，可脱机测试） | 无 |
-| [logic/SlidingDoor.java](../src/main/java/org/DJB/easyelevator/logic/SlidingDoor.java) | 轿厢两扇对开滑门的布局：门洞 = 整个正面、外缘固定、先导端随进度外移、门区 Z、净开度与可见性（纯算术，可脱机测试）；与楼层门 LandingDoorGeometry.leafEdge 同一套做法 | 无 |
+| [logic/LeafUv.java](../src/main/java/org/DJB/easyelevator/logic/LeafUv.java) | 楼层门叶的"随门滑动"UV：可见区间 = 1-进度、断面取一小段、映射进贴图；轿厢门板的镜像规则（纯算术）。**方向只由"哪一扇"决定，与朝向无关**（见 `BoxMesh` 的逐面首顶点约定） | 无 |
+| [logic/FramedLeaf.java](../src/main/java/org/DJB/easyelevator/logic/FramedLeaf.java) | 铁框玻璃门扇的布局：把门扇矩形切成四条边框 + 中间玻璃，边框随门扇变窄按比例缩（纯算术） | 无 |
+| [logic/SlidingDoor.java](../src/main/java/org/DJB/easyelevator/logic/SlidingDoor.java) | 轿厢两扇对开滑门的布局：门洞 = 整个正面、外缘固定、先导端随进度外移、门区 Z、净开度与可见性（纯算术）；与楼层门 LandingDoorGeometry.leafEdge 同一套做法 | 无 |
 | [client/EasyelevatorDataGenerator.java](../src/client/java/org/DJB/easyelevator/client/EasyelevatorDataGenerator.java) | 数据生成入口（当前为空 pack） | 无 |
 | [mixin/client/CameraMixin.java](../src/client/java/org/DJB/easyelevator/mixin/client/CameraMixin.java) | 第一人称镜头高度补偿 | CabinMotion |
 
-**test / gametest 源集**
+**已移除的测试源集**
 
-| 文件 | 类型 | 覆盖点 |
-| --- | --- | --- |
-| [logic/ElevatorControllerTest.java](../src/test/java/org/DJB/easyelevator/logic/ElevatorControllerTest.java) | 纯 Java `main` | 77 条断言：速度与倍率、门联锁、到站精度、障碍与恢复、防夹、队列上限、厅外呼叫调度、方向记忆、开关门命令、读档恢复 |
-| [logic/ElevatorStatusTest.java](../src/test/java/org/DJB/easyelevator/logic/ElevatorStatusTest.java) | 纯 Java `main` | 上下行/停靠推导与容差 |
-| [logic/FloorIndicatorTest.java](../src/test/java/org/DJB/easyelevator/logic/FloorIndicatorTest.java) | 纯 Java `main` | 29 条断言：升降过程层号单调、基准层与地下层、占位符 |
-| [logic/PanelLayoutTest.java](../src/test/java/org/DJB/easyelevator/logic/PanelLayoutTest.java) | 纯 Java `main` | 列数选择、行列范围、每站可达、分页不空页 |
-| [block/LandingDoorGeometryTest.java](../src/test/java/org/DJB/easyelevator/block/LandingDoorGeometryTest.java) | 需 MC 类路径 `main` | 四朝向 × 三进度档的门扇宽度、朝向厚度、形状与渲染同源 |
-| [ElevatorGameTests.java](../src/gametest/java/org/DJB/easyelevator/ElevatorGameTests.java) | 服务端 GameTest | 放置/掉落、各朝向净空、站点与空心碰撞、凹陷门防夹、行程与联锁、三型号一致性、厅外呼叫与基准层、运动包精度、障碍恢复、门联锁、面板按键、读档等乘客 |
+已全部移除（原本是 `src/test` 的 9 个纯 Java 套件与 `src/gametest` 的服务端 GameTest）。
+`build.gradle` 里的 `configureTests`、`logicTest`、`geometryTest` 与 `tools/test-logic.ps1` 也一并删除，
+因此 `./gradlew.bat build` 不再包含任何测试步骤（`test` 任务为 `NO-SOURCE`）。
+回归验证改为进游戏按 [TESTING.md](TESTING.md) 的人工清单逐项确认。
 
 ### 3.3 可脱离 Minecraft 的「叶子」类
 
-以下类不引用任何 Minecraft 类型，可以直接 `javac` 编译并跑 `main`：
-
-`ElevatorParameters` · `ElevatorController` · `ElevatorStatus` · `FloorIndicator` · `MotionTimeline` · `PanelLayout`
+以下类不引用任何 Minecraft 类型，可以单独 `javac` 编译：
+`ElevatorParameters` · `MotionProfile` · `ElevatorController` · `ElevatorStatus` · `FloorIndicator` · `MotionTimeline` · `PanelLayout`
 
 `ElevatorLine` 虽是 record，但 `scan/matches/cabins` 需要 `World`、`BlockPos`，因此**不属于**叶子类。
-`LandingDoorGeometry` 只用 `Box`/`VoxelShape`/`Direction`，属于「需要 MC 类路径但不需要世界」的中间类，所以几何测试走 Gradle（`geometryTest`）而不是 `tools/test-logic.ps1`。
+`LandingDoorGeometry` 只用 `Box`/`VoxelShape`/`Direction`，属于「需要 MC 类路径但不需要世界」的中间类。
 
 ### 3.4 资源文件引用关系
 
@@ -470,10 +463,10 @@ tick(y, env)
  └─ switch (phase)
      ├─ OPEN
      │    ├─ dwell--
-     │    └─ dwell==0 && hasRequests()
+     │    └─ dwell==0                                   停留到点就关门（无请求也一样）
      │         ├─ target = select(y)
      │         └─ target.y == y → serveStation(y); dwell=DWELL_TICKS
-     │            否则 phase = CLOSING
+     │            否则（含 target==null）phase = CLOSING   ← 关到全闭后停在 MOVING、无目的站
      ├─ CLOSING
      │    ├─ env.doorwayBlocked() → phase=OPENING（防夹，target 保留）
      │    ├─ door -= 1/DOOR_TICKS
@@ -482,10 +475,13 @@ tick(y, env)
      │    ├─ target==null → select(y)
      │    ├─ door>0 → phase=CLOSING（从 BLOCKED 恢复补关门）
      │    ├─ retarget(y)                            顺路改道
-     │    ├─ next = |remaining|<=speed+eps ? target.y : y+sign(speed,remaining)
-     │    ├─ !env.canMove(y,next) → phase=BLOCKED
-     │    ├─ y = next
-     │    └─ y == target.y → y=target.y; env.arrived; serveStation; phase=OPENING
+     │    ├─ 曲线作废或目的站变过 → profile.plan(y, velocity, 0, target.y)  规划 S 形曲线
+     │    ├─ next = y + profile.advance(1, y, profileTick)                  按时间取样位移
+     │    ├─ velocity/acceleration ← 曲线同刻取样（供下次改道接着算）
+     │    ├─ !env.canMove(y,next) → phase=BLOCKED; stopMotion()（曲线作废，速度清零）
+     │    ├─ y = next; profileTick++
+     │    ├─ 曲线走完 → 残余 ≤ POSITION_EPSILON 时吸附到站点高度
+     │    └─ y == target.y → y=target.y; env.arrived; serveStation; phase=OPENING; stopMotion()
      └─ OPENING
           ├─ door += 1/DOOR_TICKS
           └─ door>0.9999 → door=1; phase=OPEN; dwell=DWELL_TICKS
@@ -664,13 +660,17 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 字段 | 类型 | 作用 |
 | --- | --- | --- |
-| `speed` | `final double` | 实例步长（格/刻），构造时注入；非正/非有限值退化为 `SPEED` |
+| `speed` | `final double` | 实例巡航速度上限（格/刻），构造时注入；非正/非有限值退化为 `SPEED` |
+| `profile` | `MotionProfile` | S 形速度曲线实例（注入速度 / 加速度 / jerk 上限），回答"本刻走多远" |
+| `profileTick` | `double` | 曲线内时间（刻），每次规划后归零；按时间求值避免累加误差 |
+| `plannedTarget` | `double` | 当前曲线的计划终点，用于判断目的站是否变过（改道 / 读档） |
+| `velocity` / `acceleration` | `double` | 曲线同刻取样的速度与加速度，供改道时给新曲线一个正确初值 |
 | `queue` | `ArrayDeque<Stop>` | 选站队列，去重、有序、上限 `MAX_REQUESTS` |
 | `hallCalls` | `List<HallCall>` | 厅外呼叫（登记顺序），上限 `MAX_REQUESTS` |
 | `target` | `Stop` | 当前目的站，null = 空闲 |
 | `phase` | `Phase` | 初值 OPEN（落成即开门便于上人） |
 | `door` | `float` | 0 关 / 1 开，每刻 ±1/DOOR_TICKS |
-| `dwell` | `int` | 开门剩余停留刻；初值 `DWELL_TICKS` |
+| `dwell` | `int` | 开门剩余停留刻；初值 `DWELL_TICKS`，归零即关门（无请求时关着门停在本层待命） |
 | `travel` | `Travel` | 当前服务方向；**停车待命不复位**（方向记忆） |
 | `targetHallDirection` | `Travel` | 本次目的站来自哪条方向呼叫，用于到站只清对应方向 |
 
@@ -679,14 +679,16 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 方法 | 参数 | 返回 | 副作用 / 说明 |
 | --- | --- | --- | --- |
 | `ElevatorController()` | — | 实例 | 用 `SPEED` 构造（普通/观光） |
-| `ElevatorController(double speed)` | 步长 | 实例 | 高速用 `HIGH_SPEED` |
+| `ElevatorController(double speed)` | 巡航速度 | 实例 | 高速用 `HIGH_SPEED`；jerk 由 `MotionProfile.defaultJerk` 按型号推出 |
+| `ElevatorController(double speed, double jerk)` | 巡航速度、jerk 上限 | 实例 | 显式指定加加速度（调参用） |
 | `speed()` / `phase()` / `door()` / `target()` | — | 对应值 | 只读快照；`phase/door` 会被写入 DataTracker |
+| `currentSpeed()` / `profileTime()` / `profileTick()` | — | 格/刻、刻、刻 | 曲线诊断读数，不参与调度 |
 | `pending()` / `hallCalls()` | — | 不可变 List | 供同步与存档 |
 | `travel()` / `hasRequests()` | — | `Travel` / `boolean` | 只读 |
 | `request(Stop, double y)` | 站点、当前 Y | boolean | 已在 target/queue → true；本层且 OPEN/OPENING → 续满 dwell；满 → false；否则 `insertOrdered` |
 | `callHall(HallCall, double y)` | 呼叫、当前 Y | boolean | 重复 → true；本层且门开/正开 → 续满 dwell（不入表）；满 → false |
 | `forceOpen()` | — | boolean | OPEN→续 dwell；OPENING→true；CLOSING→改 OPENING；door≤0→OPENING；**不动 queue/target** |
-| `forceClose()` | — | boolean | OPEN→dwell=0,CLOSING；OPENING→CLOSING；其余 false |
+| `forceClose()` | — | boolean | OPEN→dwell=0,CLOSING；OPENING→CLOSING；其余 false。只是提前触发自动关门，落点相同 |
 | `tick(double y, Environment env)` | 当前 Y、世界回调 | 本刻结束 Y | **主入口**；见 4.3 分支图 |
 | `restore(...)` ×2 | phase/door/target/pending[/calls/travel] | — | 覆盖状态；去重截断；**MOVING 降级 BLOCKED 且 door=0** |
 
@@ -720,7 +722,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 字段 | 作用 |
 | --- | --- |
-| `controller` / `speed` | 状态机实例与只读步长 |
+| `controller` / `speed` | 状态机实例与只读巡航速度上限（S 形曲线的形状由状态机内注入的 jerk/加速度上限决定） |
 | `railX / railZ` | 线路水平坐标（**不进 DataTracker**，客户端恒 0，必须按世界坐标匹配） |
 | `previousDoor` | 上一刻门进度，供渲染插值 |
 | `motionSettleTicks` | 停车后补发静止运动包的剩余刻数 |
@@ -732,8 +734,8 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 方法 | 参数 | 返回 | 说明 / 副作用 |
 | --- | --- | --- | --- |
-| `AbstractCabinEntity(type, world, speed)` | 类型/世界/步长 | — | `setNoGravity(true)`；注入速度构造 controller |
-| `speed()` | — | double | final，供渲染/面板/测试 |
+| `AbstractCabinEntity(type, world, speed)` | 类型/世界/巡航速度 | — | `setNoGravity(true)`；注入速度（及按型号推出的 jerk）构造 controller |
+| `speed()` | — | double | final，供渲染/面板读取 |
 | `cabinItem()` | — | Item | **abstract**，子类给回收物品 |
 | `glassWalls()` | — | boolean | 默认 false；观光覆写 true（纯客户端提示） |
 | `initDataTracker(b)` | builder | — | 写入 5 个字段默认值 |
@@ -1017,12 +1019,15 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 常量 | 值 | 单位 | 作用与耦合 |
 | --- | --- | --- | --- |
 | `TICKS_PER_SECOND` | 20 | 刻/秒 | 仅换算用 |
-| `SPEED` | 0.20 | 格/刻 | 4 格/秒；普通与观光 |
-| `HIGH_SPEED` | `SPEED*2.5` = 0.50 | 格/刻 | 10 格/秒；高速。约束：`speed + POSITION_EPSILON ≤ 1` |
+| `SPEED` | 0.20 | 格/刻 | 4 格/秒**巡航上限**；普通与观光 |
+| `HIGH_SPEED` | `SPEED*2.5` = 0.50 | 格/刻 | 10 格/秒巡航上限；高速。约束：`speed + POSITION_EPSILON ≤ 1` |
+| `MAX_ACCELERATION` | 0.15 | 格/刻² | S 形曲线的加速度**上限**（60 格/秒²）；短行程实际峰值由 jerk 决定 |
+| `JERK` | 0.045 | 格/刻³ | 普通/观光的加加速度上限（720 格/秒³）；峰值加速度 ≈ `sqrt(JERK·Δv)` ≈ 1.9 m/s² |
+| `HIGH_SPEED_JERK` | `JERK*SPEED/HIGH_SPEED` = 0.018 | 格/刻³ | 高速的加加速度上限；斜坡是普通车的 2.5 倍长 |
 | `POSITION_EPSILON` | 1e-7 | 格 | 服务端到站/请求判定容限 |
 | `SYNC_POSITION_EPSILON` | 0.01 | 格 | **仅**客户端门扇进度与显示判定 |
 | `DOOR_TICKS` | 20 | 刻 | 开关门各 1 秒；不随速度变 |
-| `DWELL_TICKS` | 40 | 刻 | 最短开门停留 2 秒；不随速度变 |
+| `DWELL_TICKS` | 40 | 刻 | 最短开门停留 2 秒；到点自动关门（无请求也关）；不随速度变 |
 | `MAX_REQUESTS` | 128 | 条 | **选站队列与厅外呼叫表各自独立**的上限 |
 | `RIDER_WAIT_TICKS` | `30*20` = 600 | 刻 | 读档等待名册乘客归位上限 |
 | `CABIN_FRONT_Z` | 1.3 | 格 | 轿厢本地正面；与楼层门后缘 1.3125 留 0.0125 间隙防闪烁 |
@@ -1039,9 +1044,11 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 量 | 公式 |
 | --- | --- |
-| 速度（格/秒） | `SPEED × TICKS_PER_SECOND`，例如 0.20 × 20 = 4 |
+| 速度上限（格/秒） | `SPEED × TICKS_PER_SECOND`，例如 0.20 × 20 = 4 |
+| 加速度上限（格/秒²） | `MAX_ACCELERATION × TICKS_PER_SECOND²` = 0.15 × 400 = 60（这是**上限**；短行程实际峰值 ≈ 1.9 m/s²，由 jerk 与速度差共同决定） |
+| 加速度斜坡时长（刻） | 纯三角形状下 `t1 = sqrt(Δv / JERK)`，加速度峰值 `sqrt(JERK·Δv)`；普通车 Δv=0.2 时约 2.1 刻、高速车约 5.2 刻 |
 | 门单程 | `DOOR_TICKS / 20` 秒 |
-| 最短停站总时长 | 运行 + 关门 + `DWELL_TICKS/20` + 开门 |
+| 最短停站总时长 | S 形运行段 + 关门 + `DWELL_TICKS/20` + 开门 |
 | 轿厢中心 | 轨道中心 + 朝向前方 **2 格** |
 | 楼层门根方块 | 轨道 + 朝向前方 `RAIL_DISTANCE = 3` 格，同 Y |
 | 单扇门行程 | `(DOOR_WIDTH - 2*FRAME - SEAM)/2 = 20.5`（1/16 格）= 1.28125 格 |
@@ -1051,10 +1058,11 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 改动 | 必须一起改 |
 | --- | --- |
-| 提高 `HIGH_SPEED` | 复跑 `tools/test-logic.ps1` + GameTest；确认 `speed + POSITION_EPSILON ≤ 1` |
-| 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留、几何测试 |
+| 提高 `HIGH_SPEED` | 确认 `speed + POSITION_EPSILON ≤ 1`（否则单刻可能跨过整格站点），并进游戏复核加/减速手感与到站对齐 |
+| 改 `MAX_ACCELERATION` / `JERK` | 复跑 `MotionProfileTest`（三重上限与精确到站）；注意"舒服"与"快"是此消彼长：jerk 越小加/减速段越长 |
+| 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留，以及渲染同步 |
 | 改轿厢尺寸 | 实体 `dimensions`、`localBox`/`collisionBoxes`、`containsPassenger` 边界、`doorwayBlocked`、渲染几何、`ElevatorLine.cabins` 包围盒 |
-| 改选站面板布局 | `PanelLayout`（有单测）+ `ElevatorScreen` 常量 + `MAX_COLUMNS/MAX_ROWS` |
+| 改选站面板布局 | `PanelLayout` + `ElevatorScreen` 常量 + `MAX_COLUMNS/MAX_ROWS` |
 | 新增网络包 | `PayloadTypeRegistry` 注册（S2C/C2S 不能混）+ 客户端/服务端处理器 + 编解码对称 |
 | 改注册 ID | **不要改**（旧存档、旧物品、旧配方全部失效） |
 
@@ -1094,7 +1102,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ---
 
-## 9. 构建、运行与测试
+## 9. 构建与运行
 
 完整说明见 [BUILD_AND_PACKAGING.md](BUILD_AND_PACKAGING.md) 与 [TESTING.md](TESTING.md)；速查：
 
@@ -1104,20 +1112,10 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 本机快捷构建 | `./tools/build.ps1 -Jdk <JDK21> -Task build` |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（`build/distributions/`） |
 | 开发启动 | `./gradlew.bat runClient` |
-| 纯逻辑测试（无须游戏） | `./tools/test-logic.ps1 -Jdk <JDK21>` 或 `logicTest`（注意：任务 `enabled = false`，`check` 依赖它但不实际执行） |
-| 门几何测试 | `./gradlew.bat geometryTest`（需 MC 类路径，任务同样 `enabled = false`） |
-| 服务端 GameTest | 用 IDEA 运行配置 **Gametest Minecraft Game Test**（未注册为 Gradle 任务；`enableGameTests = false`） |
 
-**测试分层：**
-
-```
-logic/* 纯 Java 单测 ── 最快，无需 MC 类路径（tools/test-logic.ps1）
-    └─ 覆盖：速度/倍率/到站精度/门联锁/障碍恢复/防夹/队列上限/调度/方向记忆/开关门/读档
-LandingDoorGeometryTest ── 需 MC 类路径，不需世界（gradle geometryTest）
-    └─ 覆盖：四朝向 × 三进度档的门扇几何
-ElevatorGameTests ── 真服务端世界（IDEA 运行配置）
-    └─ 覆盖：放置/掉落/净空/站点/联锁/三型号/厅外呼叫/基准层/运动包/读档等
-```
+**验收方式：** 工程内没有自动化测试（`test` 任务为 `NO-SOURCE`），改完代码后按
+[TESTING.md](TESTING.md) 的人工清单进游戏逐项确认——重点是乘坐手感、到站对齐、门联锁与防夹、
+以及多人同时乘坐。
 
 ---
 
@@ -1129,15 +1127,15 @@ ElevatorGameTests ── 真服务端世界（IDEA 运行配置）
 2. 在 `Easyelevator` 注册 `EntityType`（照抄现有维度/追踪参数）与 `CabinItem`，并加入物品栏 `entries`。
 3. 需要新外观时在 `CabinRenderer` 分支里加绘制方法；碰撞与井道**不要动**（沿用 `collisionBoxes()`）。
 4. `EasyelevatorClient` 加一行 `EntityRendererRegistry.register(...)`。
-5. 加模型/物品图标/语言键/配方；新增单测与 GameTest。
+5. 加模型/物品图标/语言键/配方，并按人工清单进游戏验收。
 
 ### 10.2 调速度
 
-只改 `ElevatorParameters`（或新子类的构造参数）。**门时序不受影响**。复跑逻辑测试确认 `speed + POSITION_EPSILON ≤ 1` 与「最后一步精确到站」。
+只改 `ElevatorParameters`（或新子类的构造参数）。**门时序不受影响**。确认 `speed + POSITION_EPSILON ≤ 1`，并进游戏复核到站是否精确对齐楼层。
 
 ### 10.3 改门尺寸 / 门面结构
 
-统一改 `LandingDoorGeometry` 的常量与 `leafBox/doorBox/shape`，然后：方块状态模型（`blockstates/call_button.json` + 门框模型）、`RAIL_DISTANCE`、`collisionBoxes`、`doorwayBlocked`、`spaceClear`、`geometryTest` 全部同步。**渲染与碰撞必须继续同源**。
+统一改 `LandingDoorGeometry` 的常量与 `leafBox/doorBox/shape`，然后：方块状态模型（`blockstates/call_button.json` + 门框模型）、`RAIL_DISTANCE`、`collisionBoxes`、`doorwayBlocked`、`spaceClear` 全部同步。**渲染与碰撞必须继续同源**。
 
 ### 10.4 换模型 / 贴图 / 音效
 
@@ -1195,7 +1193,7 @@ ElevatorGameTests ── 真服务端世界（IDEA 运行配置）
 | `ElevatorController.oldestAheadHallCall` 的 Javadoc 标题 | 「取距离最近的一条」 | 实际是**按登记顺序取方向前方第一条**（`hallCalls` 遍历序），这正是「先来先服务」的实现 |
 | `PARAMETERS.md` 方向记忆一行引用的方法名 | `nearestAheadAny` | 实际方法名为 `oldestAheadHallCall` |
 | README「合计最多等待 128 条」 | 选站 + 厅外呼叫合计 128 | 二者**各自**上限 `MAX_REQUESTS=128`（理论合计 256） |
-| `build.gradle` 的 `logicTest` / `geometryTest` | 看似可执行 | 两者都设了 `enabled = false`，需显式启用或用 `tools/test-logic.ps1` / IDEA 跑 |
+| 找不到测试任务 | 工程内已无自动化测试 | `./gradlew.bat build` 只编译打包，验收走 `docs/TESTING.md` 的人工清单 |
 | `EasyelevatorDataGenerator` | 数据生成入口存在 | 当前**不注册任何 provider**，产物为空 |
 
 （这些多是历史演进留下的注释滞后，不影响运行；改到相关代码时顺手修正即可。）
@@ -1251,12 +1249,12 @@ ElevatorGameTests ── 真服务端世界（IDEA 运行配置）
 
 ### 13.4 接入新设备的检查清单
 
-- [ ] 新增/修改的`logic`类保持无 Minecraft 依赖，并补纯 Java 单测
+- [ ] 新增/修改的 `logic` 类保持无 Minecraft 依赖（便于单独 `javac` 验证）
 - [ ] 服务端与客户端都改了（网络字段、渲染、语言键）
 - [ ] 所有客户端输入在服务端重新校验
 - [ ] 不新增区块加载
-- [ ] `./tools/test-logic.ps1` 与 `geometryTest` 通过
-- [ ] GameTest 与真人多人手测（上下各一次、运行中存档重进、防夹、观光玻璃视角）
+- [ ] `./gradlew.bat build` 成功
+- [ ] 按 `docs/TESTING.md` 人工清单验收（上下各一次、运行中存档重进、防夹、观光玻璃视角）
 - [ ] 文档同步：`PARAMETERS.md`（改常量）、`ASSET_INTEGRATION.md`（改素材）、`README.md`（改玩法）
 
 ---
