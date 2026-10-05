@@ -122,6 +122,17 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
 
     /** 舱壁内缘、地板面与顶板内缘：内饰件一律限制在这个空腔里。 */
     private static final float INNER=1.3f, FLOOR_TOP=.2f, CEIL_INNER=2.8f;
+    /**
+     * 门扇的<b>渲染</b>下沿（格）：比地板面 {@link #FLOOR_TOP} 高 0.5 毫米。
+     *
+     * <p>为什么不能直接用 {@code FLOOR_TOP}：门扇下沿与地板面相同时，两者在门口那一段（Z 1.1..1.29）
+     * 会是<b>共面</b>的一对矩形，轿厢走的是禁止剔除（{@code getEntityCutoutNoCull}）的层，
+     * 共面片互相抢深度——实机看到的就是"轿厢门底部模型一闪一闪"。抬高半毫米即彻底分开，
+     * 肉眼不可见（0.0005 格 ≈ 0.5 毫米），却不会再闪烁。
+     *
+     * <p>碰撞仍用 {@code FLOOR_TOP}（见 {@code collisionBoxes()}）：这半毫米只影响外观，不影响走路与防夹。
+     */
+    private static final float DOOR_RENDER_BOTTOM=FLOOR_TOP+.0005f;
     /** 与外壳相接的内饰件嵌进外壳的深度（格）：绝不与外壳面共面，否则两面互相抢深度。 */
     private static final float BITE=.002f;
     /**
@@ -399,8 +410,11 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param light 打包后的光照值
      */
     private static void drawFloor(MatrixStack matrices,VertexConsumer out,float front,int light) {
-        BoxMesh.cuboid(matrices,out,-1.5f,0,-1.5f,1.5f,FLOOR_TOP-.01f,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.DARK.ordinal()]);        // 基座与四周立面
-        BoxMesh.cuboid(matrices,out,-1.49f,FLOOR_TOP-.012f,-1.49f,1.49f,FLOOR_TOP,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.FLOOR.ordinal()]); // 略小的铺面
+        // 基座顶面用 FLOOR_TOP-.0125 而不是 -.01：关门时门扇内缘正好在 |X| = 0.010 格（{@link SlidingDoor#SEAM}），
+        // 基座 / 铺面的侧面若也落在 ±0.010 就会与门扇侧面共面（门底部那一段会闪）。缩到 ±0.0125 彻底错开。
+        // 铺面顶面同样从 FLOOR_TOP 压到 -.0005，与门扇渲染下沿 DOOR_RENDER_BOTTOM 分开半毫米。
+        BoxMesh.cuboid(matrices,out,-1.5f,0,-1.5f,1.5f,FLOOR_TOP-.0125f,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.DARK.ordinal()]);        // 基座与四周立面
+        BoxMesh.cuboid(matrices,out,-1.4875f,FLOOR_TOP-.0125f,-1.4875f,1.4875f,FLOOR_TOP-.0005f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.FLOOR.ordinal()]); // 略小的铺面
     }
 
     /**
@@ -515,7 +529,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @return 门扇长方体
      */
     private static net.minecraft.util.math.Box leafBox(double[] x,boolean right) {
-        return new net.minecraft.util.math.Box(x[0],FLOOR_TOP,SlidingDoor.DOOR_Z_BACK,x[1],CEIL_INNER,SlidingDoor.DOOR_Z_FRONT);
+        return new net.minecraft.util.math.Box(x[0],DOOR_RENDER_BOTTOM,SlidingDoor.DOOR_Z_BACK,x[1],CEIL_INNER,SlidingDoor.DOOR_Z_FRONT);
     }
 
     /**

@@ -102,12 +102,14 @@ public class Easyelevator implements ModInitializer {
     public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> OBSERVATION_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
-    /** 到站音效单例：轿厢精确到站（误差 <= 1e-7 格）时播放，音量使用 EVENT_VOLUME = 0.8f。 */
+    /**
+     * 到站提示音单例：轿厢精确到站（误差 &lt;= 1e-7 格）时播放，音量使用 EVENT_VOLUME = 0.8f。
+     *
+     * <p>这也是每扇门的设置面板里"默认音效"那一项的来源，并且<b>是全模组唯一的门相关音效</b>——
+     * 开关门本身不再发声（曾经有 {@code door_open} / {@code door_close} 两个 ID，已随"每扇门只管到站音效"
+     * 的改动一并移除）。
+     */
     public static final SoundEvent ARRIVAL = sound("elevator_arrival");
-    /** 开门音效单例：楼层门与轿厢门进入 OPENING 时播放。 */
-    public static final SoundEvent DOOR_OPEN = sound("door_open");
-    /** 关门音效单例：楼层门与轿厢门进入 CLOSING 时播放。 */
-    public static final SoundEvent DOOR_CLOSE = sound("door_close");
 
     /**
      * 构造本模组命名空间下的 {@link Identifier}。

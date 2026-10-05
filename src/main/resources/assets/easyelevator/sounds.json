@@ -5,14 +5,12 @@
   },
   "elevator_arrival": {
     "subtitle": "subtitles.easyelevator.elevator_arrival",
-    "sounds": ["easyelevator:man"]
+    "sounds": [
+      "easyelevator:man"
+    ]
   },
-  "door_open": {
-    "subtitle": "subtitles.easyelevator.door_open",
-    "sounds": ["easyelevator:man"]
-  },
-  "door_close": {
-    "subtitle": "subtitles.easyelevator.door_close",
+  "elevator_arrival_custom": {
+    "subtitle": "subtitles.easyelevator.elevator_arrival_custom",
     "sounds": []
   }
 }

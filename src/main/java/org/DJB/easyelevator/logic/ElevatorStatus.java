@@ -41,4 +41,25 @@ public enum ElevatorStatus {
         if (targetY<y-ElevatorParameters.SYNC_POSITION_EPSILON) return DOWN;
         return IDLE; // 目的站就是当前高度：已经到站，接下来是开门，显示"停靠"
     }
+
+    /**
+     * 轿厢是否处于故障（受阻暂停）——断轨、线路朝向不一致、井道里有方块或实体障碍、区块未加载、
+     * 目的站的门被拆，任何一种都会让状态机停在 {@link ElevatorController.Phase#BLOCKED}。
+     *
+     * <p>为什么只看"相位是 BLOCKED"就够：状态机里会出现 BLOCKED 的地方只有两类——
+     * ① 目的站失效（门被拆/被换掉），此时目的站已被清空；
+     * ② 本刻的移动被 {@code Environment.canMove} 否决（断轨、障碍、区块未加载、线路不再唯一），
+     * 此时目的站仍然保留，等条件恢复后继续。
+     * 两类都是"故障"：都不是车能自己走掉的状态。空闲待命（关着门排队等呼叫）走的是
+     * {@code MOVING} 且无目的站，不在此列，因此不会把正常停靠误判成故障。
+     *
+     * <p>判据完全来自已同步的数据，因此服务端与客户端得到同一个结论。故障时乘客可能被困在两层之间，
+     * 面板上的开门键必须可用（见 {@link ElevatorController#canOpenDoor}），让他们能主动脱困。
+     *
+     * @param phase 当前相位（客户端读同步字段，服务端读状态机）
+     * @return 处于故障/受阻暂停时为 true
+     */
+    public static boolean faulted(ElevatorController.Phase phase) {
+        return phase==ElevatorController.Phase.BLOCKED;
+    }
 }

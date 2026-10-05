@@ -92,7 +92,29 @@ public final class ElevatorController {
          */
         boolean doorwayBlocked();
         /**
+         * 当前让轿厢走不动的那些原因是否已经消失（"故障是否已解除"）。
+         *
+         * <p>为什么不能只看相位：故障期间乘客可以按开门键脱困（见 {@link #canOpenDoor}），
+         * 那一按会把相位从 BLOCKED 改成 OPENING/OPEN，于是"相位不是 BLOCKED"既可能表示"故障没了"，
+         * 也可能表示"门开着"。要判断"故障期间开的门该不该关回去"，必须由实现方直接回答
+         * "现在能不能继续走"，而不是从相位猜。
+         *
+         * <p>实现方只需回答"上一次让 {@link #canMove} 返回 false 的原因还在不在"：
+         * 断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站的门被拆、读档后名册乘客尚未归位。
+         * 本方法必须<b>无副作用</b>，且允许在 {@code target == null}（目的站已被清空）时调用。
+         *
+         * @return 可以立刻继续原行程时为 true；仍被故障挡住时为 false
+         */
+        boolean canResume();
+        /**
          * 已精确到站的副作用回调：由实现方负责开启楼层门联锁、播放音效、更新方块状态等。
+         *
+         * <p><b>调用时机有个坑</b>：本回调发生在"最后一步的位移被实现方写回实体之前"——
+         * {@link ElevatorController#tick} 先 {@code y = target.y(); env.arrived(target);}，
+         * 实现方随后才算 {@code dy = nextY - getY()} 并 {@code setPosition}。
+         * 因此回调里读"实体的当前坐标"拿到的仍是<b>最后一步之前</b>的位置，与站点高度相差
+         * 恰好是这一步的位移。需要按楼层定位什么（例如找这一站的门）时，请直接用
+         * {@code stop.y()}，不要拿实现方自己的坐标去反推。
          *
          * @param stop 到达的站点
          */
@@ -158,6 +180,24 @@ public final class ElevatorController {
      * 退回按行驶方向清扫（最多多开关一次门，不会留下死呼叫）。
      */
     private Travel targetHallDirection = Travel.NONE;
+    /**
+     * 是否正处于故障（受阻暂停）之中，见 {@link #faulted()} 与 {@link Environment#canResume()}。
+     *
+     * <p>与 {@link #faulted()} 的区别：本字段是"故障期"的粘性记忆——从相位第一次变成 BLOCKED 起为真，
+     * 一直到 {@code Environment.canResume()} 报告"能继续走了"才复位。用它的原因是相位会被门的开关改掉
+     * （乘客按开门键脱困），不能拿相位判断故障是否仍在。
+     */
+    private boolean faulted;
+    /**
+     * 故障期间是否开过一扇"脱困门"：{@link #forceOpen} 在 {@link #faulted()} 时置位，
+     * 故障解除后由 {@link #tick} 把这扇门关回去，再清掉它。
+     *
+     * <p>为什么需要它：故障时面板上的开门键可用，乘客可以主动开门走出轿厢。故障恢复后必须先把这扇门
+     * 关回去再继续原行程——否则就会出现"门开着就开走"，违反"门未完全关闭不得移动"这条基本不变量。
+     *
+     * <p>它不写存档：读档后相位一律降级为 BLOCKED 且门置 0，不存在"存档里门开着"的情况。
+     */
+    private boolean recoveryOpen;
 
     /**
      * 用默认速度（{@link ElevatorParameters#SPEED}）构造状态机，即普通轿厢与观光轿厢。
@@ -284,19 +324,81 @@ public final class ElevatorController {
     }
 
     /**
+     * 受阻暂停（故障）：断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站的门被拆、
+     * 或读档后名册乘客尚未归位。
+     *
+     * <p>本方法读的是 {@link #faulted} 这个"故障期"记忆，而不是相位——乘客开门脱困会把相位改成
+     * OPENING/OPEN，那时故障依然存在（门开着不等于路通了）。故障期一直持续到
+     * {@link Environment#canResume()} 报告能继续走为止。
+     *
+     * @return 当前处于故障期中时为 true
+     */
+    public boolean faulted() { return faulted; }
+
+    /**
+     * 开门键此刻是否应当可用。<b>服务端与客户端面板共用这一条判据</b>，避免"按钮亮着点了没反应"
+     * 或"能开的时候按钮却是灰的"。
+     *
+     * <p>两种可用情形：
+     * <ol>
+     *   <li><b>正常停靠</b>：关着门停在某个站点、或停在站点待命（相位不是 MOVING，或 MOVING 但没有目的站）
+     *       ——即到达某层之后的正常开门；</li>
+     *   <li><b>故障脱困</b>：{@link ElevatorStatus#faulted} 为真，即"目的地还在却走不动"。这时刻意不看
+     *       轿厢是不是正好停在站点上：恰恰是被卡在两层之间时才最需要开门。</li>
+     * </ol>
+     *
+     * <p>运行途中（{@link Phase#MOVING} 且目的站还没到）两种情况都不成立，因此"运行时禁止开门"
+     * 这条语义完全保留——电梯运行时开门键会重新变灰。
+     *
+     * <p>做成 static 的原因：客户端只有 {@code DataTracker} 同步出来的 phase 与目标高度，
+     * 拿不到状态机实例；把它抽成"只依赖同步数据 + 一个到站标志"的纯函数，客户端面板就能直接复用，
+     * 不必为了按钮可用性给实体再加一个暴露内部状态机的访问器。
+     *
+     * @param phase 当前相位（服务端读状态机，客户端读同步字段）
+     * @param targetY 目的站高度（格）；没有目的站时为 {@link Integer#MIN_VALUE} 哨兵值
+     * @param atStation 调用方提供的"车体是否精确停在某个完整站点上"（轿厢需要查线路站点，本类查不到）
+     * @return 开门键可用时为 true
+     */
+    public static boolean canOpenDoor(Phase phase, int targetY, boolean atStation) {
+        if (ElevatorStatus.faulted(phase)) return true;                  // 故障脱困：不要求在站点上
+        if (phase == Phase.MOVING && targetY != Integer.MIN_VALUE) return false; // 运行途中一律不可开门
+        return atStation;
+    }
+
+    /**
+     * 开门键此刻是否可用，判据见 {@link #canOpenDoor(Phase, int, boolean)} 的静态版本。
+     *
+     * <p>这是<b>服务端权威版本</b>：它用 {@link #faulted} 这个准确的故障期记忆，因此在"乘客已经开门脱困、
+     * 相位已变成 OPENING/OPEN"时也依然为真（门开着本来就是可开的）。客户端没有这个字段，用同步相位近似，
+     * 见静态版本。
+     *
+     * @param atStation 车体是否精确停在某个完整站点上；轿厢用线路站点列表算好传进来（本类查不到世界）
+     * @return 开门键可用时为 true
+     */
+    public boolean canOpenDoor(boolean atStation) {
+        if (faulted) return true;                                  // 故障脱困：不要求在站点上
+        if (phase == Phase.MOVING && target != null) return false; // 运行途中一律不可开门
+        return atStation;
+    }
+
+    /**
      * 面板"开门"键：重新打开轿厢门。
      *
-     * <p>安全性前提：<b>调用方必须已经确认车体精确停靠在某个完整站点上</b>——本类不认识世界里的站点，
-     * 无法自己判断"是不是在半空"，这个 1e-7 格的到站校验由 {@code AbstractCabinEntity} 用线路站点列表完成。
+     * <p>安全性前提：<b>调用方必须已经确认车体精确停靠在某个完整站点上</b>，或者在故障时
+     * （{@link #canOpenDoor} 为真）调用。本类不认识世界里的站点，无法自己判断"是不是在半空"，
+     * 那个 1e-7 格的到站校验由 {@code AbstractCabinEntity} 用线路站点列表完成。
      *
      * <p>三种情形：门已全开 → 续满停留时间（相当于"按住开门键"）；正在开门 → 无事可做；
      * 正在关门或门已关闭但停在站点（例如刚手动关门、即将出发）→ 反向重新开门，目的站保持不变。
      *
      * <p>纯状态切换，不改 queue/target/hallCalls：因此"开门"不会取消已经排好的行程。
+     * 若此刻处于故障（{@link #faulted()}），这扇门就是"脱困门"——等故障解除时 {@link #tick} 会把它
+     * 关回去再继续行程（判据是"上一刻还在故障、这一刻不在"，因此刚按下的开门不会被立刻关掉）。
      *
      * @return 指令是否被接受（门已经全关且正在别处运行时返回 false）
      */
     public boolean forceOpen() {
+        if (faulted()) recoveryOpen = true; // 故障期间开门 = 脱困门，故障解除后由 tick 关回去
         if (phase == Phase.OPEN) { dwell = DWELL_TICKS; return true; }   // 已开：续满停留时间
         if (phase == Phase.OPENING) return true;                          // 正在开：无需变动
         if (phase == Phase.CLOSING) { phase = Phase.OPENING; return true; } // 正在关：反向打开
@@ -344,6 +446,51 @@ public final class ElevatorController {
             phase = Phase.BLOCKED;
             stopMotion(); // 目的站没了：曲线作废，速度/加速度清零，恢复行程时从静止重新规划
         }
+        // 故障与"脱困门"的判定**必须放在 switch 之前**：switch 里任何一个分支都可能提前 break
+        // （例如空闲待命时 `select(y)` 返回 null 直接 break），放在末尾就会被跳过，
+        // 于是"停着但线路被拆光"这种故障永远登记不上，开门键虽然亮了、服务端却拒收指令。
+        //
+        // 判"故障还在不在"用的是 Environment.canResume()（= "上一次让 canMove 返回 false 的原因是否消失"），
+        // 而不是相位：乘客按开门键脱困会把相位从 BLOCKED 改成 OPENING/OPEN，若拿相位当判据，
+        // 就会被误判成"故障已解除"，门还没开就被同一刻关回去。
+        boolean canResume = env.canResume();
+        if (!canResume) {
+            // 只要"现在走不了"就登记为故障。刻意不看相位，于是四类绝境都被覆盖：
+            //   · 运行途中被挡（相位已是 BLOCKED）；
+            //   · 目的站的门被拆（目标被清空、相位 BLOCKED）；
+            //   · 停着却连线路都扫不出来（轨道或整条线路的门被拆光）——此时相位停在 MOVING 且无目的站，
+            //     这辆车永远不会再动了，生存模式里进来的人必须能开门出去；
+            //   · 读档后名册乘客还没归位（相位同样停在 MOVING，目的站还在）。
+            faulted = true;
+        }
+        if (faulted) {
+            // 故障**仍在**时：绝不在这里 return，也不能把相位改成 CLOSING。
+            //   · 门有动作（OPENING/OPEN/CLOSING）就交给下面的 switch 继续推进——否则门会永远停在
+            //     起始位置，面板却一直显示"正在开门"（实机踩过：早退把开门动画本身挡掉了）。
+            //   · 运行时被挡的那种故障（相位 MOVING 且无目的站）才摆成 BLOCKED，让客户端显示"暂停"。
+            //   · 门开着时不用额外阻止移动：MOVING/BLOCKED 分支开头就有 `if (door > 0) break;`。
+            if (!canResume && phase == Phase.MOVING && target == null) phase = Phase.BLOCKED;
+            // 故障**已解除**：若故障期间乘客开过脱困门（recoveryOpen），现在才把它关回去。
+            // "门未完全关闭不得移动"不能因为故障恢复而破例；门关到全闭后 CLOSING 分支自己会切回
+            // MOVING，目标与队列都还在，行程照原计划继续。
+            // 注意 `canResume` 在玩家把门打开之后常常变真（门开着时路径本来就通畅），所以这个判断
+            // 必须在"门已经开着"时才生效——否则会出现"按了开门键，门一晃就又关上"。
+            if (canResume) {
+                if (recoveryOpen && (door > 0 || phase == Phase.OPEN || phase == Phase.OPENING)) {
+                    phase = Phase.CLOSING; // 关回脱困门；门关到全闭后自动续行
+                } else {
+                    recoveryOpen = false; // 没开过门，或门已经关好：脱困结束
+                    faulted = false;      // 故障也解除：本刻起可以继续行程
+                    // BLOCKED 是"故障期"的显示相位，故障没了就必须复位——否则会出现
+                    // "客户端看相位仍是 BLOCKED（暂停）→ 开门键保持可用，服务端 faulted 已是 false
+                    // → 拒收开门键"，按钮亮着却弹出"开门键只在轿厢停在某一层时有效"（实机踩过）。
+                    // 复位成 MOVING 后由 MOVING 分支自然重新选站/继续原行程；门若还开着，那一分支的
+                    // `if (door > 0) break;` 会先把它关完再走。
+                    if (phase == Phase.BLOCKED) phase = Phase.MOVING;
+                }
+            }
+        }
+
         switch (phase) {
             case OPEN -> {
                 // 开门停留倒计时；归零就关门——无论还有没有请求。
@@ -375,10 +522,11 @@ public final class ElevatorController {
             }
             case MOVING, BLOCKED -> {
                 // MOVING 与 BLOCKED 共用运行逻辑：BLOCKED 只是暂停，条件恢复后继续原行程。
+                // 故障脱困期间（乘客开门走出被困的轿厢）不派发新行程：门一开就"继续任务"会违反
+                // "门未完全关闭不得移动"。等门关回去之后这里自然会重新选站、继续原计划。
+                if (door > 0) break;
                 if (target == null) target = select(y);
                 if (target == null) break;
-                // 门未完全关闭不得移动；从 BLOCKED 恢复时若门还开着，先补一次关门。
-                if (door > 0) { phase = Phase.CLOSING; break; }
                 // 顺路改道：运行途中新插入的请求若在同方向前方且比当前目标更近，就先停它
                 // （例如正驶向 10 层时有人在 5 层按了上行——不重排就会径直开过 5 层）。
                 retarget(y);

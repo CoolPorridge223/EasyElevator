@@ -29,6 +29,18 @@ LEAF_TRAVEL = (DOOR_WIDTH - 2 * FRAME - SEAM) / 2
 LEAF_INNER_LEFT = FRAME + LEAF_TRAVEL               # left leaf trailing edge, whole-door units
 LEAF_INNER_RIGHT = DOOR_WIDTH - FRAME - LEAF_TRAVEL  # right leaf leading edge
 
+#: Audio file per sound event.  Empty means "declared but silent": the event exists so that
+#: a resource pack (or the runtime pack described below) can fill it in later, and vanilla
+#: tolerates the missing file.  ``elevator_arrival_custom`` is fed by ``client/DoorSoundPack``
+#: after a player uploads an .ogg in the per-door settings panel (each slot gets its own
+#: ``elevator_arrival_custom_<slot>`` event, which the runtime pack declares).
+#:
+#: There is deliberately **no** door open/close sound any more: the elevator's only audible
+#: door-related cue is the arrival chime, and that is the one the per-door panel configures.
+SOUND_FILES = {
+    'elevator_arrival': ['easyelevator:man'],
+}
+
 #: model name per (level, column).  Level 0 adds the plinth and the sill, level 1 is the
 #: plain jamb (and an empty model across the opening), level 2 is the lintel.
 FRAME_MODELS = {
@@ -129,9 +141,16 @@ def main():
           {'replace': False, 'values': ['easyelevator:elevator_rail', 'easyelevator:call_button']})
 
     # --- sounds -------------------------------------------------------------------
+    # Every door sound id the mod can play is declared here.  The `door_*_custom` pair has
+    # no audio file in the jar on purpose: the runtime resource pack written by
+    # client/DoorSoundPack supplies it once a player uploads an .ogg through the per-door
+    # settings panel.  Vanilla SoundManager silently skips a declared sound whose file is
+    # missing (SoundManager.isSoundResourcePresent -> skip), so the "no file uploaded yet"
+    # state is silent and crash-free.  Keep these ids in sync with logic/DoorSounds.java.
     write(ASSETS / 'sounds.json',
-          {key: {'subtitle': f'subtitles.easyelevator.{key}', 'sounds': []}
-           for key in ['elevator_running', 'elevator_arrival', 'door_open', 'door_close']})
+          {key: {'subtitle': f'subtitles.easyelevator.{key}',
+                 'sounds': SOUND_FILES.get(key, [])}
+           for key in ['elevator_running', 'elevator_arrival', 'elevator_arrival_custom']})
 
     # --- translations -------------------------------------------------------------
     zh = {
@@ -151,6 +170,7 @@ def main():
         'screen.easyelevator.hall_station': '站点高度 Y = %s', 'screen.easyelevator.close': '关闭',
         'message.easyelevator.hall_queued': '已登记%s呼叫。',
         'message.easyelevator.floor_base_set': '已把这一站设为 1 层，其它楼层已按它重新编号。',
+        'message.easyelevator.floor_base_cleared': '已取消基准层，楼层编号回到"最低层为 1 层"。',
         'screen.easyelevator.title': '电梯选站', 'screen.easyelevator.station': '站点 %s  ·  Y = %s',
         'screen.easyelevator.status': '高度 %s  |  %s', 'screen.easyelevator.count': '%s 个站点  ·  第 %s / %s 页',
         'screen.easyelevator.empty': '同一线路尚未安装完整电梯门',
@@ -160,7 +180,24 @@ def main():
         'phase.easyelevator.opening': '正在开门', 'phase.easyelevator.blocked': '暂停：请检查轨道或障碍',
         'status.easyelevator.up': '电梯上行', 'status.easyelevator.down': '电梯下行', 'status.easyelevator.idle': '停靠',
         'subtitles.easyelevator.elevator_running': '电梯运行', 'subtitles.easyelevator.elevator_arrival': '电梯到站',
-        'subtitles.easyelevator.door_open': '电梯开门', 'subtitles.easyelevator.door_close': '电梯关门',
+        'subtitles.easyelevator.elevator_arrival_custom': '电梯到站（自定义音效）',
+        # 每扇门自己的到站音效设置面板（潜行右键楼层门打开；普通右键的厅外呼叫面板不受影响）
+        'screen.easyelevator.door_sound_title': '电梯门设置', 'screen.easyelevator.door_sound_station': '站点高度 Y = %s',
+        'screen.easyelevator.door_sound_station_floor': '站点高度 Y = %s  ·  第 %s 层',
+        'screen.easyelevator.door_sound_row': '到站音效',
+        'screen.easyelevator.door_sound_drop': '把 .ogg 拖进窗口，或把路径粘到下面（≤512 KiB）',
+        'screen.easyelevator.door_sound_path': '音频文件完整路径',
+        'screen.easyelevator.door_sound_upload': '上传',
+        'screen.easyelevator.toggle_on': '%s 开', 'screen.easyelevator.toggle_off': '%s 关',
+        'screen.easyelevator.sound_prev': '<', 'screen.easyelevator.sound_next': '>',
+        'screen.easyelevator.sound_pick': '选择文件…', 'screen.easyelevator.sound_try': '试听',
+        'screen.easyelevator.sound_choice_default': '默认音效',
+        'screen.easyelevator.sound_off_value': '%s（已关闭）', 'screen.easyelevator.sound_flash': '▶ %s',
+        'screen.easyelevator.floor_base': '设为基准层', 'screen.easyelevator.floor_base_on': '基准层（1 层）',
+        'screen.easyelevator.sound_id': '音效 ID：%s', 'screen.easyelevator.sound_custom_id': '音频文件：%s',
+        'message.easyelevator.door_sound_uploaded': '已上传%s，全服同步中。',
+        'message.easyelevator.door_sound_upload_failed': '上传失败：请选择 512 KiB 以内的 .ogg 文件。',
+        'message.easyelevator.door_sound_no_dialog': '这个游戏进程弹不出文件对话框，请检查启动器参数（不要禁用系统窗口）后重试。',
     }
     en = dict(zip(zh, [
         'Easy Elevator', 'Elevator Rail', 'Landing Door', 'Elevator Cabin', 'Elevator Cabin',
@@ -176,11 +213,26 @@ def main():
         'Station height Y = %s', 'Close',
         '%s call registered.',
         'This landing is now floor 1; the other floors were renumbered around it.',
+        'Base floor cleared; numbering went back to "lowest landing is floor 1".',
         'Select a station', 'Station %s  /  Y = %s', 'Height %s  |  %s', '%s stations  /  Page %s of %s',
         'No complete landing doors on this line', 'Open', 'Close', 'Previous page', 'Next page',
         'Doors open', 'Closing doors', 'Moving', 'Opening doors', 'Paused: check rails or obstacles',
         'Going up', 'Going down', 'Parked',
-        'Elevator running', 'Elevator arriving', 'Elevator door opening', 'Elevator door closing'
+        'Elevator running', 'Elevator arriving',
+        'Elevator arriving (custom)',
+        # the per-door arrival-sound settings panel (sneak + right-click a landing door)
+        'Landing door settings', 'Station height Y = %s', 'Station height Y = %s  /  Floor %s',
+        'Arrival sound',
+        'Drag an .ogg into the window, or paste its path below (max 512 KiB)',
+        'Full path to the audio file',
+        'Upload',
+        '%s on', '%s off', '<', '>', 'Choose file...', 'Preview',
+        'Default sound', '%s (off)', '> %s',
+        'Set as base floor', 'Base floor (floor 1)',
+        'Sound id: %s', 'Audio file: %s',
+        'Uploaded the %s; syncing to the whole server.',
+        'Upload failed: choose an .ogg file of 512 KiB or less.',
+        'This game process cannot show a file dialog; check your launcher arguments (do not disable system windows) and try again.',
     ], strict=True))
     zh['message.easyelevator.door_placement'] = '门底部中心必须在轨道朝向前方3格处，并留出3格宽、3格高空间。'
     en['message.easyelevator.door_placement'] = 'Place the bottom centre 3 blocks in front of a rail, with a clear 3 by 3 doorway.'

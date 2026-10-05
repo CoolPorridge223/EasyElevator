@@ -10,6 +10,8 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
+import org.DJB.easyelevator.logic.DoorArrivalSound;
+import org.DJB.easyelevator.logic.DoorSounds;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.ElevatorStatus;
@@ -60,6 +62,18 @@ public final class LandingDoorBlockEntity extends BlockEntity {
 
     /** 本线路轿厢是不是观光型号（玻璃舱壁）：决定这扇门的门扇是钢门还是"铁框 + 玻璃"门。 */
     private boolean glassDoors;
+
+    /**
+     * <b>本扇门自己的</b>到站提示音设置（开关 + 音效选项），由潜行右键打开的专属设置面板修改。
+     *
+     * <p>为什么放在方块实体里而不是做一个全局配置：需求就是"每扇门各不相同"——同一栋楼里
+     * 大堂那扇门到站时想响一声铃、设备层想安静。方块实体随区块存档，拆掉门设置自然失效，
+     * 也不会在别的线路上串味。</p>
+     *
+     * <p>默认是 {@link DoorArrivalSound#DEFAULT}（静音），因此这个功能不会让任何已有存档的门
+     * 突然开始发声。轿厢精确到站时由 {@code AbstractCabinEntity} 读取本设置决定播什么。</p>
+     */
+    private DoorArrivalSound arrivalSound = DoorArrivalSound.DEFAULT;
 
     /**
      * @param pos 根方块坐标（整扇门只有这一个部件持有方块实体）
@@ -175,7 +189,51 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     }
 
     /**
-     * 把基准层标记写进方块实体 NBT（随区块存档）。
+     * @return 本扇门自己的到站音效设置；端无关（服务端存档与播放读它，客户端面板由包里带来的快照驱动）
+     */
+    public DoorArrivalSound arrivalSound() { return arrivalSound; }
+
+    /**
+     * 覆盖本扇门的到站音效设置。
+     *
+     * <p>相等的值直接返回，避免面板连点同一个开关时反复 markDirty（区块因此被标脏、频繁存盘）。
+     *
+     * @param settings 新设置；传入 null 视为恢复出厂默认（{@link DoorArrivalSound#DEFAULT}）
+     * 副作用：改动方块实体 NBT 并 markDirty()，随区块保存；不改方块状态、不发包。
+     */
+    public void setArrivalSound(DoorArrivalSound settings) {
+        DoorArrivalSound next = settings == null ? DoorArrivalSound.DEFAULT : settings;
+        if (arrivalSound.equals(next)) return;
+        arrivalSound = next;
+        markDirty();
+    }
+
+    /**
+     * 本扇门在运行时资源包里占用的<b>音效槽位</b>号（见 {@code client/DoorSoundPack}）。
+     *
+     * <p>算法与理由都在 {@link DoorSounds#slotFor}：由坐标纯函数推导，因此"只要门还在原地，
+     * 槽位就永远不变"，拆了再放回来也还是同一个槽位，服务端与客户端算出的结果天然一致，
+     * 不需要同步也不需要持久化。代价是不同门可能撞到同一个槽位（最多 64 个），
+     * 那种情况下两扇门响同一个音效——对"提示音"这种装修属性来说是可接受的退化。
+     *
+     * @return {@code [0, DoorSounds.MAX_SLOTS)} 内的槽位号；同一扇门恒定不变
+     */
+    public int soundSlot() { return DoorSounds.slotFor(pos.getX(), pos.getY(), pos.getZ()); }
+
+    /**
+     * 本扇门到站时实际要播放的音效。
+     *
+     * <p>把"设置 + 槽位"这两件只有方块实体知道的事合起来解释成音效事件，调用方
+     * （{@code AbstractCabinEntity}）就只需要问一次，不必自己拼装槽位与选项。
+     *
+     * @return 该门到站要播的音效；开关关着时返回 null（调用方据此跳过播放）
+     */
+    public net.minecraft.sound.SoundEvent arrivalEvent() {
+        return arrivalSound.enabled() ? DoorSounds.arrivalEvent(arrivalSound.choice(), soundSlot()) : null;
+    }
+
+    /**
+     * 把基准层标记与到站音效设置写进方块实体 NBT（随区块存档）。
      *
      * @param nbt 目标 NBT
      * @param registries 注册表查询（本实体没有需要迁移的字段，仅透传给父类）
@@ -183,10 +241,11 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     @Override protected void writeNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
         super.writeNbt(nbt,registries);
         if (baseFloor) nbt.putBoolean("BaseFloor",true); // 只写 true：默认门不必多一个 false 字段
+        arrivalSound.writeNbt(nbt); // 同理：整份默认设置不写任何字段，旧存档体积不变
     }
 
     /**
-     * 从方块实体 NBT 读回基准层标记。
+     * 从方块实体 NBT 读回基准层标记与到站音效设置。
      *
      * @param nbt 存档 NBT
      * @param registries 注册表查询（透传父类）
@@ -194,5 +253,6 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     @Override protected void readNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
         super.readNbt(nbt,registries);
         baseFloor=nbt.getBoolean("BaseFloor");
+        arrivalSound=DoorArrivalSound.readNbt(nbt); // 字段全缺失时读回出厂默认（静音 + 默认到站音效）
     }
 }

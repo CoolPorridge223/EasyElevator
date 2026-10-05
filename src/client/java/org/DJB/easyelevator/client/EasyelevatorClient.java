@@ -8,8 +8,11 @@ import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
+import org.DJB.easyelevator.logic.DoorSoundPersistence;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.network.ElevatorNetworking;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,12 +22,36 @@ import java.util.Map;
  * 音效（CabinRunningSound）与选站面板（ElevatorScreen）上，从不向服务端写入世界状态（只发 SelectStop 请求）。
  */
 public class EasyelevatorClient implements ClientModInitializer {
+    /** 客户端入口的日志：启动时记一行"文件对话框走哪条路"，便于排查 headless 相关问题。 */
+    private static final Logger LOGGER = LoggerFactory.getLogger("easyelevator/client");
     // 轿厢实体 id -> 正在播放的运行声，保证同一轿厢只有一条循环音效；断线与 Phase 离开 MOVING 时都会清理。
     private final Map<Integer,CabinRunningSound> sounds=new HashMap<>();
+    /**
+     * 门音效资源包是否已经在本会话里检查过（只需检查一次：包在磁盘上，不在每次进服时变化）。
+     *
+     * <p>为什么需要这个标记：客户端进服时会让 {@link DoorSoundPack#reloadIfNeeded} 扫包并可能启用它，
+     * 那是唯一需要它的时刻；每刻都扫一次纯属浪费。
+     */
+    private boolean doorSoundPackChecked;
+    /**
+     * 本刻是否收到过新的门槽音频、等着把它重建进资源包。
+     *
+     * <p>存在的理由：进服补齐会连续下发多条 {@code DoorSoundData}，逐条触发 {@code reloadResources()}
+     * 会把整个资源管理器重建很多次（几百毫秒的卡顿叠加）。攒到刻末做一次即可，
+     * 因为玩家不可能在同一刻内分辨出两次重载的差别。
+     */
+    private boolean doorSoundReloadPending;
 
     /** 客户端初始化。副作用：注册实体渲染器与两个 S2C 包处理器，并挂载客户端刻与断线事件回调；不改世界状态。 */
     @Override
     public void onInitializeClient() {
+        // 启动时把"这个进程能不能弹 AWT 窗口"记一行：headless 时门设置面板的"选择文件"会改走系统原生对话框，
+        // 出问题时这一行能直接说明走的是哪条路（免去再猜一轮）。
+        LOGGER.info("File dialog backend: {}", FilePicker.isHeadless() ? "native (AWT is headless)" : "AWT");
+        // 拖拽上传：给窗口挂 GLFW 的 drop 回调。这是自定义到站音效最方便的入口——不依赖 AWT，
+        // 也不依赖 PowerShell 弹窗（见 FileDropHandler）。
+        // 这里只是第一次尝试；窗口若还没就绪，下面的刻回调会继续重试（挂上后函数自己就变成空操作）。
+        FileDropHandler.register(net.minecraft.client.MinecraftClient.getInstance());
         // 三种轿厢（普通 / 高速 / 观光）共用同一个渲染器：泛型参数取共同的父类，
         // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙）由实体自身的 glassWalls() 决定，
         // 而不是按实体类型分支——将来加型号时这里只需要多一行注册。
@@ -55,7 +82,44 @@ public class EasyelevatorClient implements ClientModInitializer {
                     if(context.client().currentScreen instanceof LandingDoorScreen screen && screen.station().equals(payload.station()))
                         screen.applyState(payload.up(),payload.down());
                 }));
+        // 门专属设置面板（潜行右键楼层门时服务端下发 OpenDoorPanel）：打开或刷新界面。
+        // 面板内容全部来自包（单扇门的设置存在方块实体里），客户端不推导、不缓存，因此"别人改过的设置"也如实显示。
+        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenDoorPanel.ID,(payload,context)->
+                context.client().execute(()->{
+                    // 已经为同一扇门开着面板时只刷新内容：避免每次点按钮都重建界面（会打断连点）。
+                    if(context.client().currentScreen instanceof DoorSoundScreen screen && screen.station().equals(payload.station()))
+                        screen.apply(payload.enabled(),payload.choice(),payload.baseFloor(),payload.preview());
+                    else context.client().setScreen(new DoorSoundScreen(payload));
+                }));
+        // 收到某个门槽的音频内容（服务端分发、或进服补齐的回应）：存进权威副本 -> 标记待重载。
+        // 这一步让"上传者以外的玩家、以及上传之后才进服的人"也能听到同一段音频。
+        // 只标记、不立刻重载：进服补齐会连着来很多条，逐条 reloadResources 会让资源管理器重建很多次
+        // （每一次都弹那个红色 Mojang 画面）；真正的重载统一放在本刻末尾做一次。
+        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.DoorSoundData.ID,(payload,context)->
+                context.client().execute(()->{
+                    if(payload.bytes().length==0) return; // 服务端也没有这份音频：保持静音，不做无谓重载
+                    if(DoorSoundPersistence.store(payload.slot(),payload.bytes())) doorSoundReloadPending=true;
+                }));
         ClientTickEvents.END_CLIENT_TICK.register(client->{
+            // 拖拽回调的重试：窗口可能在 onInitializeClient 时还没建好，那时挂不上；
+            // 挂上之后 register 内部一行判断就返回，每刻调用没有代价。
+            FileDropHandler.register(client);
+            // 进服后的第一刻：把磁盘上的运行时资源包接上，并向服务端索取本机缺少的自定义音频。
+            // 只做一次。注意 DoorSoundPack.ensureReady 内部会先比对内容指纹——音频没变时
+            // <b>不会</b>重载资源，因此进存档这条最常走的路不会闪红屏（见该方法的说明）。
+            if(!doorSoundPackChecked && client.world!=null) {
+                doorSoundPackChecked=true;
+                DoorSoundPack.ensureReady(client);
+                // 请服务端把它现有的全部门槽音频发过来；服务端逐条回 DoorSoundData，本机按需存盘并重载。
+                // 这样"音频上传之后才进服的玩家"也能听到同一段音频（专用服务器同样成立）。
+                ClientPlayNetworking.send(new ElevatorNetworking.RequestDoorSound(ElevatorNetworking.RequestDoorSound.ALL_SLOTS));
+            }
+            // 本刻收到过新的门槽音频：一次性把它们重建进资源包并重载。
+            // 放在刻末而不是收包处，是为了把"进服补齐"这种连续多条合并成一次重载。
+            if(doorSoundReloadPending) {
+                doorSoundReloadPending=false;
+                DoorSoundPack.ensureReady(client);
+            }
             // 先清理：实体卸载/移除或 Phase 离开 MOVING（到站、受阻、卡在门口）就停止运行声并移出映射；
             // removeIf 内返回 true 表示删除该条目，与 stop() 一样都是幂等的。
             sounds.entrySet().removeIf(entry->{
@@ -73,6 +137,10 @@ public class EasyelevatorClient implements ClientModInitializer {
         });
         // 断线：停止所有循环音效并清空映射，同时丢弃 CabinMotion 的插值历史与本地乘客标记，
         // 否则进入新世界后可能拿旧世界的样本继续插值（实体 id 会复用）。
-        ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{sounds.values().forEach(client.getSoundManager()::stop);sounds.clear();CabinMotion.clear();});
+        ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->{
+            sounds.values().forEach(client.getSoundManager()::stop);sounds.clear();CabinMotion.clear();
+            // 换个服务器/存档要重新检查资源包与补齐音频：不同的服务器可能配了不同的自定义音效。
+            doorSoundPackChecked=false; doorSoundReloadPending=false;
+        });
     }
 }

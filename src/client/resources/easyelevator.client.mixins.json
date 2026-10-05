@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "org.DJB.easyelevator.mixin.client",
   "compatibilityLevel": "JAVA_21",
-  "client": ["CameraMixin"],
+  "client": ["CameraMixin", "CabinCrosshairMixin"],
   "injectors": {
     "defaultRequire": 1
   },

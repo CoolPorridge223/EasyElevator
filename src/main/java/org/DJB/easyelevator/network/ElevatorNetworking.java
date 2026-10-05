@@ -19,8 +19,14 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
+import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
+import org.DJB.easyelevator.logic.DoorArrivalSound;
+import org.DJB.easyelevator.logic.DoorSoundPersistence;
+import org.DJB.easyelevator.logic.DoorSounds;
 import org.DJB.easyelevator.logic.ElevatorLine;
+import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.logic.FloorIndicator;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +57,14 @@ public final class ElevatorNetworking {
     // 世界高度也远达不到这个站点数；这是防无界分配的兜底上限，正常线路只会用到其中极小一部分。
     /** 单个 {@link OpenPanel} 允许携带的站点数量上限，单位：个站点；用于防止恶意/损坏包触发无界内存分配。 */
     public static final int MAX_STOPS = 16384;
+    /** 门音效选项序号缺失时的哨兵值：{@link DoorSoundCommand#choice()} 为它表示"本次只改开关、不动选项"。 */
+    public static final int CHOICE_UNCHANGED = -1;
+    /** 单个门音效音频的大小上限（字节），与 {@code client/DoorSoundPack} 的校验保持一致（512 KiB）。 */
+    public static final int MAX_AUDIO_BYTES = 512 * 1024;
+    /** {@link DoorSoundUpload} 自定义包负载的大小上限（字节）：音频上限 + 1 KiB 余量（坐标、方向、长度前缀）。 */
+    public static final int MAX_PAYLOAD_BYTES = MAX_AUDIO_BYTES + 1024;
+    /** {@link OpenDoorPanel#floorLabel()} 允许的最大长度（字符）：层号显示文本极短（"B12"），给足余量即可。 */
+    public static final int MAX_FLOOR_LABEL = 32;
     /**
      * 轿厢运动帧（服务端 -> 客户端）：一帧绝对高度样本 + 该观测者自身的乘客偏移量。
      *
@@ -200,7 +214,6 @@ public final class ElevatorNetworking {
     }
     /**
      * 打开"厅外呼叫面板"（服务端 -> 客户端）：右键楼层门时下发，客户端据此弹出上/下/关闭三个按钮。
-     *
      * <p>与选站面板 {@link OpenPanel} 一样，面板内容全部来自服务端：这里带上该站两个方向当前是否已有呼叫，
      * 因此关掉面板再打开、或别人按过按钮之后再打开，按钮的点亮状态都仍然正确。
      *
@@ -266,6 +279,194 @@ public final class ElevatorNetworking {
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
     /**
+     * 打开 / 刷新"某扇门自己的设置面板"（服务端 -> 客户端）：潜行右键楼层门时下发。
+     *
+     * <p>与厅外呼叫面板 {@link OpenHallPanel} 的分工：那个面板管"叫电梯"，这个面板管
+     * <b>这扇门自己的装修属性</b>——开关门音效的开关、音效选项，以及"把这一站设为基准层"。
+     * 两者互不干扰：普通右键照旧打开呼叫面板，只有潜行右键才打开本面板。</p>
+     *
+     * <p>面板内容全部来自服务端：单扇门的设置存在门的方块实体里（随区块存档），
+     * "这一站是第几层"由服务端按线路现算。客户端只画界面、把点击原样回传，不推导任何状态，
+     * 因此关掉面板再打开、或别的玩家刚改过设置，看到的都是最新的真实值。</p>
+     *
+     * <p>为什么设置拆成标量而不是直接搬一个领域对象：网络包是客户端与服务端之间的
+     * 协议，只该承载原始值；把领域对象拼装留给各自的处理器，协议就不会因为领域类改字段而变。</p>
+     *
+     * @param station   该扇门的根方块坐标（底部中心）
+     * @param floorLabel 这一站当前的层号显示文本（服务端按基准层算好，例如 {@code "3"} / {@code "B1"}）
+     * @param enabled   到站提示音的开关
+     * @param choice    到站提示音的选项序号
+     * @param baseFloor 这一站是否就是整条线路的基准层（1 层）
+     * @param soundSlot 该门在运行时资源包里的音效槽位（面板据此显示自定义音频的文件名）
+     * @param preview   本次下发前服务端是否刚试听过（非 0 表示面板上那一行要闪一下）
+     */
+    public record OpenDoorPanel(BlockPos station, String floorLabel,
+                                boolean enabled, int choice,
+                                boolean baseFloor, int soundSlot, int preview) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_door_panel}。 */
+        public static final Id<OpenDoorPanel> ID = new Id<>(Easyelevator.id("open_door_panel"));
+        /** {@link #preview} 的取值：本次没有试听。 */
+        public static final int PREVIEW_NONE = 0;
+        /** {@link #preview} 的取值：服务端刚试听过到站提示音。 */
+        public static final int PREVIEW_PLAYED = 1;
+        /** 线格式编解码器：坐标、层号文本、两个设置标量、基准层、槽位、试听标记。 */
+        public static final PacketCodec<RegistryByteBuf,OpenDoorPanel> CODEC = new PacketCodec<>() {
+            /** 读回一份面板快照；层号文本做了长度上限校验，避免畸形包构造超长字符串。 */
+            @Override public OpenDoorPanel decode(RegistryByteBuf buf) {
+                BlockPos station=buf.readBlockPos();
+                String label=buf.readString(MAX_FLOOR_LABEL);
+                boolean enabled=buf.readBoolean(); int choice=buf.readVarInt();
+                boolean baseFloor=buf.readBoolean();
+                int slot=buf.readVarInt();
+                int preview=buf.readVarInt();
+                return new OpenDoorPanel(station,label,enabled,choice,baseFloor,slot,preview);
+            }
+            /** 写出面板快照：字段顺序必须与解码严格一致。 */
+            @Override public void encode(RegistryByteBuf buf,OpenDoorPanel p) {
+                buf.writeBlockPos(p.station());
+                buf.writeString(p.floorLabel(),MAX_FLOOR_LABEL);
+                buf.writeBoolean(p.enabled()); buf.writeVarInt(p.choice());
+                buf.writeBoolean(p.baseFloor());
+                buf.writeVarInt(p.soundSlot());
+                buf.writeVarInt(p.preview());
+            }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 修改某扇门的门音效设置（客户端 -> 服务端）。
+     *
+     * <p>只在玩家真的点了开关/箭头时才发；服务端重新校验门与权限，然后落进方块实体 NBT、
+     * 并把最新快照回推给所有正在看这扇门面板的人（全服同步：同一扇门在所有人眼里配置一致）。</p>
+     *
+     * @param station 楼层门根方块坐标
+     * @param enabled 改动后的开关
+     * @param choice  改动后的音效选项序号；{@code < 0}（{@link #CHOICE_UNCHANGED}）表示本次只改开关、不动选项
+     * @param preview 是否要服务端当场把提示音播一次（试听）
+     */
+    public record DoorSoundCommand(BlockPos station, boolean enabled, int choice, boolean preview) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:door_sound_command}。 */
+        public static final Id<DoorSoundCommand> ID = new Id<>(Easyelevator.id("door_sound_command"));
+        /** 线格式编解码器：坐标 + 开关 + 选项 + 试听。 */
+        public static final PacketCodec<RegistryByteBuf,DoorSoundCommand> CODEC = new PacketCodec<>() {
+            /** 读回一次修改；语义校验全部留给服务端处理器。 */
+            @Override public DoorSoundCommand decode(RegistryByteBuf buf) {
+                return new DoorSoundCommand(buf.readBlockPos(),buf.readBoolean(),buf.readVarInt(),buf.readBoolean());
+            }
+            /** 写出一次修改。 */
+            @Override public void encode(RegistryByteBuf buf,DoorSoundCommand p) {
+                buf.writeBlockPos(p.station());buf.writeBoolean(p.enabled());
+                buf.writeVarInt(p.choice());buf.writeBoolean(p.preview());
+            }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 把这一站设为 / 取消整条线路的基准层（客户端 -> 服务端）。
+     *
+     * <p>原来的入口是"潜行右键门"；现在潜行右键改为打开设置面板，这个动作变成面板里的一个按钮，
+     * 行为与判据完全保留（见 {@code LandingDoorBlock#setFloorBase}）：一条线路最多一扇门带标记，
+     * 设置时清掉同线其它门的标记。</p>
+     *
+     * @param station 楼层门根方块坐标
+     * @param on      true = 设为基准层（1 层），false = 取消本门的基准层标记（回到默认编号）
+     */
+    public record SetBaseFloor(BlockPos station, boolean on) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:set_base_floor}。 */
+        public static final Id<SetBaseFloor> ID = new Id<>(Easyelevator.id("set_base_floor"));
+        /** 线格式编解码器：坐标 + 一个开关。 */
+        public static final PacketCodec<RegistryByteBuf,SetBaseFloor> CODEC = new PacketCodec<>() {
+            /** 读回一次设置；服务端会重新确认站点与线路。 */
+            @Override public SetBaseFloor decode(RegistryByteBuf buf) { return new SetBaseFloor(buf.readBlockPos(),buf.readBoolean()); }
+            /** 写出一次设置。 */
+            @Override public void encode(RegistryByteBuf buf,SetBaseFloor p) { buf.writeBlockPos(p.station());buf.writeBoolean(p.on()); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 上传一个自定义到站音效文件（客户端 -> 服务端），内容就是完整的 {@code .ogg} 字节。
+     *
+     * <p>为什么整文件一次发完而不是分片：每个音频 ≤ {@link #MAX_AUDIO_BYTES}（512 KiB），
+     * 自定义包负载上限（{@link #MAX_PAYLOAD_BYTES}）与之匹配；一次发完省掉重组状态机、顺序号与超时清理，
+     * 而这点体积对现代连接完全不算什么。</p>
+     *
+     * <p>客户端携带的坐标与字节全部视为<b>不可信输入</b>：服务端会重新校验玩家身份、整扇门、
+     * ogg 魔数与大小上限，然后才写入权威副本目录。</p>
+     *
+     * @param station 楼层门根方块坐标
+     * @param bytes   完整的 {@code .ogg} 文件内容
+     */
+    public record DoorSoundUpload(BlockPos station, byte[] bytes) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:door_sound_upload}。 */
+        public static final Id<DoorSoundUpload> ID = new Id<>(Easyelevator.id("door_sound_upload"));
+        /** 线格式编解码器：坐标 + 长度前缀的字节数组（读取时先校验长度上限）。 */
+        public static final PacketCodec<RegistryByteBuf,DoorSoundUpload> CODEC = new PacketCodec<>() {
+            /** 读回一份上传：长度在分配之前校验，见 {@link #MAX_PAYLOAD_BYTES}。 */
+            @Override public DoorSoundUpload decode(RegistryByteBuf buf) {
+                return new DoorSoundUpload(buf.readBlockPos(),buf.readByteArray(MAX_PAYLOAD_BYTES));
+            }
+            /** 写出一次上传。 */
+            @Override public void encode(RegistryByteBuf buf,DoorSoundUpload p) {
+                buf.writeBlockPos(p.station());buf.writeByteArray(p.bytes());
+            }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 某个门槽音频的<b>内容</b>（双向使用）：服务端用它把字节发给需要的客户端，客户端用它向服务端索取。
+     *
+     * <p>有它之后，自定义音效在<b>专用服务器</b>上也能全服一致——收到文件的一方把它存进自己的权威副本目录
+     * 并重建资源包，不必依赖服务器另外托管一个资源包 URL，真正做到"装上模组就能用"。</p>
+     *
+     * @param slot  门槽号
+     * @param bytes 完整的 {@code .ogg} 内容；空数组表示"该槽位没有音频"
+     */
+    public record DoorSoundData(int slot, byte[] bytes) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:door_sound_data}。 */
+        public static final Id<DoorSoundData> ID = new Id<>(Easyelevator.id("door_sound_data"));
+        /** 线格式编解码器：与 {@link DoorSoundUpload} 同构，只是用门槽号代替方块坐标。 */
+        public static final PacketCodec<RegistryByteBuf,DoorSoundData> CODEC = new PacketCodec<>() {
+            /** 读回一份音频；长度在分配之前校验。 */
+            @Override public DoorSoundData decode(RegistryByteBuf buf) {
+                return new DoorSoundData(buf.readVarInt(),buf.readByteArray(MAX_PAYLOAD_BYTES));
+            }
+            /** 写出一份音频。 */
+            @Override public void encode(RegistryByteBuf buf,DoorSoundData p) {
+                buf.writeVarInt(p.slot());buf.writeByteArray(p.bytes());
+            }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
+     * 请求某个门槽的音频内容（客户端 -> 服务端）。
+     *
+     * <p>用于<b>进服时补齐</b>：玩家可能在音频上传之后才进入服务器（或换了台机器、删过
+     * {@code config/easyelevator/arrival_sounds/}），此时他本机没有这份音频。客户端在进服后的第一刻发一个
+     * {@link #ALL_SLOTS} 表示"把服务端有的都给我"，服务端逐个回 {@link DoorSoundData}。</p>
+     *
+     * @param slot 需要的门槽号；{@link #ALL_SLOTS} 表示"服务端有多少都发给我"
+     */
+    public record RequestDoorSound(int slot) implements CustomPayload {
+        /** 该负载的类型 id，注册与路由键：{@code easyelevator:request_door_sound}。 */
+        public static final Id<RequestDoorSound> ID = new Id<>(Easyelevator.id("request_door_sound"));
+        /** {@link #slot()} 的哨兵值：请求"服务端现有的全部门槽音频"（进服补齐用）。 */
+        public static final int ALL_SLOTS = -1;
+        /** 线格式编解码器：一个定长标量。 */
+        public static final PacketCodec<RegistryByteBuf,RequestDoorSound> CODEC = new PacketCodec<>() {
+            /** 读回一次请求。 */
+            @Override public RequestDoorSound decode(RegistryByteBuf buf) { return new RequestDoorSound(buf.readVarInt()); }
+            /** 写出一次请求。 */
+            @Override public void encode(RegistryByteBuf buf,RequestDoorSound p) { buf.writeVarInt(p.slot()); }
+        };
+        /** @return 负载类型 id，框架据此把包分发到对应接收器 */
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+    /**
      * 读一个坐标列表：先读 VarInt 数量并做上限校验，再逐个读 BlockPos，最后复制成不可变列表。
      *
      * @param buf 读缓冲
@@ -324,9 +525,15 @@ public final class ElevatorNetworking {
         PayloadTypeRegistry.playS2C().register(PanelState.ID,PanelState.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenHallPanel.ID,OpenHallPanel.CODEC);
         PayloadTypeRegistry.playS2C().register(HallPanelState.ID,HallPanelState.CODEC);
+        PayloadTypeRegistry.playS2C().register(OpenDoorPanel.ID,OpenDoorPanel.CODEC);
+        PayloadTypeRegistry.playS2C().register(DoorSoundData.ID,DoorSoundData.CODEC);
         PayloadTypeRegistry.playC2S().register(SelectStop.ID,SelectStop.CODEC);
         PayloadTypeRegistry.playC2S().register(DoorCommand.ID,DoorCommand.CODEC);
         PayloadTypeRegistry.playC2S().register(HallCallButton.ID,HallCallButton.CODEC);
+        PayloadTypeRegistry.playC2S().register(DoorSoundCommand.ID,DoorSoundCommand.CODEC);
+        PayloadTypeRegistry.playC2S().register(SetBaseFloor.ID,SetBaseFloor.CODEC);
+        PayloadTypeRegistry.playC2S().register(DoorSoundUpload.ID,DoorSoundUpload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestDoorSound.ID,RequestDoorSound.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(SelectStop.ID,(payload,context)->context.server().execute(()->{
             // 处理器在网络线程被调用，而实体/方块查询必须在服务端主线程执行，故整体切回主线程。
             var player=context.player();
@@ -374,6 +581,81 @@ public final class ElevatorNetworking {
             player.sendMessage(Text.translatable(accepted?"message.easyelevator.hall_queued":"message.easyelevator.invalid_stop",
                     Text.translatable(payload.up()?"screen.easyelevator.hall_up":"screen.easyelevator.hall_down")),true);
             syncHallState(world,origin,cabin.hasHallCall(origin,true),cabin.hasHallCall(origin,false));
+        }));
+        // 门专属设置面板上的任意一次修改（开关 / 换音效 / 试听）：坐标不可信，服务端重新定位整扇门，
+        // 把改动落进方块实体 NBT（随区块存档），然后把最新快照回推给所有正在看这扇门的人（全服同步）。
+        ServerPlayNetworking.registerGlobalReceiver(DoorSoundCommand.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            var world=player.getServerWorld();
+            BlockPos origin=payload.station();
+            LandingDoorBlockEntity door=doorEntity(world,origin);
+            if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+            DoorArrivalSound settings=door.arrivalSound();
+            // choice < 0（CHOICE_UNCHANGED）表示"本次只改开关、不动选项"；否则整份替换。
+            settings=settings.withEnabled(payload.enabled())
+                    .withChoice(payload.choice()<0?settings.choice():payload.choice());
+            door.setArrivalSound(settings);
+            // 试听：由服务端以权威音效当场播一次，让玩家立刻听到自己刚选的东西（客户端只负责解码播放）。
+            int preview=playArrivalPreview(world,origin,door,payload.preview());
+            broadcastDoorPanel(world,origin,preview);
+        }));
+        // 面板上的"设为基准层"按钮：行为与旧版的"潜行右键门"完全一致（见 LandingDoorBlock#setFloorBase），
+        // 只是入口从右键组合挪进了设置界面。
+        ServerPlayNetworking.registerGlobalReceiver(SetBaseFloor.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            LandingDoorBlock.setFloorBase(player.getServerWorld(),payload.station(),player,payload.on());
+        }));
+        // 自定义到站音效上传：客户端携带的字节视为不可信输入——重新校验玩家、整扇门、ogg 魔数与大小上限，
+        // 通过后才写入权威副本目录。落盘失败只回一条提示（音效是表现层，不该把服务端刻带崩）。
+        ServerPlayNetworking.registerGlobalReceiver(DoorSoundUpload.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            byte[] bytes=payload.bytes();
+            if (bytes.length==0 || bytes.length>MAX_AUDIO_BYTES) { player.sendMessage(Text.translatable("message.easyelevator.door_sound_upload_failed"),true); return; }
+            var world=player.getServerWorld();
+            BlockPos origin=payload.station();
+            LandingDoorBlockEntity door=doorEntity(world,origin);
+            if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+            int slot=door.soundSlot();
+            if (!DoorSoundPersistence.store(slot,bytes)) {
+                player.sendMessage(Text.translatable("message.easyelevator.door_sound_upload_failed"),true); return;
+            }
+            // 把落点写进日志：槽位号是坐标哈希出来的，玩家在 config 里看到的文件名（arrival_<槽>.ogg）
+            // 只有配合这一行才能对上号——排查"上传了但没声"时很有用。
+            org.slf4j.LoggerFactory.getLogger("easyelevator/doorsound").info(
+                    "Stored arrival sound for door {} as slot {} -> {}",origin.toShortString(),slot,DoorSoundPersistence.fileName(slot));
+            player.sendMessage(Text.translatable("message.easyelevator.door_sound_uploaded",
+                    Text.translatable("screen.easyelevator.door_sound_row")),true);
+            // 上传完切到"自定义文件"并打开：玩家不必再点两下才能听到结果。
+            door.setArrivalSound(door.arrivalSound().withChoice(DoorSounds.CUSTOM).withEnabled(true));
+            // 把音频内容发给站点附近所有客户端：它们各自存进自己的权威副本目录并重建资源包，
+            // 于是"上传者之外的玩家"也能听到同一段音频（专用服务器上同样成立，不需要托管资源包 URL）。
+            var data=new DoorSoundData(slot,bytes);
+            for (ServerPlayerEntity observer : PlayerLookup.around(world,origin,64d)) ServerPlayNetworking.send(observer,data);
+            int preview=playArrivalPreview(world,origin,door,true);
+            broadcastDoorPanel(world,origin,preview);
+        }));
+        // 客户端索取音频内容：具体槽位按需索取；ALL_SLOTS 表示"进服补齐"——把服务端现有的全部门槽音频
+        // 都发给它。这是"上传者以外的玩家、以及上传之后才进服的人"能听到同一段音频的唯一途径，
+        // 因此专用服务器上同样全服一致，不需要另外托管资源包 URL。
+        // 鉴权只需"非旁观且存活"：音效是公开的表现层数据（谁都能在同一站听到），
+        // 且总量被 MAX_SLOTS 与单文件上限钉死，一次补齐最多几十条包。
+        ServerPlayNetworking.registerGlobalReceiver(RequestDoorSound.ID,(payload,context)->context.server().execute(()->{
+            var player=context.player();
+            if (player.isSpectator() || !player.isAlive()) return;
+            if (payload.slot()!=RequestDoorSound.ALL_SLOTS) {
+                ServerPlayNetworking.send(player,new DoorSoundData(payload.slot(),DoorSoundPersistence.read(payload.slot())));
+                return;
+            }
+            // 进服补齐：最多 MAX_SLOTS 个门槽，读不到的槽位直接跳过（不回空包，省一半流量）。
+            for (String stem : DoorSoundPersistence.listStems()) {
+                int slot=DoorSounds.slotOfStem(stem);
+                if (slot<0) continue; // 文件名异常：跳过，不猜
+                byte[] bytes=DoorSoundPersistence.read(slot);
+                if (bytes.length>0) ServerPlayNetworking.send(player,new DoorSoundData(slot,bytes));
+            }
         }));
         UseItemCallback.EVENT.register((player,world,hand)->{
             // 只看主手：副手会随主手重复触发；潜行 + 空手是拆除轿厢的保留组合，不能与之抢事件。
@@ -429,5 +711,139 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.send(player,new OpenPanel(cabin.getId(),
                 line==null?List.of():line.stops().stream().limit(MAX_STOPS).toList(),
                 cabin.plannedStops(), cabin.baseFloorY()));
+    }
+    /**
+     * 取某个楼层门根方块对应的方块实体；不是完整的楼层门时返回 null。
+     *
+     * <p>共用校验：坐标来自客户端、一律不可信，因此所有门设置相关的处理器都要先过这一关
+     * （整扇 9 格齐全才认，残缺的门没有可设置的站点语义）。
+     *
+     * @param world 服务端世界
+     * @param origin 候选根方块坐标
+     * @return 门的方块实体；不是本模组楼层门的根方块或整扇门不完整时为 null
+     */
+    private static LandingDoorBlockEntity doorEntity(ServerWorld world,BlockPos origin) {
+        if (!world.isChunkLoaded(origin)) return null;
+        if (!LandingDoorBlock.isRoot(world.getBlockState(origin))) return null;
+        if (!LandingDoorBlock.complete(world,origin)) return null;
+        return world.getBlockEntity(origin) instanceof LandingDoorBlockEntity door ? door : null;
+    }
+    /**
+     * 在站点位置试听一次到站提示音（服务端权威播放）。
+     *
+     * <p>为什么由服务端播而不是客户端自己播：音色由"这门选的选项 + 服务端的权威数据"决定，
+     * 让客户端自己拼一份很容易和服务端分叉；服务端播一次，客户端只负责解码，听到的必然就是到站会响的那一声。
+     *
+     * @param world 服务端世界
+     * @param origin 站点根方块坐标
+     * @param door 该门的方块实体
+     * @param wanted 玩家是否要求了试听；false 时直接返回 {@link OpenDoorPanel#PREVIEW_NONE}
+     * @return {@link OpenDoorPanel#PREVIEW_NONE} 或 {@link OpenDoorPanel#PREVIEW_PLAYED}
+     */
+    private static int playArrivalPreview(ServerWorld world,BlockPos origin,LandingDoorBlockEntity door,boolean wanted) {
+        if (!wanted) return OpenDoorPanel.PREVIEW_NONE;
+        net.minecraft.sound.SoundEvent event=door.arrivalEvent();
+        if (event==null) return OpenDoorPanel.PREVIEW_NONE; // 开关关着、或自定义槽位还没有音频
+        world.playSound(null,origin.getX()+.5,origin.getY()+.5,origin.getZ()+.5,event,
+                net.minecraft.sound.SoundCategory.BLOCKS,ElevatorParameters.EVENT_VOLUME,ElevatorParameters.SOUND_PITCH);
+        return OpenDoorPanel.PREVIEW_PLAYED;
+    }
+    /**
+     * 把某扇门的设置面板快照推给该站附近所有玩家（打开面板时、以及任何人改了设置之后）。
+     *
+     * <p><b>全服同步就落在这里</b>：一个人在面板上改了开关或换了音效，服务端存进方块实体之后立刻
+     * 把最新快照推给附近所有人，因此别人打开同一扇门看到的就是同一个设置。</p>
+     *
+     * <p>范围与 {@link #syncHallState} 一致（站点 64 格内）：改提示音是本地装修行为，
+     * 不必惊动全服所有维度；没开这个面板的客户端收到快照后直接丢弃。</p>
+     *
+     * @param world 世界
+     * @param origin 站点根方块坐标
+     * @param preview 本次要提示的试听状态（见 {@link OpenDoorPanel#PREVIEW_NONE} 等常量）
+     */
+    public static void broadcastDoorPanel(World world,BlockPos origin,int preview) {
+        if (!(world instanceof ServerWorld server)) return;
+        OpenDoorPanel payload=doorPanel(server,origin,preview);
+        if (payload==null) return;
+        for (ServerPlayerEntity observer : PlayerLookup.around(server,origin,64d)) ServerPlayNetworking.send(observer,payload);
+    }
+    /**
+     * 把某扇门的设置面板快照单独发给一个玩家（潜行右键打开面板时用）。
+     *
+     * <p>与 {@link #broadcastDoorPanel} 共用 {@link #doorPanel} 构造快照，因此"自己点开的"与
+     * "别人改完推给我的"两条路径看到的内容必然一致。
+     *
+     * @param player 收件玩家
+     * @param origin 站点根方块坐标
+     * @param preview 本次要提示的试听状态（打开面板时恒为 {@link OpenDoorPanel#PREVIEW_NONE}）
+     */
+    public static void sendDoorPanel(ServerPlayerEntity player,BlockPos origin,int preview) {
+        if (!(player.getServerWorld() instanceof ServerWorld server)) return;
+        OpenDoorPanel payload=doorPanel(server,origin,preview);
+        if (payload!=null) ServerPlayNetworking.send(player,payload);
+    }
+    /**
+     * 构造某扇门的设置面板快照（打开面板与"改动后刷新"两条路径的唯一来源）。
+     *
+     * <p>整扇门不完整时也照样构造：面板显示层号占位与开关，玩家点按钮会收到服务端的提示，
+     * 比"潜行右键没反应"更好理解。只有方块实体真的不存在（区块未加载、不是根方块）时才返回 null。
+     *
+     * @param server 服务端世界
+     * @param origin 站点根方块坐标
+     * @param preview 本次要提示的试听状态
+     * @return 面板快照；拿不到门时返回 null
+     */
+    private static OpenDoorPanel doorPanel(ServerWorld server,BlockPos origin,int preview) {
+        if (!(doorEntity(server,origin) instanceof LandingDoorBlockEntity door)) return null;
+        DoorArrivalSound sound=door.arrivalSound();
+        return new OpenDoorPanel(origin.toImmutable(),floorLabel(server,origin),
+                sound.enabled(),sound.choice(),door.baseFloor(),door.soundSlot(),preview);
+    }
+    /**
+     * 算某个站点当前的层号显示文本（例如 {@code "3"} / {@code "B1"}），供设置面板显示。
+     *
+     * <p>复用 {@code logic/FloorIndicator} 的同一套编号：基准层 = 1 层，其上 2、3…，其下 B1、B2…。
+     * 因此设置面板上显示的层号与门框顶部、轿厢内面板、选站按钮三处永远一致，
+     * 不会出现"面板说 3 层、门框说 4 层"这种分叉。线路扫不出来（轨道被拆）时回退成 {@code "--"}。
+     *
+     * @param world 服务端世界
+     * @param origin 站点根方块坐标
+     * @return 该站的层号文本；线路无效时返回 {@code "--"}
+     */
+    private static String floorLabel(ServerWorld world,BlockPos origin) {
+        ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(world.getBlockState(origin),origin));
+        if (line==null) return FloorIndicator.format(0);
+        List<BlockPos> stops=line.stops();
+        int index=stops.indexOf(origin);
+        if (index<0) return FloorIndicator.format(0);
+        return FloorIndicator.label(index,FloorIndicator.baseIndex(stationYs(stops),baseFloorY(world,stops)));
+    }
+    /**
+     * 取一条线路上所有站点的高度（升序），供 {@link FloorIndicator} 计算层号。
+     *
+     * @param stops 站点根方块列表（{@code ElevatorLine#stops()} 已按 Y 升序）
+     * @return 与 {@code stops} 一一对应的高度列表
+     */
+    private static List<Integer> stationYs(List<BlockPos> stops) {
+        List<Integer> ys=new ArrayList<>(stops.size());
+        for (BlockPos stop:stops) ys.add(stop.getY());
+        return ys;
+    }
+    /**
+     * 找出这条线路的基准层高度。
+     *
+     * <p>基准层标记写在某一扇门的方块实体里（见 {@code LandingDoorBlockEntity#baseFloor}）；
+     * 这里现扫一遍站点取它，而不是缓存：设置面板是低频操作，而"谁被标成基准层"随时可能被改，
+     * 现算永远是最新的。
+     *
+     * @param world 服务端世界
+     * @param stops 站点根方块列表
+     * @return 基准层高度（格）；没有任何门带标记时返回 {@link Integer#MIN_VALUE}，
+     *         即 {@link FloorIndicator#baseIndex} 会退回"最低站点 = 1 层"的默认编号
+     */
+    private static int baseFloorY(ServerWorld world,List<BlockPos> stops) {
+        for (BlockPos stop:stops)
+            if (world.getBlockEntity(stop) instanceof LandingDoorBlockEntity door && door.baseFloor()) return stop.getY();
+        return Integer.MIN_VALUE;
     }
 }

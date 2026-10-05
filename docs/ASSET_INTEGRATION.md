@@ -158,14 +158,16 @@ ElevatorEvents.ARRIVED.register((cabin, floorY) -> {
 
 ## 音效
 
-已注册四个稳定 ID，默认 `sounds: []`，因此运行时保持静音：
+只注册三个 ID，全部与"到站"有关——**开关门不再发声**：
 
-- `easyelevator:elevator_running`：客户端随轿厢位置循环，离开 MOVING 状态立即停止。
-- `easyelevator:elevator_arrival`：服务端到站时播放一次。
-- `easyelevator:door_open`：开始开门时播放一次。
-- `easyelevator:door_close`：开始关门时播放一次。
+- `easyelevator:elevator_running`：客户端随轿厢位置循环，离开 MOVING 状态立即停止。默认 `sounds: []`（静音占位）。
+- `easyelevator:elevator_arrival`：服务端到站时播放一次；也是每扇门设置面板里"默认音效"那一项的来源。
+  出厂指向 `assets/easyelevator/sounds/man.ogg`。
+- `easyelevator:elevator_arrival_custom`：只提供字幕（供上传的自定义音效复用），
+  **不**在这里绑定音频——每扇门上传的音频由 `client/DoorSoundPack` 生成的运行时资源包按门槽
+  声明成 `elevator_arrival_custom_<槽>`。
 
-将四个 `.ogg`（推荐单声道，以保留 3D 方位）放进 `assets/easyelevator/sounds/`，例如：
+把音频放进 `assets/easyelevator/sounds/` 后按下面的形状写 `sounds.json`（例如给运行声与到站声各换一个 ogg）：
 
 ```json
 {
@@ -176,19 +178,33 @@ ElevatorEvents.ARRIVED.register((cabin, floorY) -> {
   "elevator_arrival": {
     "subtitle": "subtitles.easyelevator.elevator_arrival",
     "sounds": ["easyelevator:elevator_arrival"]
-  },
-  "door_open": {
-    "subtitle": "subtitles.easyelevator.door_open",
-    "sounds": ["easyelevator:door_open"]
-  },
-  "door_close": {
-    "subtitle": "subtitles.easyelevator.door_close",
-    "sounds": ["easyelevator:door_close"]
   }
 }
 ```
 
 运行音频制作成首尾无缝短循环。也可通过资源包覆盖上述资源；替换后重载资源或重启游戏。
 
-`tools/generate_data.py` 会重写 `sounds.json` 为"四个 ID、sounds 为空"的静音声明——**导入正式音频后不要再次运行它**，否则音频条目会被清掉（模型与贴图不受影响，那部分在 `tools/generate_art.py` 里）。
+### 每扇门自己的到站音效（玩家在游戏内上传）
+
+从本版本起，**每扇楼层门可以各配一条到站提示音**（潜行右键门打开设置面板）。资源侧的分工：
+
+| 关注点 | 位置 |
+| --- | --- |
+| 玩家上传的音频（权威副本） | `config/easyelevator/arrival_sounds/arrival_<槽>.ogg` |
+| 由它生成的运行时资源包 | `resourcepacks/easyelevator_custom/`（`pack.mcmeta` + `sounds.json` + `sounds/arrival/arrival_<槽>.ogg`） |
+| 槽位与"选项 → 音效 ID"的换算 | `logic/DoorSounds.java`（`soundId` / `fileStem` / `isStem` / `slotOfStem`） |
+| 写盘与触发重载 | `logic/DoorSoundPersistence.java`（存读）、`client/DoorSoundPack.java`（生成包 + 内容指纹 + `reloadResources`） |
+| 预设原版音效表 | `logic/DoorSounds.java` 的 `ARRIVAL_PRESETS`（对原版 ID 的引用，不需要任何资源文件） |
+
+想给某个服务器**统一预置**一套到站音、而不是让玩家一扇扇上传时，最省事的做法是直接往
+`config/easyelevator/arrival_sounds/` 里放好 `arrival_<槽>.ogg`：客户端进服时会自动把它投影成
+运行时资源包并加载。想要原版式的全局替换（所有"默认音效"的门一起变），仍然按上面那节换
+`assets/easyelevator/sounds.json` 里 `elevator_arrival` 的音频即可。
+
+**资源包只在内容变化时重载**：`DoorSoundPack` 先把整包构建到临时目录、算出内容指纹，与上次装进去的
+指纹一致就什么都不做。这是为了避免"每次进存档都弹一次红色 Mojang 加载画面"——`reloadResources()`
+的代价与视觉干扰都很明显，只有玩家真的上传/换掉音频时才值得付。
+
+`tools/generate_data.py` 会重写 `sounds.json` 为"三个 ID"的声明——
+**导入正式音频后不要再次运行它**，否则音频条目会被清掉（模型与贴图不受影响，那部分在 `tools/generate_art.py` 里）。
 `tools/generate_art.py` 只写模型与贴图，会重复运行也不会破坏别的东西。

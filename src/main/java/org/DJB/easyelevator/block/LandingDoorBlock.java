@@ -303,8 +303,12 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
                         && Math.abs(c.getY()-origin.getY())<=tolerance);
         if(cars.size()!=1) return null; // 该线路必须恰好一辆；0 辆或数据异常时保持关门
         AbstractCabinEntity car=cars.getFirst();
-        // 到站精度已在上面的过滤里复检；这里只排除"还在运行 / 受阻暂停"的相位
-        if(car.phase()==ElevatorController.Phase.MOVING || car.phase()==ElevatorController.Phase.BLOCKED) return null;
+        // 不再按相位排除"运行中 / 受阻暂停"，而是交给调用方用"轿厢门是否真的在开"来把关
+        // （见 mayOpen / leafProgress 里的 doorProgress > 0）。理由有两个：
+        // ① 运行时门必然全关（"门未完全关闭不得移动"），因此相位守卫对正常行程是多余的；
+        // ② 故障（BLOCKED）时允许乘客开门脱困，而那时相位恰恰就是 BLOCKED——若在这里排除，
+        //    楼层门会拒绝交出碰撞，人虽然开了轿厢门却仍然走不出去，脱困功能形同虚设。
+        //    轿厢停在楼层之间时这里本来就返回 null（上面 ±1e-7 的高度过滤），所以不会半空开门。
         return car;
     }
 
@@ -390,15 +394,18 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     }
 
     /**
-     * 右键门上的任意部件 = 向本线路唯一轿厢发送呼叫请求（发往站点根方块）。
+     * 右键门上的任意部件：普通右键 = 厅外呼叫面板，潜行右键 = 该门自己的设置面板。
      *
-     * <p>服务端权威：客户端分支不做事，只统一返回 {@code SUCCESS}（播放手臂摆动、
-     * 阻止后续交互）。请求前先要求整扇门完整、才能扫描出线路；线路不存在或不是
-     * 恰好一辆轿厢时发提示（无轿厢 / 多轿厢），否则把 {@link AbstractCabinEntity#requestStop}
-     * 的受理结果反馈给玩家（已排队 / 无效站点）。
+     * <p><b>两种右键的分工</b>：
+     * <ul>
+     *   <li><b>普通右键</b>（{@link #openHallPanel}）：照旧弹出厅外呼叫面板（▲ / ▼ / ×），
+     *       行为与 1.5.x 完全一致，本次改动<b>不碰它</b>；</li>
+     *   <li><b>潜行右键</b>（{@link #openDoorSettings}）：弹出这扇门专属的设置面板——开关门音效的开关、
+     *       两个音效文件的选择/上传/试听，以及"设为基准层"。原来潜行右键是"直接设为基准层"，
+     *       现在那个动作变成新面板里的一个按钮（判据与实现完全保留，见 {@link #setFloorBase}）。</li>
+     * </ul>
      *
-     * <p>副作用：给玩家发 actionbar 消息；受理成功时改动轿厢请求队列（不直接开门——
-     * 门仍然只由联锁推导）。
+     * <p>服务端权威：客户端分支不做事，只统一返回 {@code SUCCESS}（播放手臂摆动、阻止后续交互）。
      *
      * @param state 被点击部件的状态
      * @param world 世界
@@ -411,12 +418,29 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
         if(!world.isClient) {
             BlockPos origin=root(state,pos);
-            // 潜行右键 = 把这一站设为基准层（1 层）并按它重新编号整条线路；
-            // 普通右键 = 弹出厅外呼叫面板（上 / 下 / 关闭三个按钮），不再"右键直接呼叫"。
-            if(player.isSneaking()) setFloorBase(world,origin,player);
+            if(player.isSneaking()) openDoorSettings(world,origin,player);
             else openHallPanel(world,origin,player);
         }
         return ActionResult.SUCCESS;
+    }
+
+    /**
+     * 弹出该扇门自己的设置面板（服务端 -> 客户端）。
+     *
+     * <p>为什么面板内容要由服务端给：门的设置存在方块实体里（服务端权威），
+     * "这一站是第几层"也要按线路现算。客户端只画界面，因此别人改过的设置关掉再打开就能看到。
+     *
+     * <p>整扇门不完整时照样打开面板（与厅外呼叫面板同一策略）：玩家能看到层号占位与两个音效开关，
+     * 点按钮时会收到服务端的"无效站点"提示，比"潜行右键没反应"好理解得多。
+     *
+     * @param world 世界（服务端）
+     * @param origin 被点击门的根方块坐标（站点）
+     * @param player 点击的玩家
+     */
+    private static void openDoorSettings(World world,BlockPos origin,PlayerEntity player) {
+        if(!(player instanceof ServerPlayerEntity serverPlayer)) return; // 只有服务端玩家实体能收包
+        // 只发给发起者：打开面板是个人操作，别人正开着同一扇门的面板也会在改动时被 broadcastDoorPanel 刷新。
+        ElevatorNetworking.sendDoorPanel(serverPlayer,origin,ElevatorNetworking.OpenDoorPanel.PREVIEW_NONE);
     }
 
     /**
@@ -455,29 +479,34 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     }
 
     /**
-     * 潜行右键：把这一站设为整条线路的基准层（1 层），上下游站点随之重新编号（其上 2、3…，其下 B1、B2…）。
+     * 把这一站设为 / 取消整条线路的基准层（1 层）；由设置面板上的按钮触发。
      *
-     * <p>标记写在基准门自己的方块实体里（{@link LandingDoorBlockEntity#setBaseFloor}），因此随区块存档；
-     * 一条线路最多一扇门带标记，设置时会把同一线路上其它门的标记清掉。拆掉基准门就回到默认编号
-     * （最低站点 = 1 层）。
+     * <p><b>与旧版的关系</b>：这个动作原来的入口是"潜行右键门"，现在搬进了设置面板，
+     * 判据与实现逐条保留——标记写在基准门自己的方块实体里（{@link LandingDoorBlockEntity#setBaseFloor}），
+     * 因此随区块存档；一条线路最多一扇门带标记，设置时会把同线其它门的标记清掉；
+     * 拆掉基准门就回到默认编号（最低站点 = 1 层）。额外支持"取消"：把本门的标记清掉，同样回到默认编号。</p>
      *
-     * <p>副作用：改动最多 N 个门的方块实体 NBT（N = 站点数）；并把选站面板推一次，
-     * 让已经打开的面板立刻用新的编号重排按钮。轿厢内的层号与门框顶部的层号由每刻重算的同步字段驱动，
-     * 下一个服务端刻就会自动跟上。
+     * <p>副作用：改动最多 N 个门的方块实体 NBT（N = 站点数）；推一次选站面板让已打开的按钮立刻重排；
+     * 再刷一次门设置面板，让里面的层号文本跟上新编号。轿厢内层号与门框顶部层号由每刻重算的同步字段驱动，
+     * 下一个服务端刻自动跟上。
      *
      * @param world 世界（服务端）
-     * @param origin 被潜行右键的门的根方块坐标（新的基准层）
+     * @param origin 被操作的门的根方块坐标
      * @param player 操作的玩家
+     * @param on true = 把这一站设为基准层；false = 取消本门的基准层标记
      */
-    private static void setFloorBase(World world,BlockPos origin,PlayerEntity player) {
+    public static void setFloorBase(World world,BlockPos origin,PlayerEntity player,boolean on) {
         if(!complete(world,origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
         ElevatorLine line=ElevatorLine.scan(world,railPos(world.getBlockState(origin),origin));
         if(line==null || !line.stops().contains(origin)) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
+        // on 时本门为基准层、同线其余门一律清除；取消时全部清除（回到"最低站点 = 1 层"的默认编号）。
         for(BlockPos stop:line.stops())
-            if(world.getBlockEntity(stop) instanceof LandingDoorBlockEntity door) door.setBaseFloor(stop.equals(origin));
+            if(world.getBlockEntity(stop) instanceof LandingDoorBlockEntity door) door.setBaseFloor(on && stop.equals(origin));
         // 编号变了：让已经打开的选站面板立刻重排（门框与轿厢内的层号由每刻重算的同步字段驱动）。
         for(AbstractCabinEntity cabin:line.cabins(world)) ElevatorNetworking.syncPanel(cabin,cabin.plannedStops());
-        player.sendMessage(Text.translatable("message.easyelevator.floor_base_set"),true);
+        // 设置面板自己也要刷新，否则里面的层号文本还停在旧编号上。
+        ElevatorNetworking.broadcastDoorPanel(world,origin,ElevatorNetworking.OpenDoorPanel.PREVIEW_NONE);
+        player.sendMessage(Text.translatable(on?"message.easyelevator.floor_base_set":"message.easyelevator.floor_base_cleared"),true);
     }
 
     /**

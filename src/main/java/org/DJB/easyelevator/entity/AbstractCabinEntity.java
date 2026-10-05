@@ -23,6 +23,7 @@ import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.api.ElevatorEvents;
 import org.DJB.easyelevator.block.LandingDoorBlock;
+import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
@@ -517,25 +518,37 @@ public abstract class AbstractCabinEntity extends Entity {
      *   <li>整个过程中<b>不改呼叫队列与目的站</b>：不会把本层排进队列，因此不会出现"先开走、之后再回来"。</li>
      * </ul>
      *
-     * <p>为什么要求 {@link ElevatorStatus#IDLE}：轿厢以 0.20 或 0.50 格/刻为巡航上限运行（普通/观光 与 高速，
-     * 见 {@link #speed()}），S 形曲线的巡航段会让高度精确经过整数楼层；只看高度会让"运行途中恰好经过某层"
-     * 也被判成在站点上，从而半空开门。因此"是否停稳"必须由相位判断，不能只看坐标。
+     * <p><b>两种可开门的情形</b>（判据统一在 {@link ElevatorController#canOpenDoor}，客户端面板用同一条，
+     * 因此不会出现"按钮亮着点了没反应"）：
+     * <ol>
+     *   <li><b>正常停靠</b>：轿厢停稳在某个完整站点上，{@link ElevatorStatus#IDLE} 且高度精确对齐。
+     *       为什么必须要求"停稳"：轿厢以 0.20 或 0.50 格/刻为巡航上限运行（见 {@link #speed()}），
+     *       S 形曲线的巡航段会让高度精确经过整数楼层；只看高度会让"运行途中恰好经过某层"也被判成
+     *       在站点上，从而半空开门，因此这里必须看相位，不能只看坐标。</li>
+     *   <li><b>故障脱困</b>：{@link ElevatorController#faulted()} 为真——断轨、朝向不一致、井道里有
+     *       方块或实体障碍、区块未加载、目的站的门被拆。这时轿厢多半卡在两层之间，正常规则一律不成立，
+     *       而乘客很可能被困在里面，因此<b>刻意不要求停在站点上</b>：开门键必须可用，让人能自己走出来。
+     *       故障解除后 {@link ElevatorController#tick} 会把这扇门关回去，再继续原行程。</li>
+     * </ol>
      *
      * <p>关门键交给 {@link ElevatorController#forceClose()}：允许在队列为空时先把门关上、停在本层等待呼叫。
      *
      * @param open true = 开门，false = 关门
-     * @return 指令被接受时 true；不在站点、正在别处运行、线路失效或门状态不允许时 false（调用方据此提示玩家）
+     * @return 指令被接受时 true；既没有停稳在站点上、也不处于故障时 false（调用方据此提示玩家）
      */
     public boolean doorCommand(boolean open) {
         if (getWorld().isClient) return false; // 指令只在服务端执行，客户端点击后会收到服务端下发的面板刷新
         if (open) {
-            if (status() != ElevatorStatus.IDLE) return false; // 运行途中（含恰好经过某层高度）一律不受理
-            ElevatorLine line = line();
-            if (line == null || line.facing() != facing()) return false;
-            // 站点高度是整数，轿厢到站时会精确吸附到该值，因此这里的 1e-7 判定等价于"就在这一层"。
-            for (BlockPos stop : line.stops())
-                if (Math.abs(stop.getY() - getY()) <= ElevatorParameters.POSITION_EPSILON) return controller.forceOpen();
-            return false;
+            // 车体是否精确停在某个完整站点上：站点高度是整数、到站时会精确吸附到该值，
+            // 因此这里的 1e-7 判定等价于"就在这一层"。线路扫不到（轨道被拆/区块未加载）时不算停在站点。
+            ElevatorLine currentLine = line();
+            boolean atStation = false;
+            if (currentLine != null)
+                for (BlockPos stop : currentLine.stops())
+                    if (Math.abs(stop.getY() - getY()) <= ElevatorParameters.POSITION_EPSILON) { atStation = true; break; }
+            boolean allowed = controller.canOpenDoor(atStation);
+            if (!allowed) return false; // 运行途中、且没有故障：不受理
+            return controller.forceOpen();
         }
         return controller.forceClose();
     }
@@ -553,28 +566,65 @@ public abstract class AbstractCabinEntity extends Entity {
     public boolean isPushable() { return false; }
 
     /**
-     * 主手右键交互：满足条件时回收轿厢；乘客右键打开选站面板；其余情况只发一条提示。
+     * 轿厢门此刻是否完全打开。
+     *
+     * <p>为什么同时接受 {@link ElevatorController.Phase#OPENING} 与 {@link ElevatorController.Phase#OPEN}：
+     * 两者在门进度上都是"已经全开"——{@code OPENING} 是门开到 1 之后、状态机还没切到 {@code OPEN} 的
+     * 那一小段（<b>到站开门后的第一刻就是 OPENING</b>）。只看 {@code OPEN} 会让"刚到站"那几刻的判定
+     * 莫名其妙地失败（例如楼层门联锁、开门键可用性、回收）。
+     *
+     * <p>为什么还要看相位而不是只看 {@code door == 1}：故障脱困时门可能停在半开，而"门正在关"的
+     * {@code CLOSING} 相位下进度也可能刚好还等于 1；把相位一并检查，语义才是"完全打开且不是在关"。
+     *
+     * @return 门进度为 1 且相位处于开门侧时为 true
+     */
+    private boolean doorsOpen() {
+        return dataTracker.get(DOOR) >= .999f
+                && (phase() == ElevatorController.Phase.OPENING || phase() == ElevatorController.Phase.OPEN);
+    }
+
+    /**
+     * 主手右键交互：满足条件时回收轿厢；乘客右键打开选站面板；其余情况把这次点击<b>放行</b>给身后的方块。
      *
      * @param player 交互玩家
      * @param hand 交互手；非主手直接返回 PASS，让原版继续处理
-     * @return 主手一律返回 SUCCESS 以吞掉后续同刻的方块/物品交互；非主手返回 PASS
+     * @return 真正用掉了这次点击时返回 SUCCESS（回收、或打开选站面板）；否则返回 PASS
      *
-     * <p>副作用（均在服务端）：非创造模式掉落本型号的轿厢物品（{@link #cabinItem()}）、移除本实体、给玩家发送消息，
+     * <p>副作用（均在服务端）：非创造模式掉落本型号的轿厢物品（{@link #cabinItem()}）、移除本实体，
      * 或通过 {@link ElevatorNetworking#open} 下发选站面板站点列表。
-     * 回收要求潜行、空手、门完全打开且厢内无其它乘客，避免把厢内玩家一起删除。
+     *
+     * <p>回收条件：潜行、空手、厢内无其它乘客
+     *
+     * <p><b>为什么其余情况要返回 PASS 而不是 SUCCESS</b>：轿厢是 3 格大的空心壳，实心包围盒会把整个
+     * 门洞也不算进去，玩家站在厢内朝门外点方块时，射线往往先命中轿厢的外壳/门板，于是这次点击被轿厢
+     * 吞掉、身后的方块完全收不到。故障脱困时尤其要命：门只开了一半、外面正好有方块挡住门口，
+     * 玩家必须先把那块方块拆掉才能出去，而"点不动"会让人以为卡死了。放行之后，原版会继续把这次右键
+     * 派发给射线打到的方块——拆方块、开门、放方块都恢复正常。
+     *
+     * <p><b>乘客点轿厢的任何地方都开面板</b>——不分位置、也不看手里拿什么（客户端
+     * {@code CabinCrosshairMixin} 会把乘客的准星一律改写成本厢，因此这里对乘客是无条件开面板）。
+     * 站在外面的非乘客只收到一条"请进入轿厢"的提示，并返回 PASS 把点击让给身后的方块。
+     *
+     * @see #doorsOpen() 门是否完全打开
      */
     @Override
     public ActionResult interact(PlayerEntity player, Hand hand) {
         if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
-        if (!getWorld().isClient) {
-            if (player.isSneaking() && player.getStackInHand(hand).isEmpty() && phase() == ElevatorController.Phase.OPEN
-                    && getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger).isEmpty()) {
-                if (!player.isCreative()) dropItem(cabinItem()); // 掉回本型号物品：高速车回收成高速车，观光车回收成观光车
-                discard();
-            } else if (containsPassenger(player)) ElevatorNetworking.open((ServerPlayerEntity) player, this);
-            else player.sendMessage(Text.translatable("message.easyelevator.enter"), true); // 非乘客只提示如何进入，不泄漏站点信息
+        if (getWorld().isClient) return ActionResult.PASS; // 客户端不判定，一律放行：真正是否消费由服务端回包决定
+
+        // 潜行+手里无物品+内部无乘客即可回收电梯
+        if (player.isSneaking() && player.getStackInHand(hand).isEmpty()
+                && getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger).isEmpty()) {
+            if (!player.isCreative()) dropItem(cabinItem()); // 掉回本型号物品：高速车回收成高速车，观光车回收成观光车
+            discard();
+            return ActionResult.SUCCESS;
         }
-        return ActionResult.SUCCESS;
+        if (containsPassenger(player)) { // 乘客点轿厢的任何地方 = 打开选站面板（不分位置、不看手里拿什么）
+            ElevatorNetworking.open((ServerPlayerEntity) player, this);
+            return ActionResult.SUCCESS;
+        }
+        player.sendMessage(Text.translatable("message.easyelevator.enter"), true); // 非乘客只提示如何进入，不泄漏站点信息
+        return ActionResult.PASS; // 只发了条提示、没消费这次点击：放行给身后的方块
     }
 
     /**
@@ -627,7 +677,60 @@ public abstract class AbstractCabinEntity extends Entity {
                 // 读档后的等待窗口里名册乘客还没归位：本刻一步都不能走，否则轿厢先开走、乘客被留在空掉的井道里。
                 // 与其它阻塞条件一样走 BLOCKED，因此行程、队列、门联锁语义完全不变，人一到齐就自动继续。
                 if (waitingForPassengers) return false;
-                if (!unique || !currentLine.stops().contains(BlockPos.fromLong(controller.target().id()))) return false; // 线路不再唯一、或目标站点已被拆走/移出线路时立即阻塞，等待新请求恢复
+                return pathClear(from, to);
+            }
+            /**
+             * 当前让轿厢走不动的原因是否已经消失（"故障是否已解除"）。
+             *
+             * <p>状态机在故障期间**每一步**都会问一次：乘客按开门键脱困会把相位改成 OPENING/OPEN，
+             * 所以"故障还在不在"不能看相位，只能由这里回答。必须无副作用。
+             *
+             * <p><b>探测范围必须覆盖"到目的站那一段"</b>（实机踩坑）：曾经写成
+             * {@code pathClear(getY(), getY())}（"原地一步"），而 {@code pathClear} 的扫掠体积是
+             * "本刻位移"——原地一步位移为 0，井道障碍**根本不参与判定**，于是只要目的站还在，
+             * 它就恒返回 true、故障立刻被判为"已解除"，表现成"按了开门键、门一晃又被关上"。
+             * 现在改成把 {@code to} 取成目的高度（没有目的站时退回原地），障碍仍然存在时
+             * 返回 false，故障期得以保持、门也就稳定开着。
+             *
+             * <p>目的站为空的两种情况仍然区分对待：线路还在（{@code currentLine != null}）= 空闲待命，
+             * 不算故障；线路扫不出来（轨道或整条线路的门被拆光）= 这辆车永远不会再动了，
+             * 返回 false 以开放"开门脱困"。
+             *
+             * @return 可以立刻继续原行程时为 true
+             */
+            @Override
+            public boolean canResume() {
+                if (waitingForPassengers) return false; // 还在等读档前的乘客归位：仍算受阻
+                if (controller.target() == null) {
+                    // 目的站为空时**不能看相位**（这正是"门开了又立刻关"的真凶，实测逐刻日志定位）：
+                    // 乘客按开门键会把相位改成 OPENING/OPEN，若拿"相位是不是 BLOCKED"当判据，
+                    // 门一开这条就不再生效、canResume 翻成 true，于是把刚开满的脱困门立刻关回去。
+                    //
+                    // 正确判据只看"有没有可恢复的**行程**"：
+                    //   · 相位仍是 MOVING = 真正的空闲待命（关着门停在本层等呼叫）→ 线路还在就不算故障；
+                    //   · 相位在 OPEN/OPENING/CLOSING = 门正开着或正在动，这本身就说明处于脱困流程中，
+                    //     目的站又为空（门被拆 / 整条线路被拆光）→ 没有任何可恢复的行程，返回 false。
+                    if (controller.phase() != ElevatorController.Phase.MOVING) return false;
+                    return currentLine != null && unique;
+                }
+                // 有目的站：按"从现在到目的站"整段判可通行（含井道障碍），而不是只看脚下那一格
+                return pathClear(getY(), controller.target().y());
+            }
+            /**
+             * 井道在 {@code [from, to]} 这一段是否可通行：线路唯一且朝向一致、扫过的每一格轨道都在、
+             * 井道预留空间内没有方块或非乘客实体。
+             *
+             * <p>抽出来供 {@link #canMove} 与 {@link #canResume} 共用，保证"能不能走"与"故障好没好"
+             * 永远是同一套判据，不会出现"状态机以为通了、实际 canMove 仍然拒绝"的分叉。
+             * 纯查询、无副作用。
+             *
+             * @param from 起点底部 Y（格）
+             * @param to 终点底部 Y（格）
+             * @return 可通行时 true
+             */
+            private boolean pathClear(double from, double to) {
+                if (!unique || controller.target() == null
+                        || !currentLine.stops().contains(BlockPos.fromLong(controller.target().id()))) return false; // 线路不再唯一、或目标站点已被拆走/移出线路
                 int bottom = MathHelper.floor(Math.min(from, to)+.0001); // 扫过的整数层范围；±0.0001 抵消恰好落在整格高度时的浮点误差
                 int top = MathHelper.ceil(Math.max(from, to)-.0001);
                 for (int y = bottom; y <= top; y++)
@@ -662,7 +765,11 @@ public abstract class AbstractCabinEntity extends Entity {
              */
             @Override
             public void arrived(ElevatorController.Stop stop) {
-                sound(Easyelevator.ARRIVAL); ElevatorEvents.ARRIVED.invoker().onArrival(AbstractCabinEntity.this, stop.y());
+                // 到站提示音只此一处：音色由轿厢停靠的那扇门决定（见 arrivalChime）。
+                // 整个模组不再有"硬编码的到站音效"——那会让"我把这扇门的提示音关了"变成一句空话。
+                // 必须把 stop.y() 传进去：本回调执行时轿厢坐标<b>还没</b>被写回这一小步的位移
+                // （ElevatorController 先回调、AbstractCabinEntity 后 setPosition），拿 getY() 去猜楼层会漏音。
+                arrivalChime(stop.y()); ElevatorEvents.ARRIVED.invoker().onArrival(AbstractCabinEntity.this, stop.y());
             }
         });
         double dy = nextY - getY(); // 本刻位移（格）：必须在 setPosition 之前算出，之后 getY() 已是新值
@@ -700,10 +807,71 @@ public abstract class AbstractCabinEntity extends Entity {
             if (dy == 0) motionSettleTicks--;
         }
         if (before != controller.phase()) {
-            if (controller.phase() == ElevatorController.Phase.CLOSING) sound(Easyelevator.DOOR_CLOSE); // 关门音效在开始关门的当刻播放
-            if (controller.phase() == ElevatorController.Phase.OPENING) sound(Easyelevator.DOOR_OPEN); // 开门音效在到站/防夹重新开门的当刻播放
             ElevatorEvents.PHASE_CHANGED.invoker().onChange(this, before, controller.phase()); // 事件在状态已全部写回后触发，订阅者看到自洽的状态
         }
+    }
+
+    /**
+     * 播放"本层那扇楼层门"配置的<b>到站提示音</b>——全模组唯一决定到站响什么的地方。
+     *
+     * <p>为什么音色要由楼层门决定、而不是由轿厢决定：提示音是<b>每扇门各不相同</b>的装修属性
+     * （同一栋楼里大堂那扇门到站想响一声铃、设备层想安静），而轿厢是一台会跑遍所有楼层的设备。
+     * 因此这里按"轿厢停在哪一站"找到那扇门的方块实体，由它自己解释成音效事件
+     * （{@code LandingDoorBlockEntity#arrivalEvent}）。</p>
+     *
+     * <p><b>为什么楼层高度要由调用方传进来，而不是用 {@code getY()} 现取</b>：
+     * {@link ElevatorController} 的到站回调发生在"这一小步的位移被写回实体之前"——
+     * 状态机先 {@code y = target.y(); env.arrived(target);}，本类随后才算
+     * {@code dy = nextY - getY()} 并 {@code setPosition}。于是回调执行时 {@code getY()} 还停在
+     * <b>最后一步之前</b>的位置，与站点高度的差恰好是"最后一步迈了多远"。
+     * 拿它去按 1e-7 容差匹配站点，就会出现"最后一步很小就响、最后一步大就不响"的时好时坏——
+     * 实机表现正是"在这一层叫梯有声、从上一层坐下来没声"。回调本来就拿到了权威的站点高度，
+     * 直接用它是唯一稳妥的做法。</p>
+     *
+     * <p>为什么只认"同一高度上的完整门"：轿厢在楼层之间时不应该由某扇门替它发声，
+     * 而 {@link ElevatorLine#stops()} 给出的正是"完整 3×3 门"的根坐标，用它匹配天然排除了残门。
+     * 找不到门（线路被拆、区块未加载、故障脱困停在半层）时安静返回，不做任何兜底发声——
+     * 那种情况下本来也没有"哪扇门的设置"可以遵循。</p>
+     *
+     * <p>出厂默认是"开启 + 默认音效"（{@link DoorArrivalSound#DEFAULT}），因此升级后一切照旧、
+     * 到站仍然会响；玩家可以在每扇门的面板里把它关掉或换成别的声音。</p>
+     *
+     * <p>纯服务端：声音由 {@code World.playSound} 广播给附近客户端；客户端只按音效 ID 播放。
+     *
+     * @param stationY 刚到达的站点高度（格），由状态机在到站回调里给出
+     */
+    private void arrivalChime(int stationY) {
+        if (getWorld().isClient) return; // 只由服务端权威播放：客户端各播一次会变成双重回声
+        LandingDoorBlockEntity door = dockedDoorAt(stationY);
+        if (door == null) return;
+        SoundEvent event = door.arrivalEvent(); // 该门没开提示音、或自定义槽位还没有音频时返回 null
+        if (event != null) sound(event);
+    }
+
+    /**
+     * 找出高度为 {@code stationY} 的那扇楼层门根方块实体。
+     *
+     * <p>匹配条件是<b>同一高度</b>（容差 {@link ElevatorParameters#POSITION_EPSILON} 格，与到站判定同源）
+     * 且那扇门确实在 {@link ElevatorLine#stops()} 里。用高度而不是坐标去认：一条线路上每个高度至多一扇门
+     * （见 {@code LandingDoorBlock#getPlacementState} 的更远距离校验），而且轿厢的水平位置由轨道朝向唯一决定，
+     * 因此"同高度"等价于"同一扇门"，但不必再算一遍几何。
+     *
+     * <p>注意入参是<b>站点高度</b>而不是轿厢当前位置：到站回调执行时轿厢坐标还没写回最后一步的位移，
+     * 拿 {@code getY()} 会时好时坏（详见 {@link #arrivalChime} 的说明）。
+     *
+     * <p>纯查询，无副作用；线路无效或没有任何一站在该高度时返回 null。
+     *
+     * @param stationY 站点高度（格）
+     * @return 该高度上的门方块实体；没有则返回 null
+     */
+    private LandingDoorBlockEntity dockedDoorAt(int stationY) {
+        ElevatorLine line = line();
+        if (line == null) return null;
+        for (BlockPos stop : line.stops()) {
+            if (Math.abs(stop.getY() - stationY) > ElevatorParameters.POSITION_EPSILON) continue;
+            return getWorld().getBlockEntity(stop) instanceof LandingDoorBlockEntity door ? door : null;
+        }
+        return null;
     }
 
     /**
@@ -774,14 +942,9 @@ public abstract class AbstractCabinEntity extends Entity {
      * @return 每刻新建的列表；调用方只读，不可缓存（门进度每刻变化）
      */
     public List<Box> collisionBoxes() {
-        List<Box> boxes = new ArrayList<>();
+        List<Box> boxes = new ArrayList<>(collisionBoxesStatic());
         double front = ElevatorParameters.CABIN_FRONT_Z;
         double doorBack = ElevatorParameters.CABIN_DOOR_BACK_Z;
-        boxes.add(localBox(-1.5,0,-1.5,1.5,.2,front));
-        boxes.add(localBox(-1.5,2.8,-1.5,1.5,3,front));
-        boxes.add(localBox(-1.5,.2,-1.5,-1.3,2.8,front));
-        boxes.add(localBox(1.3,.2,-1.5,1.5,2.8,front));
-        boxes.add(localBox(-1.3,.2,-1.5,1.3,2.8,-1.3));
         float p=dataTracker.get(DOOR); // 读同步字段而非 controller：客户端与服务端据同一份门进度生成碰撞与模型
         if(SlidingDoor.visible(p)) { // 全开时两扇宽度归零，不再生成门扇（0.999 阈值避免浮点残留）
             for(boolean right:new boolean[]{false,true}) {
@@ -789,6 +952,30 @@ public abstract class AbstractCabinEntity extends Entity {
                 boxes.add(localBox(x[0],.2,doorBack,x[1],2.8,front));
             }
         }
+        return boxes;
+    }
+
+    /**
+     * 只含<b>静态舱体</b>（地板、顶板、两侧壁、背板）的碰撞盒，不含两扇滑门。
+     *
+     * <p>为什么要和 {@link #collisionBoxes()} 分开——<b>给准星穿透用</b>：
+     * 乘客在厢内朝门外看时，射线会先命中<b>轿厢自己的门扇</b>（无论它是关着还是半开）。
+     * 判断"射线是不是真的穿出门洞"时若把门扇也算作遮挡物，那么"从轿厢里打楼层门"永远会被
+     * 轿厢门扇挡下（楼层门在轿厢门扇之外）。而门扇只是这辆车的活动部件，不该挡住乘客对外界的操作：
+     * 门开着时人本来就要走出去；门关着时那也是同一辆车的门，挡不挡都不影响"这扇门能不能被从里面打掉"。
+     *
+     * <p>碰撞仍用完整集合 {@link #collisionBoxes()}（玩家身体照样被门扇挡住），只有"准星穿透判定"用本方法。
+     *
+     * @return 每刻新建的列表；不含门扇
+     */
+    public List<Box> collisionBoxesStatic() {
+        List<Box> boxes = new ArrayList<>();
+        double front = ElevatorParameters.CABIN_FRONT_Z;
+        boxes.add(localBox(-1.5,0,-1.5,1.5,.2,front));      // 地板
+        boxes.add(localBox(-1.5,2.8,-1.5,1.5,3,front));     // 顶板
+        boxes.add(localBox(-1.5,.2,-1.5,-1.3,2.8,front));   // 左壁
+        boxes.add(localBox(1.3,.2,-1.5,1.5,2.8,front));     // 右壁
+        boxes.add(localBox(-1.3,.2,-1.5,1.3,2.8,-1.3));     // 背板
         return boxes;
     }
 

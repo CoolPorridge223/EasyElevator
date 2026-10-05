@@ -237,7 +237,13 @@ public class ElevatorScreen extends Screen {
      * 按轿厢实时状态刷新"开门/关门"键与翻页键的可用性。
      *
      * <p>纯客户端提示，只为避免点了必然失败；服务端仍会重新判定并可能回一条提示消息。
-     * 开门键在"停在某一层"时可用（已经全开时按下只是续满停留时间，相当于按住开门键）；
+     * <b>开门键的判据与服务端共用 {@link ElevatorController#canOpenDoor}</b>，因此按钮亮着点了就一定会被受理：
+     * <ul>
+     *   <li>正常停靠（停在某一层）时可用——已经全开时按下只是续满停留时间，相当于按住开门键；</li>
+     *   <li>故障脱困（{@link ElevatorStatus#faulted}，例如断轨或被卡在两层之间）时也可用，
+     *       让被困的乘客能自己开门走出来；</li>
+     *   <li>运行途中一律不可用——运行时门会重新变灰，防止半空开门。</li>
+     * </ul>
      * 关门键在门处于打开或开门过程中可用。
      *
      * @param cabin 面板绑定的轿厢；为 null（实体暂时未同步）时两个键都禁用
@@ -245,8 +251,9 @@ public class ElevatorScreen extends Screen {
     private void updateDoorButtons(AbstractCabinEntity cabin) {
         boolean atStation=false;
         if(cabin!=null) for(BlockPos stop:stops) if(parkedAt(cabin,stop.getY())) { atStation=true; break; }
-        // 开门：只有"停稳在某一层"才可用（运行途中经过楼层时不能按，也不会闪一下可用）
-        if(doorOpen!=null) doorOpen.active=cabin!=null && atStation;
+        // 开门：停稳在某一层、或处于故障（与服务端的 canOpenDoor 是同一条判据，见该方法的说明）
+        if(doorOpen!=null) doorOpen.active=cabin!=null && ElevatorController.canOpenDoor(
+                cabin.phase(),cabin.hasTarget()?cabin.targetY():Integer.MIN_VALUE,atStation);
         // 关门：门处于打开或开门过程中（此时必然已经停稳）
         if(doorClose!=null) doorClose.active=cabin!=null && stopped(cabin)
                 && (cabin.phase()==ElevatorController.Phase.OPEN || cabin.phase()==ElevatorController.Phase.OPENING);

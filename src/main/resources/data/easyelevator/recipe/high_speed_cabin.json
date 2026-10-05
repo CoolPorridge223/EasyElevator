@@ -2,19 +2,16 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    "III",
-    "IGI",
-    "IPI"
+    "RRR",
+    "RCR",
+    "RRR"
   ],
   "key": {
-    "I": {
-      "item": "minecraft:iron_ingot"
+    "C": {
+      "item": "easyelevator:cabin"
     },
-    "G": {
-      "item": "minecraft:gold_ingot"
-    },
-    "P": {
-      "item": "minecraft:piston"
+    "R": {
+      "item": "minecraft:redstone_block"
     }
   },
   "result": {
