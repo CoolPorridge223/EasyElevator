@@ -18,8 +18,8 @@ import java.util.Map;
 
 /** 客户端模组入口：注册渲染器、S2C 数据包处理器、客户端刻回调与断线清理。
  * 在整体架构中的位置：客户端只读服务端同步的状态——MotionFrame 自定义包（绝对 double 位置）+ DataTracker
- * （PHASE、DOOR、FACING、TARGET_Y），本类负责把它们接到渲染（CabinRenderer）、相机（CameraMixin/CabinMotion）、
- * 音效（CabinRunningSound）与选站面板（ElevatorScreen）上，从不向服务端写入世界状态（只发 SelectStop 请求）。
+ * （PHASE、DOOR、FACING、TARGET_Y），本类负责把它们接到渲染（CabinRenderer）、承托（CabinMotion）、
+ * 音效（CabinRunningSound）与选站面板（ElevatorScreen）上；移动包仍由服务端进行权威校验。
  */
 public class EasyelevatorClient implements ClientModInitializer {
     /** 客户端入口的日志：启动时记一行"文件对话框走哪条路"，便于排查 headless 相关问题。 */

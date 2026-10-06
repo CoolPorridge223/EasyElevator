@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "easyelevator-test",
+  "version": "1.0.0",
+  "name": "EasyElevator rider regressions",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": ["org.DJB.easyelevator.RiderMovementTests"],
+    "client": ["org.DJB.easyelevator.RiderClientSmoke"]
+  }
+}

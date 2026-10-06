@@ -1,25 +1,25 @@
 # EasyElevator 工程构建与打包说明书
 
-适用版本：模组 2.1.1，Minecraft 1.21.1，Fabric Loader 0.19.2。
+适用版本：模组 2.2.0，Minecraft 1.21.1，Fabric Loader 0.19.2。
 
 ## 1. 环境与已固定的构建配置
 
-| 项目 | 配置 | 修改位置 |
-| --- | --- | --- |
-| Java 开发环境 | 完整 JDK 21，包括 java 和 javac | JAVA_HOME / IDEA Gradle JVM |
+| 项目 | 配置                           | 修改位置 |
+| --- |------------------------------| --- |
+| Java 开发环境 | 完整 JDK 21，包括 java 和 javac    | JAVA_HOME / IDEA Gradle JVM |
 | Java 编译版本 | toolchain=21，release=21，UTF-8 | build.gradle |
-| Gradle | Wrapper 固定 8.14.3 | gradle/wrapper/gradle-wrapper.properties |
-| Fabric Loom | 1.11.8 正式版 | build.gradle |
-| Minecraft | 1.21.1 | gradle.properties 的 minecraft_version |
-| Yarn 映射 | 1.21.1+build.3 | yarn_mappings |
-| Fabric Loader | 0.19.2 | loader_version |
-| Fabric API | 0.116.17+1.21.1 | fabric_version |
-| 模组版本 | 2.1.1 | mod_version |
-| 文件名前缀 | easyelevator | archives_base_name |
-| 构建内存/并行度 | 最大堆 2 GB，最多 4 个工作线程 | org.gradle.jvmargs / org.gradle.workers.max |
-| 缓存 | 启用 Gradle 构建缓存 | org.gradle.caching |
-| 下载超时 | Wrapper 120 秒 | networkTimeout |
-| 下载完整性 | 固定官方 Gradle SHA-256 | distributionSha256Sum |
+| Gradle | Wrapper 固定 8.14.3            | gradle/wrapper/gradle-wrapper.properties |
+| Fabric Loom | 1.11.8 正式版                   | build.gradle |
+| Minecraft | 1.21.1                       | gradle.properties 的 minecraft_version |
+| Yarn 映射 | 1.21.1+build.3               | yarn_mappings |
+| Fabric Loader | 0.19.2                       | loader_version |
+| Fabric API | 0.116.17+1.21.1              | fabric_version |
+| 模组版本 | 2.2.0                        | mod_version |
+| 文件名前缀 | easyelevator                 | archives_base_name |
+| 构建内存/并行度 | 最大堆 2 GB，最多 4 个工作线程          | org.gradle.jvmargs / org.gradle.workers.max |
+| 缓存 | 启用 Gradle 构建缓存               | org.gradle.caching |
+| 下载超时 | Wrapper 120 秒                | networkTimeout |
+| 下载完整性 | 固定官方 Gradle SHA-256          | distributionSha256Sum |
 
 不需要另行安装全局 Gradle。使用项目自带的 `gradlew.bat`；不要把 Loom 或 Gradle 改为随机的最新版本。项目没有写死电脑上的 JDK 路径，可迁移到其他机器。归档文件关闭文件时间戳、固定文件顺序，减少同一源码重复打包时的无意义差异。
 
@@ -59,7 +59,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 | 开发游戏客户端 | `-Task runClient` | `runClient` |
 | 清理旧构建输出 | `-Task clean` | `clean` |
 
-2.1.1 发布包含轿厢局部照明与原版无色玻璃修复，不修改光影包。正式 JAR 的 `fabric.mod.json` 版本应为 `2.1.1`；发布包与工程包也必须包含本版文档。
+2.1.2 发布包含乘客承托与移动同步修复，保留已有照明和玻璃效果。正式 JAR 的 `fabric.mod.json` 版本应为 `2.1.2`；发布包与工程包也必须包含本版文档。
 
 改完代码后的验收方式见 [人工验收清单](TESTING.md)：需要真人进游戏逐项确认，没有可替代的离线检查。
 
@@ -69,15 +69,15 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageRelease
 ```
 
-输出 `build/distributions/easyelevator-2.1.1-release.zip`，内容：
+输出 `build/distributions/easyelevator-2.1.2-release.zip`，内容：
 
-- `mods/easyelevator-2.1.1.jar`：玩家安装的模组。
-- `sources/easyelevator-2.1.1-sources.jar`：阅读用源码，不是安装文件。
+- `mods/easyelevator-2.1.2.jar`：玩家安装的模组。
+- `sources/easyelevator-2.1.2-sources.jar`：阅读用源码，不是安装文件。
 - `docs/`、README.md、LICENSE.txt：搭建、参数、替换素材、验收说明。
 
-也可以直接取 `build/libs/easyelevator-2.1.1.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
+也可以直接取 `build/libs/easyelevator-2.1.2.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
 
-在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。多人服务器和所有客户端均使用相同模组版本；2.1.1 的门设置消息新增 `open` 标记，区分主动打开与广播刷新，不能混用 2.1.0 或更早版本客户端。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
+在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。多人服务器和所有客户端均使用相同模组版本；2.1.2 新增 `rider_move` 乘客移动协议，不能混用 2.1.1 或更早版本客户端。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
 
 ## 5. 给开发者的完整工程包
 
@@ -85,7 +85,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageProject
 ```
 
-输出 `build/distributions/easyelevator-2.1.1-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
+输出 `build/distributions/easyelevator-2.1.2-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
 
 打包采用白名单，不包含 `.idea`、`.gradle`、`.gradle-user-home`、`.tools`、`build`、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
 

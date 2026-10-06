@@ -116,8 +116,7 @@ public final class ElevatorParameters {
      * 伸缩门板在里面分两层（每层厚 0.095 格），见 {@link SlidingDoor}。 */
     public static final double CABIN_DOOR_BACK_Z = CABIN_FRONT_Z - .2;
     /**
-     * 客户端插值延迟 2 刻（约 100 毫秒）：采样时回退这么久再做插值，用来吸收网络抖动。
-     * 代价是渲染与乘客镜头比服务端慢约 100 毫秒，换取运动平滑。
+     * 旧 MotionTimeline 工具的插值延迟。2.1.2 CabinMotion 不再使用独立延迟时间线。
      */
     public static final int INTERPOLATION_DELAY_TICKS = 2;
     /** 运动时间线保留的样本上限：只保留最近 32 个服务端位置样本，使内存占用有界。 */
@@ -127,18 +126,17 @@ public final class ElevatorParameters {
      * 整体清空并从当前值重新起算，避免把两段彼此无关的运动插值连成一条假轨迹。
      */
     public static final int MOTION_RESET_GAP_TICKS = 20;
-    /** 连续超过 10 刻收不到新样本即判定时间线陈旧，渲染退回服务端同步值而不继续插值。 */
+    /** 连续超过 10 刻收不到新样本时停止本地乘客绑定；平台保持最后收到的位置，不外推。 */
     public static final int MOTION_STALE_TICKS = 10;
     /**
      * 单包位移超过 4.0 格即视为传送/瞬移（例如 restore() 后的强制归位、管理员传送），
-     * 时间线直接吸附到新位置，而不是插值出一条横穿井道的假轨迹。
+     * 客户端不把附近玩家随此类异常跳变一起移动。
      */
     public static final double MOTION_SNAP_DISTANCE = 4.0;
     /**
-     * 到站后需稳定 4 刻（= 插值延迟 2 刻 + 2 刻）才认定运动结束，
-     * 让带延迟的插值显示先追上真实到站值再停止修正，避免到站瞬间的位置抖动。
+     * 到站后补发 4 刻静止位置，确保客户端采用精确到站值；不延迟服务端开门。
      */
-    public static final int MOTION_SETTLE_TICKS = INTERPOLATION_DELAY_TICKS + 2;
+    public static final int MOTION_SETTLE_TICKS = 4;
     /** 一次性事件音效（开关门、到站等）的音量。 */
     public static final float EVENT_VOLUME = .8f;
     /** 运行中持续音效（轿厢移动）的音量：低于事件音量，以免盖过开关门等关键提示音。 */

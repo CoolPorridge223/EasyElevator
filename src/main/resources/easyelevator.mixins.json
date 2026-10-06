@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "org.DJB.easyelevator.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["EntityViewMixin"],
+  "mixins": ["EntityViewMixin", "ServerPlayNetworkHandlerMixin"],
   "injectors": {
     "defaultRequire": 1
   },

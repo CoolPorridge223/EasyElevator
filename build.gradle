@@ -25,6 +25,28 @@ fabricApi {
     configureDataGeneration {
         client = true
     }
+    // Opt-in runtime regressions; the test mod is never part of the release jar.
+    if (project.hasProperty('riderTests')) {
+        configureTests {
+            createSourceSet = true
+            modId = 'easyelevator-test'
+            enableGameTests = true
+            eula = true
+        }
+    }
+}
+
+if (project.hasProperty('riderTests')) {
+    sourceSets.gametest.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+    loom.runs {
+        riderClient {
+            client()
+            source sourceSets.gametest
+            runDir 'build/run/riderClient'
+            vmArg '-Deasyelevator.riderSmoke=true'
+            programArgs '--quickPlaySingleplayer', 'RiderSmoke', '--username', 'RiderSmoke'
+        }
+    }
 }
 
 repositories {

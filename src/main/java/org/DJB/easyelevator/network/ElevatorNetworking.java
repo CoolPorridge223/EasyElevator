@@ -35,7 +35,8 @@ import java.util.List;
  *
  * <p>包的方向与用途（服务端始终是唯一数据源，客户端只读）：
  * <ul>
- *   <li>{@link MotionFrame}：S2C。轿厢的绝对 double 高度与本地乘客偏移量，只服务渲染与本地乘客镜头插值。</li>
+ *   <li>{@link MotionFrame}：S2C。轿厢绝对 double 高度，供客户端承托、碰撞与渲染共同使用。</li>
+ *   <li>{@link RiderMove}：C2S。原版移动包及客户端使用的轿厢样本编号，用于服务端坐标系补偿。</li>
  *   <li>{@link OpenPanel} / {@link PanelState}：S2C。打开 / 刷新轿厢内选站面板（站点列表、停靠计划、基准层高度）。</li>
  *   <li>{@link OpenHallPanel} / {@link HallPanelState}：S2C。打开 / 刷新楼层门上的厅外呼叫面板（上、下两个方向的点亮状态）。</li>
  *   <li>{@link SelectStop} / {@link DoorCommand} / {@link HallCallButton}：C2S。轿厢内选站、开关门、以及厅外上/下呼叫。</li>
@@ -71,14 +72,14 @@ public final class ElevatorNetworking {
      * <p>用绝对 double 而非原版相对实体位置包，是为了绕开原版位置包的定点量化
      * （1/4096 格的离散步长 + 逐包加法），避免低速运行时出现台阶跳动与累计漂移。
      *
-     * <p>为什么只有单帧而没有速度/轨迹：客户端 {@code client/CabinMotion} 与 {@code logic/MotionTimeline}
+     * <p>为什么只有单帧而没有速度/轨迹：客户端 {@code client/CabinMotion}
      * 只在"本机已收到的两个样本之间"插值，绝不做外推，因此服务端无需（也不能）下发预测信息。
      *
      * @param entityId 轿厢实体在网络层中的运行时 id，单位：无；同一存档内不保证稳定
      * @param tick 采集该样本时的世界时间，单位：刻（tick），用于把样本对齐到客户端时间轴
      * @param y 轿厢本体的绝对 Y 坐标，单位：格（方块）
      * @param riderOffset 该接收者自身 Y 与轿厢 Y 的差值，单位：格；非乘客或已停止运行时为 {@link Double#NaN}，
-     *                    表示"本机玩家不在这个轿厢里"，客户端据此禁用乘客镜头补偿
+     *                    保留此旧协议字段；2.1.2 客户端自行判定乘客，不再使用它锁定相机
      */
     public record MotionFrame(int entityId, long tick, double y, double riderOffset) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:motion_frame}。 */
@@ -525,6 +526,7 @@ public final class ElevatorNetworking {
      * 负载类型必须先于任何收发注册，否则客户端与服务端会因缺少 id 而断连。
      */
     public static void register() {
+        RiderMove.register();
         PayloadTypeRegistry.playS2C().register(MotionFrame.ID,MotionFrame.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenPanel.ID,OpenPanel.CODEC);
         PayloadTypeRegistry.playS2C().register(PanelState.ID,PanelState.CODEC);
