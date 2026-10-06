@@ -142,8 +142,8 @@ public abstract class AbstractCabinEntity extends Entity {
      * <p>维护规则（每服务端刻执行一次，见 {@link #tickPassengers()}）：
      * <ul>
      *   <li>当刻站在厢内的玩家：每刻刷新其相对偏移（用相对量，因此与轿厢之后走到哪里无关）；</li>
-     *   <li>门全关且非 OPEN/OPENING 时，不在厢内但能在同一条井道里找到的玩家：按名册偏移放回厢内（掉线重进、客户端首帧掉下去都属于这种）；</li>
-     *   <li>正在开门或门尚未关严时仍在线上却不在厢内的玩家：属于正常离开（开门本来就是让人走），划掉；</li>
+     *   <li>不在厢内、但能在同一条井道里找到的玩家：按名册偏移放回厢内（掉线重进、客户端首帧掉下去都属于这种）；</li>
+     *   <li>门已全开（{@code DOOR ≈ 1}）时仍在线上却不在厢内的玩家：属于正常离开（开门本来就是让人走），划掉；</li>
      *   <li>掉线的玩家一律保留在名册里等他回来：他们没有能力自己走出轿厢，只可能是被行程丢下的人。</li>
      * </ul>
      */
@@ -398,8 +398,9 @@ public abstract class AbstractCabinEntity extends Entity {
      * <p>执行顺序（不可调换）：
      * <ol>
      *   <li>先记录当刻确实站在厢内的玩家与其相对偏移（相对量，与轿厢之后走到哪里无关）；</li>
-     *   <li>开门或门尚未关严时先注销正常离厢的在线玩家，保留离线记录；</li>
-     *   <li>仅在门全关且非 OPEN/OPENING 时，按名册偏移恢复井道里的掉队乘客；</li>
+     *   <li>再看名册里不在厢内的人能不能在井道里找回来：找到就按名册偏移放回厢内（并清掉速度与下落距离）；</li>
+     *   <li>然后才淘汰：门已全开（{@code DOOR ≈ 1}）时，仍然在线却不在厢内的玩家属于正常离开——开门本来
+     *       就是让人走。掉线的乘客不能这样处理：他们没有能力走出去，只可能是被行程丢下的，必须留到回来为止；</li>
      *   <li>最后判断本刻能否移动：名册里还有人没归位时必须保持静止，直到人回来、等待窗口用尽，或车上
      *       已经有别的乘客要走（不能为了等一个缺席的人把电梯钉住）。</li>
      * </ol>
@@ -414,21 +415,18 @@ public abstract class AbstractCabinEntity extends Entity {
                 inside.add(p.getUuid());
                 passengers.put(p.getUuid(), new Vec3d(p.getX()-getX(), p.getY()-getY(), p.getZ()-getZ()));
             }
-        // 2) 开门即允许离厢，包括第一刻门进度还是 0 的 OPENING；先注销正常离开的在线乘客。
-        // 只在门全关时恢复掉队乘客，避免跨门槛时短暂不满足 containsPassenger 被传送拉回。
-        boolean recoverPassengers = controller.door() <= 0f
-                && controller.phase() != ElevatorController.Phase.OPENING
-                && controller.phase() != ElevatorController.Phase.OPEN;
-        if (!recoverPassengers)
-            passengers.keySet().removeIf(uuid -> !inside.contains(uuid) && getWorld().getPlayerByUuid(uuid) != null);
-        // 3) 闭门后仍保留读档/掉线恢复；离线乘客不注销。遍历副本以便安全更新名册。
-        if (recoverPassengers) for (UUID uuid : List.copyOf(passengers.keySet())) {
+        // 2) 先把能找回来的乘客放回厢内：遍历副本，因为下面会往名册里写回偏移。
+        for (UUID uuid : List.copyOf(passengers.keySet())) {
             if (inside.contains(uuid)) continue; // 已经在厢内：本刻正常随厢移动
             PlayerEntity found = findLostPassenger(uuid);
             if (found == null) continue; // 还没回到世界（未登录/在别世界）：先留在名册里，下一步再决定等不等
             putPassengerBack(found, passengers.get(uuid));
             inside.add(uuid); // 本刻已经放回厢内，不再算"缺失"
         }
+        // 3) 门全开 = 乘客可以自由进出：仍在线却不在厢内的记录属于正常离开，划掉。
+        //    门没开（运行中、运行途中停靠）或已经掉线的人不能这样处理，那正是要等回来的人。
+        if (dataTracker.get(DOOR) >= .999f)
+            passengers.keySet().removeIf(uuid -> !inside.contains(uuid) && getWorld().getPlayerByUuid(uuid) != null);
         // 4) 名册里还有人不在厢内（未登录、在别世界、或门关着时被丢下）→ 决定本刻能否移动。
         if (passengers.keySet().stream().allMatch(inside::contains)) { passengerWaitTicks = 0; return false; } // 名册齐了：等待窗口结束
         if (passengerWaitTicks <= 0) return false; // 窗口已用尽：行程照原计划继续，避免把电梯永久钉死
@@ -778,6 +776,10 @@ public abstract class AbstractCabinEntity extends Entity {
         if (dy != 0) {
             List<Entity> riders = getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger); // 先按旧位置收集乘客：位置一变包围盒就选不中他们
             setPosition(getX(), nextY, getZ());
+
+            // 只有电梯不在 正在开门、开门、正在关门 阶段才进行玩家位置同步
+            ElevatorController.Phase phase = controller.phase();
+            if (phase != ElevatorController.Phase.OPENING && phase != ElevatorController.Phase.OPEN && phase != ElevatorController.Phase.CLOSING)
             for (Entity rider : riders) {
                 // Explicit position sync prevents vanilla flying checks and descent fall damage.
                 if (rider instanceof ServerPlayerEntity p)
