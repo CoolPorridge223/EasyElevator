@@ -46,16 +46,8 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
     /** 门扇贴图：深色阳极氧化钢板，比门框的亮钢暗一档，形成层次。
      *  贴图纵轴映射到门扇高度（v=0 在上、v=1 在下），因此图里的踢脚板正好落在门扇底部。 */
     private static final Identifier TEXTURE=Easyelevator.id("textures/block/blank_door.png");
-    /**
-     * 铁框玻璃门扇的玻璃色（ARGB）：中性淡蓝 + 20% 不透明度，隔着玻璃仍能看清井道与轿厢。
-     *
-     * <p>为什么不能更淡：楼层门是整条走廊的正面，玻璃全透明就看不出这里是门，因此它比观光舱壁玻璃
-     * （{@link CabinRenderer#GLASS_COLOR}）更实一点。但也不能再浓：这块玻璃与门框共用
-     * {@code blank_glass.png}，而这张贴图的内芯已压成低对比的中性灰（见 {@code tools/generate_art.py}
-     * 的 {@code tex_glass_plate}），否则光影包对平面半透明面的处理（反射/覆盖层）会把整扇门变成一片白，
-     * 透过它看外面就是"白花花"的。
-     */
-    private static final int GLASS_COLOR=0x33B0D4EA;
+    /** 与轿厢相同，原版无色玻璃不使用整面染色或 alpha 混合。 */
+    private static final int GLASS_COLOR=0xFFFFFFFF;
 
     /**
      * 门楣显示屏上的字号（格/像素）、颜色与排版参数。

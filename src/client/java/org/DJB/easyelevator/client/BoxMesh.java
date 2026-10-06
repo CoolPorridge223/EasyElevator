@@ -25,6 +25,14 @@ import net.minecraft.util.math.Box;
 public final class BoxMesh {
     private BoxMesh() { }
 
+    /** Per-face lighting sampled in local coordinates, before rotation/translation. */
+    @FunctionalInterface
+    public interface FaceLighting {
+        int sample(int worldLight,float x,float y,float z,float nx,float ny,float nz);
+    }
+
+    public static final FaceLighting AMBIENT=(light,x,y,z,nx,ny,nz)->light;
+
     /** 铺满整张贴图（0,0,1,1）；默认 UV，等价于 1.5.x 之前的固定纹理坐标。 */
     public static final float[] FULL_UV={0,0,1,1};
 
@@ -32,7 +40,7 @@ public final class BoxMesh {
      * 以两个对角点（单位：格）生成一个只有外表面的长方体，六个面共用一个颜色，整面铺满贴图。
      *
      * <p>不做剔除/合并：调用方决定用带背面剔除还是 NoCull 的 {@link net.minecraft.client.render.RenderLayer}。
-     * 轿厢是空心结构、需要看到内表面，所以用 NoCull；门扇是实心盒子，用带剔除的层更省也避免共面闪烁。
+     * 轿厢外壳由有厚度的长方体组成，其朝厢内的表面也有独立几何；可使用带剔除的层。
      *
      * @param m 渲染矩阵栈
      * @param v 顶点消费者
@@ -70,12 +78,25 @@ public final class BoxMesh {
      * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[])
      */
     public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv) {
-        quad(m,v,light,color,0,0,-1,new float[]{X,y,z,x,y,z,x,Y,z,X,Y,z},faceUv[0]); // -Z 面
-        quad(m,v,light,color,0,0,1,new float[]{x,y,Z,X,y,Z,X,Y,Z,x,Y,Z},faceUv[1]); // +Z 面
-        quad(m,v,light,color,-1,0,0,new float[]{x,y,z,x,y,Z,x,Y,Z,x,Y,z},faceUv[2]); // -X 面
-        quad(m,v,light,color,1,0,0,new float[]{X,y,Z,X,y,z,X,Y,z,X,Y,Z},faceUv[3]); // +X 面
-        quad(m,v,light,color,0,1,0,new float[]{x,Y,Z,X,Y,Z,X,Y,z,x,Y,z},faceUv[4]); // +Y 面（顶）
-        quad(m,v,light,color,0,-1,0,new float[]{x,y,z,X,y,z,X,y,Z,x,y,Z},faceUv[5]); // -Y 面（底）
+        cuboid(m,v,x,y,z,X,Y,Z,light,color,faceUv,AMBIENT);
+    }
+
+    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv,FaceLighting lighting) {
+        cuboid(m,v,x,y,z,X,Y,Z,light,color,new float[][]{uv,uv,uv,uv,uv,uv},lighting);
+    }
+
+    public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color,float[][] uv,FaceLighting lighting) {
+        cuboid(m,v,(float)box.minX,(float)box.minY,(float)box.minZ,(float)box.maxX,(float)box.maxY,(float)box.maxZ,light,color,uv,lighting);
+    }
+
+    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv,FaceLighting lighting) {
+        float cx=(x+X)/2,cy=(y+Y)/2,cz=(z+Z)/2;
+        quad(m,v,lighting.sample(light,cx,cy,z,0,0,-1),color,0,0,-1,new float[]{X,y,z,x,y,z,x,Y,z,X,Y,z},faceUv[0]);
+        quad(m,v,lighting.sample(light,cx,cy,Z,0,0,1),color,0,0,1,new float[]{x,y,Z,X,y,Z,X,Y,Z,x,Y,Z},faceUv[1]);
+        quad(m,v,lighting.sample(light,x,cy,cz,-1,0,0),color,-1,0,0,new float[]{x,y,z,x,y,Z,x,Y,Z,x,Y,z},faceUv[2]);
+        quad(m,v,lighting.sample(light,X,cy,cz,1,0,0),color,1,0,0,new float[]{X,y,Z,X,y,z,X,Y,z,X,Y,Z},faceUv[3]);
+        quad(m,v,lighting.sample(light,cx,Y,cz,0,1,0),color,0,1,0,new float[]{x,Y,Z,X,Y,Z,X,Y,z,x,Y,z},faceUv[4]);
+        quad(m,v,lighting.sample(light,cx,y,cz,0,-1,0),color,0,-1,0,new float[]{x,y,z,X,y,z,X,y,Z,x,y,Z},faceUv[5]);
     }
 
     /**
@@ -117,9 +138,9 @@ public final class BoxMesh {
      * <p>为什么需要单面：玻璃这类"只有一层可见表面"的几何如果做成薄板长方体，正反两面都会被画一遍，
      * 半透明叠加后透明度翻倍、画面发灰；做成单面则每层玻璃只叠一次，与真实玻璃窗一致。
      * 代价是单面在<b>剔除背面</b>的层上从背面看不见，因此调用方必须配合禁止剔除的层
-     * （本模组的观光玻璃层即 {@code DISABLE_CULLING}），否则从轿厢内侧看玻璃会整片消失。
+     * ；玻璃专用的 glassX/glassZ 则提交正反两面，配合背面剔除。
      *
-     * <p>法线固定取该轴的负方向：实体半透明着色用的是光照贴图，法线不参与着色，
+     * <p>法线固定取该轴的负方向：单面方法的法线与绕序一致，
      * 这里给出一个确定值只是为了顶点格式完整、且与 {@link #cuboid} 的写法保持一致。
      *
      * @param m 渲染矩阵栈
@@ -145,6 +166,13 @@ public final class BoxMesh {
     public static void planeX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
         float lo=Math.min(y1,y2),hi=Math.max(y1,y2),a=Math.min(z1,z2),b=Math.max(z1,z2);
         quad(m,v,light,color,-1,0,0,new float[]{x,lo,a,x,lo,b,x,hi,b,x,hi,a},uv);
+    }
+
+    /** Two opposite faces for a culling layer: each visible side has its own correct normal. */
+    public static void glassX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
+        planeX(m,v,x,y1,z1,y2,z2,light,color,uv);
+        float lo=Math.min(y1,y2),hi=Math.max(y1,y2),a=Math.min(z1,z2),b=Math.max(z1,z2);
+        quad(m,v,light,color,1,0,0,new float[]{x,lo,b,x,lo,a,x,hi,a,x,hi,b},new float[]{uv[2],uv[1],uv[0],uv[3]});
     }
 
     /**
@@ -204,6 +232,13 @@ public final class BoxMesh {
         float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(y1,y2),b=Math.max(y1,y2);
         // 顶点从 +X 侧起步：只有这样 u 才沿 X 增长、v 沿 Y 向下，贴图在竖直面上不会转 90°。
         quad(m,v,light,color,0,0,-1,new float[]{hi,a,z,lo,a,z,lo,b,z,hi,b,z},uv);
+    }
+
+    /** As glassX, with no double blending or reversed normals when viewed from inside. */
+    public static void glassZ(MatrixStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color,float[] uv) {
+        planeZ(m,v,z,x1,y1,x2,y2,light,color,uv);
+        float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(y1,y2),b=Math.max(y1,y2);
+        quad(m,v,light,color,0,0,1,new float[]{lo,a,z,hi,a,z,hi,b,z,lo,b,z},new float[]{uv[2],uv[1],uv[0],uv[3]});
     }
 
     /**

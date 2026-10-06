@@ -3,13 +3,10 @@ package org.DJB.easyelevator.client;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderPhase;
 import net.minecraft.client.render.Frustum;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.util.math.MatrixStack;
@@ -19,6 +16,7 @@ import net.minecraft.util.math.RotationAxis;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.logic.CabinLighting;
 import org.DJB.easyelevator.logic.FloorIndicator;
 import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.LeafUv;
@@ -37,10 +35,10 @@ import org.DJB.easyelevator.logic.SlidingDoor;
  * 与楼层门框留出缝隙，避免门与门框共面闪烁。模拟、门动画时序都在 AbstractCabinEntity 与 logic/ElevatorController 中。
  *
  * <h2>材质图集</h2>
- * 整舱只用一张 {@link #TEXTURE}：一张 4x4 共 16 格的<b>材质图集</b>，每格占 1/4 贴图。
+ * 不透明件使用 {@link #TEXTURE}：一张 4x4 共 16 格的<b>材质图集</b>，每格占 1/4 贴图。
  * {@link Mat} 的枚举顺序就是图集格号，{@link #MATERIAL_UV} 把它换算成 UV 矩形，
  * 每块几何通过 {@link BoxMesh#cuboid} 的 UV 重载只取自己那一格，于是"亮钢舱壁 / 深色踢脚 /
- * 拉丝地板 / 灯罩 / 玻璃"都来自同一张贴图，既不需要多张贴图，也不需要中途切换缓冲区。
+ * 拉丝地板 / 灯罩"都来自同一张贴图；玻璃由 GlassLayers 单独绑定原版无色玻璃贴图。
  * 顶点色一律留白（{@code 0xFFFFFFFF}）：颜色与纹理细节全部由贴图给出，改配色只需换 PNG。
  *
  * <h2>几何数据表</h2>
@@ -52,27 +50,26 @@ import org.DJB.easyelevator.logic.SlidingDoor;
  *   <li><b>不越界</b>：内饰件都待在净空 X ±1.3、Y 0.2..2.8、Z -1.3..门背面之内
  *       （允许向外壳里嵌 0.002 格，见下一条），不会从外壳穿出去；</li>
  *   <li><b>不留共面</b>：与外壳或彼此相接时，相接面要错开 0.002 格以上（一方嵌进另一方体内），
- *       不允许两个面的平面方程完全重合——本类用的是<b>禁止剔除</b>的层，共面片会互相抢深度；</li>
+ *       不允许两个面的平面方程完全重合——即使采用背面剔除，同向共面片仍会互相抢深度；</li>
  *   <li><b>材质格号</b>合法（0..15），自发光只能是 0 或 1。</li>
  * </ol>
- * 自发光为 1 的格子（顶灯灯罩）用最高亮度绘制，井道再暗也看得见灯亮着。
+ * 自发光为 1 的格子（顶灯灯罩）仅朝下使用 15 级方块光，其余面保持环境光。
  *
  * <h2>厢内照明</h2>
- * 轿厢是<b>实体</b>，它拿到的光照值就是渲染管线按轿厢位置采样到的真实世界光照：井道亮它就亮、
- * 井道暗它就暗，不做任何抬高或压暗。灯罩那一件是唯一的例外——它用
- * {@link LightmapTextureManager#MAX_LIGHT_COORDINATE} 绘制，因此无论外界多暗都保持满亮度，
- * 看起来就是"灯罩自己亮着"，而舱内其余部分仍旧被真实光照照亮。
+ * {@link CabinLighting} 按面中心、法线与灯位计算距离衰减：只给朝向灯具的舱内表面补光，
+ * 外壳、玻璃和导靴保持环境光。舱内补光上限 13 级，灯罩仅朝下的面使用 15 级方块光。
+ * 这只改变模型的光照坐标，保留天光，不修改世界光照、存档或联机逻辑。
  *
  * <p>两种外观（几何与碰撞完全一致，只有材质与哪几块面透明不同）：
  * <ul>
  *   <li>普通 / 高速：整舱不透明。高速型号刻意与普通型号外观完全相同——速度不是外观差异。</li>
  *   <li>观光（{@link AbstractCabinEntity#glassWalls()} 为 true）：地板、顶板、四根角柱（支撑边）
- *       保持不透明，左右侧墙 / 后墙换成半透明玻璃（每处一张零厚度单面，正反都可见）；门换成
+ *       保持不透明，左右侧墙 / 后墙换成无色透明玻璃（每处一张零厚度双面，正反都可见）；门换成
  *       <b>铁框玻璃门</b>（周围钢框、中间玻璃，见 {@link FramedGlassDoor}），于是从厢内朝外看仍然通透；
  *       玻璃上另加不透明的上下压条、一道横向中梃与每面两道竖向分格，把整面玻璃分成 2x3 格窗，
  *       因此观光舱看上去是"分段幕墙"而不是一整片蓝雾，厢内外仍然互相可见。
- *       玻璃走专用的 {@link GlassLayers#CABIN}：只写颜色不写深度，
- *       否则会把之后才绘制的楼层门整片剔掉（见该常量注释）。</li>
+ *       玻璃走 {@link GlassLayers#CABIN} 的原版 cutout 管线，透明像素丢弃，
+ *       正反两面各有正确法线并剔除背面，不会整片遮挡之后绘制的楼层门。</li>
  * </ul>
  *
  * <p><b>绘制顺序的硬性约束（改动本类前必读）</b>：实体渲染拿到的 {@link VertexConsumerProvider} 是
@@ -82,10 +79,10 @@ import org.DJB.easyelevator.logic.SlidingDoor;
  * {@code IllegalStateException: Not building!} —— 客户端崩溃报告里就是这一条。
  * 因此本类固定按"层"分组绘制，且画完一组就不再回头：
  * <ol>
- *   <li>不透明层 {@code getEntityCutoutNoCull}：舱体外壳、全部内饰、门口门槛与门楣、两扇滑门、
+ *   <li>不透明层 {@code getEntityCutout}：舱体外壳、全部内饰、门口门槛与门楣、两扇滑门、
  *       背面的抱轨导靴（观光型号只画地板 / 顶板 / 四根角柱与内饰、压条、分格）；</li>
  *   <li>文字层（由 {@link TextRenderer#draw} 内部取用）：面板上的楼层号与运行状态；</li>
- *   <li>半透明层 {@code getEntityTranslucent}（仅观光型号）：玻璃墙与玻璃门，必须最后画，画完不再写任何顶点。</li>
+ *   <li>玻璃层 {@code getEntityCutout}（仅观光型号）：玻璃墙与玻璃门，必须最后画，画完不再写任何顶点。</li>
  * </ol>
  * 楼层门渲染器 {@link LandingDoorRenderer} 遵守同一条约定（先画文字、再画门扇层）。
  *
@@ -105,7 +102,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private enum Mat {
         WALL,TRIM,DARK,FLOOR,       // 亮钢舱壁、中性饰条、深色阳极氧化、拉丝地板
         CEIL,LAMP,RAIL,SILL,        // 顶板、灯罩（自发光）、不锈钢扶手、防滑门槛
-        PANEL,BEZEL,BUTTON,GLASS,   // 操纵面板、面板边框、按钮、玻璃底色（配合顶点 alpha）
+        PANEL,BEZEL,BUTTON,GLASS,   // 操纵面板、面板边框、按钮、旧玻璃格（世界玻璃已改用原版贴图）
         ACCENT,DOOR,SPARE2,SPARE3;  // 暖色饰板、门扇（带会滑动的折边）、两个备用格
     }
 
@@ -125,8 +122,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * 门扇的<b>渲染</b>下沿（格）：比地板面 {@link #FLOOR_TOP} 高 0.5 毫米。
      *
      * <p>为什么不能直接用 {@code FLOOR_TOP}：门扇下沿与地板面相同时，两者在门口那一段（Z 1.1..1.29）
-     * 会是<b>共面</b>的一对矩形，轿厢走的是禁止剔除（{@code getEntityCutoutNoCull}）的层，
-     * 共面片互相抢深度——实机看到的就是"轿厢门底部模型一闪一闪"。抬高半毫米即彻底分开，
+     * 会是<b>共面</b>的一对矩形，共面片可能互相抢深度——实机看到的就是"轿厢门底部模型一闪一闪"。抬高半毫米即彻底分开，
      * 肉眼不可见（0.0005 格 ≈ 0.5 毫米），却不会再闪烁。
      *
      * <p>碰撞仍用 {@code FLOOR_TOP}（见 {@code collisionBoxes()}）：这半毫米只影响外观，不影响走路与防夹。
@@ -235,27 +231,13 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private static final float ARROW_LINE_CENTRE=.08f, FLOOR_LINE_CENTRE=-.10f;
     /** 面板上文字的颜色（红色）；与门框顶部、选站面板显示同一个楼层号与状态。 */
     private static final int FLOOR_COLOR=0xFFFF4040;
-    /**
-     * 观光轿厢墙面的玻璃色（ARGB）：中性淡蓝 + 10% 不透明度（0x1A = 26/255）。
-     *
-     * <p>为什么是"每面一次"的透明度：玻璃用<b>零厚度单面</b>绘制（见 {@link BoxMesh#planeX}），
-     * 每层玻璃在视线里只叠一次 10%；隔着轿厢看穿两面玻璃约 19%，透过玻璃看外面的景物基本无损。
-     * 若改用 0.12 格厚的薄板（正反两面都画），同一面墙就会叠两次、透明度翻倍而发灰。
-     *
-     * <p>为什么要压这么低：观光舱的玻璃正对整片视野，而不同光影包对"平面半透明面"的处理差别很大
-     * ——有的会把它当镜面/覆盖层（Complementary 的 COATED_TEXTURES + GENERATED_NORMALS 就是典型），
-     * 于是玻璃自身会叠上一层白。既然"看起来干净透明的观光电梯"是硬要求，就把玻璃的<b>存在感</b>压到最低：
-     * 贴图压成低对比的中性灰（{@code tools/generate_art.py} 的 {@code tile_glass}），顶点色只给 10%。
-     * 这样无论光影怎么处理这一层，它都没有多少颜色与亮度可以加，看出去就是窗外的景色。
-     * 调通透度只改这一个常量。
-     */
-    private static final int GLASS_COLOR=0x1AD2E2F0;
-    /** 观光舱门扇的玻璃色（ARGB）：铁框中间那块玻璃，比舱壁玻璃略实一点（20%），隔着它仍看得清外面的井道。 */
-    private static final int GLASS_DOOR_COLOR=0x33B0D4EA;
+    /** 白色顶点，不叠加整面颜色或 alpha；通透区域由原版玻璃贴图决定。 */
+    private static final int GLASS_COLOR=0xFFFFFFFF;
+    private static final int GLASS_DOOR_COLOR=0xFFFFFFFF;
 
     /** 构造渲染器。副作用：仅保存 EntityRenderer 上下文（光源、模型加载器等）。 */
     public CabinRenderer(EntityRendererFactory.Context context) { super(context); }
-    /** 返回轿厢整张图集贴图；外壳、内饰与玻璃共用同一张，通透度来自顶点色的 alpha。 */
+    /** 返回轿厢整张图集贴图；用于外壳与内饰；玻璃单独使用原版贴图。 */
     @Override public Identifier getTexture(T entity) { return TEXTURE; }
 
     /**
@@ -297,14 +279,13 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
         float open=cabin.doorProgress(delta);
-        // 全舱直接用管线采样到的真实世界光照：不做任何抬高或压暗，因此光影包看到的光照值与
-        // 轿厢所在位置的光照一致，不会把整台电梯当成一个光源（见类注释「厢内照明」）。
-        // 唯一的自发光是顶灯灯罩那一件，由 drawParts 按表里的自发光标志单独换成满亮度。
+        // 光照保留世界采样值，BoxMesh 逐面调用 CabinLighting：
+        // 外表面不补光，舱内朝向灯具的表面获得衰减补光，灯罩仅朝下发亮。
         // 第 1 组（不透明层）：外壳 + 内饰 + 门口构件 + 门扇。所有不透明几何必须在这一组里画完，
         // 否则切到文字层之后再回头写它就会触发 Not building!（见类注释）
-        VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutoutNoCull(TEXTURE));
+        VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutout(TEXTURE));
         if(cabin.glassWalls()) {
-            // 观光舱：结构与内饰 + 玻璃单面（门板同样是不透明的钢框门，见 drawDoors）
+            // 观光舱：结构与内饰 + 玻璃双面（门板同样是不透明的钢框门，见 drawDoors）
             drawObservationShell(matrices,out,front,doorBack,light);
             drawParts(matrices,out,OBSERVATION_PARTS,light);
         } else {
@@ -316,7 +297,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         drawDoorway(matrices,out,front,doorBack,light); // 门槛 + 门楣轨道
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号。
         drawFloorDisplay(cabin,matrices,buffers);
-        // 第 3 组（半透明层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
+        // 第 3 组（玻璃 cutout 层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
         if(cabin.glassWalls()) {
             drawObservationGlass(matrices,buffers,front,doorBack,light);
             drawGlassDoorPanes(matrices,buffers,light,open); // 门扇中间的玻璃（与玻璃墙同一层）
@@ -333,14 +314,11 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param out 不透明顶点缓冲
      * @param parts 内饰清单，每行 {x,y,z,X,Y,Z,材质格号,自发光}
-     * @param light 管线采样到的打包光照值；
-     *              表中自发光那一件（顶灯灯罩）改用 {@link LightmapTextureManager#MAX_LIGHT_COORDINATE}，
-     *              因此在再暗的井道里也保持满亮度，而它周围的舱内几何仍旧按真实世界光照绘制
+     * @param light 环境光；按面区分外表面、舱内受光面与灯罩朝下的发光面。
      */
     private static void drawParts(MatrixStack matrices,VertexConsumer out,float[][] parts,int light) {
         for(float[] p:parts) {
-            int packed=p[7]!=0?LightmapTextureManager.MAX_LIGHT_COORDINATE:light;
-            BoxMesh.cuboid(matrices,out,p[0],p[1],p[2],p[3],p[4],p[5],packed,0xFFFFFFFF,MATERIAL_UV[(int)p[6]]);
+            BoxMesh.cuboid(matrices,out,p[0],p[1],p[2],p[3],p[4],p[5],light,0xFFFFFFFF,MATERIAL_UV[(int)p[6]],p[7]!=0?CabinLighting::lamp:CabinLighting::surface);
         }
     }
 
@@ -358,10 +336,10 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     private static void drawStandardShell(MatrixStack matrices,VertexConsumer out,float front,int light) {
         drawFloor(matrices,out,front,light);
-        BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()]); // 顶板：Y=2.8..3.0 格
-        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.WALL.ordinal()]); // 左侧壁：厚 0.2 格
-        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,-1.5f,1.5f,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.WALL.ordinal()]);  // 右侧壁：厚 0.2 格
-        BoxMesh.cuboid(matrices,out,-INNER,FLOOR_TOP,-1.5f,INNER,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.ACCENT.ordinal()]); // 后壁：正面留空形成门洞
+        BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()],CabinLighting::surface); // 顶板：Y=2.8..3.0 格
+        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.WALL.ordinal()],CabinLighting::surface); // 左侧壁：厚 0.2 格
+        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,-1.5f,1.5f,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.WALL.ordinal()],CabinLighting::surface);  // 右侧壁：厚 0.2 格
+        BoxMesh.cuboid(matrices,out,-INNER,FLOOR_TOP,-1.5f,INNER,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.ACCENT.ordinal()],CabinLighting::surface); // 后壁：正面留空形成门洞
     }
 
     /**
@@ -373,7 +351,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * 铺面单独做成略小的一层贴在顶上：四周留一圈 0.01 格的阴影缝，看起来就是"地板砖嵌在底座里"。
      *
      * <p>两层互相嵌进去 0.002 格、且铺面四周缩进 0.01..0.002 格，避免任何两个面共面
-     * （轿厢走的是禁止剔除的层，共面片会互相抢深度）。净高与碰撞完全不受影响：
+     * （同向共面片会互相抢深度）。净高与碰撞完全不受影响：
      * 铺面顶面仍在 Y={@link #FLOOR_TOP}，玩家脚下与 {@code collisionBoxes()} 的地板面一致。
      *
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
@@ -385,8 +363,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         // 基座顶面用 FLOOR_TOP-.0125 而不是 -.01：关门时门扇内缘正好在 |X| = 0.010 格（{@link SlidingDoor#SEAM}），
         // 基座 / 铺面的侧面若也落在 ±0.010 就会与门扇侧面共面（门底部那一段会闪）。缩到 ±0.0125 彻底错开。
         // 铺面顶面同样从 FLOOR_TOP 压到 -.0005，与门扇渲染下沿 DOOR_RENDER_BOTTOM 分开半毫米。
-        BoxMesh.cuboid(matrices,out,-1.5f,0,-1.5f,1.5f,FLOOR_TOP-.0125f,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.DARK.ordinal()]);        // 基座与四周立面
-        BoxMesh.cuboid(matrices,out,-1.4875f,FLOOR_TOP-.0125f,-1.4875f,1.4875f,FLOOR_TOP-.0005f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.FLOOR.ordinal()]); // 略小的铺面
+        BoxMesh.cuboid(matrices,out,-1.5f,0,-1.5f,1.5f,FLOOR_TOP-.0125f,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.DARK.ordinal()],CabinLighting::surface);        // 基座与四周立面
+        BoxMesh.cuboid(matrices,out,-1.4875f,FLOOR_TOP-.0125f,-1.4875f,1.4875f,FLOOR_TOP-.0005f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.FLOOR.ordinal()],CabinLighting::surface); // 略小的铺面
     }
 
     /**
@@ -407,12 +385,12 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     private static void drawObservationShell(MatrixStack matrices,VertexConsumer out,float front,float doorBack,int light) {
         drawFloor(matrices,out,front,light); // 观光舱同样保留地板，乘客站在上面
-        BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()]);  // 顶板
-        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()]); // 后左角柱
-        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,-1.5f,1.5f,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()]);  // 后右角柱
+        BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()],CabinLighting::surface);  // 顶板
+        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface); // 后左角柱
+        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,-1.5f,1.5f,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface);  // 后右角柱
         // 前两根角柱与门扇同厚（Z 从门背面到轿厢正面）
-        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,doorBack,-INNER,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()]); // 前左角柱
-        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,doorBack,1.5f,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()]);  // 前右角柱
+        BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,doorBack,-INNER,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface); // 前左角柱
+        BoxMesh.cuboid(matrices,out,INNER,FLOOR_TOP,doorBack,1.5f,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface);  // 前右角柱
     }
 
     /**
@@ -430,9 +408,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     private static void drawDoorway(MatrixStack matrices,VertexConsumer out,float front,float doorBack,int light) {
         // 门槛：左右嵌进侧壁 0.002 格、底面嵌进地板 0.002 格，前后各缩 0.01 格，顶面 0.23 格（比地板面高 0.03 格）
-        BoxMesh.cuboid(matrices,out,-INNER-BITE,FLOOR_TOP-BITE,doorBack+.01f,INNER+BITE,.23f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.SILL.ordinal()]);
+        BoxMesh.cuboid(matrices,out,-INNER-BITE,FLOOR_TOP-BITE,doorBack+.01f,INNER+BITE,.23f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.SILL.ordinal()],CabinLighting::surface);
         // 门楣：贴顶的导轨箱，顶面嵌进顶板 0.002 格，背面缩进门扇背面 0.002 格
-        BoxMesh.cuboid(matrices,out,-INNER-BITE,2.72f,doorBack-.002f,INNER+BITE,CEIL_INNER+BITE,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()]);
+        BoxMesh.cuboid(matrices,out,-INNER-BITE,2.72f,doorBack-.002f,INNER+BITE,CEIL_INNER+BITE,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface);
     }
 
     /**
@@ -464,21 +442,21 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
             var leaf=leafBox(x,right);
             if(glass) {
                 // 观光型号：周围铁框、中间玻璃（玻璃在最后一组里画，见类注释的层顺序约束）
-                FramedGlassDoor.frame(matrices,out,leaf,true,trim,light);
+                FramedGlassDoor.frame(matrices,out,leaf,true,trim,light,CabinLighting::surface);
                 continue;
             }
             BoxMesh.cuboid(matrices,out,leaf,light,0xFFFFFFFF,LeafUv.slabUv(
                     LeafUv.toUv(LeafUv.leafRange(open,right),cell),
-                    LeafUv.toUv(LeafUv.edgeRange(right,LeafUv.EDGE_WIDTH),cell),true));
+                    LeafUv.toUv(LeafUv.edgeRange(right,LeafUv.EDGE_WIDTH),cell),true),CabinLighting::surface);
         }
     }
 
     /**
-     * 观光轿厢门扇中间的玻璃（玻璃层，零厚度单面，位于门扇厚度中线）。
+     * 观光轿厢门扇中间的玻璃（玻璃层，零厚度双面，位于门扇厚度中线）。
      *
      * <p>必须在不透明层与文字层都画完之后调用：取玻璃层会结束上一层缓冲，
      * 之后再往旧引用写顶点会抛 {@code Not building!}（见类注释）。这里的层是
-     * {@link GlassLayers#CABIN}（只写颜色不写深度），因此不会把之后绘制的楼层门剔掉。
+     * {@link GlassLayers#CABIN}（透明像素直接丢弃），因此不会把之后绘制的楼层门剔掉。
      *
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param buffers 顶点缓冲提供者，用于取玻璃层
@@ -488,7 +466,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private static void drawGlassDoorPanes(MatrixStack matrices,VertexConsumerProvider buffers,int light,float open) {
         if(!SlidingDoor.visible(open)) return;
         VertexConsumer glass=buffers.getBuffer(GlassLayers.CABIN);
-        float[] uv=MATERIAL_UV[Mat.GLASS.ordinal()];
+        float[] uv=BoxMesh.FULL_UV;
         for(boolean right:new boolean[]{false,true})
             FramedGlassDoor.glass(matrices,glass,leafBox(SlidingDoor.panelX(right,open),right),true,uv,light,GLASS_DOOR_COLOR);
     }
@@ -515,7 +493,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *
      * <p>这两组几何<b>不进碰撞</b>（{@code collisionBoxes()} 里没有它们）：导靴本来就要贴着轨道，
      * 若进碰撞，井道扫描会把轨道方块当成障碍而永久 BLOCKED。它们也超出实体注册尺寸的包围盒，
-     * 所以 {@link #getBoundingBox} 把包围盒向后扩了一格，避免镜头贴近背板时被剔除掉。
+     * 所以 {@link #shouldRender} 把包围盒向后扩了一格，避免镜头贴近背板时被剔除掉。
      *
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param out 不透明顶点缓冲
@@ -537,12 +515,11 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     }
 
     /**
-     * 画观光轿厢的<b>半透明玻璃</b>：左右侧墙与后墙，每处都是一张零厚度单面玻璃。
+     * 画观光轿厢的<b>无色透明玻璃</b>：左右侧墙与后墙，每处都是一张零厚度双面玻璃。
      * 门扇的玻璃不在这里（它要跟着门开合一起动，见 {@link #drawGlassDoorPanes}）。
      *
-     * <p>为什么用单面而不是 0.12 格厚的薄板：薄板的正反两面都会被绘制（半透明层不剔除背面），
-     * 同一面墙的透明度会叠两次、整舱发灰；单面每层只叠一次，观感与真实玻璃窗一致。
-     * 单面必须画在<b>禁止剔除</b>的层上（{@link GlassLayers#CABIN}），否则从轿厢内侧看会整片消失。
+     * <p>每片玻璃提交正反两个面，绕序与法线相反，使用背面剔除后每次只显示其中一面。
+     * 透明像素直接丢弃，不叠加灰白底色；内外观察时均使用正确的表面法线。
      *
      * <p>为什么每个尺寸都留 0.01 格缝、而不是贴着角柱/地板/顶板：
      * 两个面恰好共面时，浮点误差会让它们的深度值差一点点，镜头一动就来回抢先，
@@ -552,7 +529,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * {@link #OBSERVATION_PARTS} 里的压条与中梃横跨玻璃平面，把整面玻璃分成 2x3 格窗。
      *
      * <p>调用时机：必须在不透明层与文字层都画完之后（本方法是整个 render 的最后一步）。
-     * 取半透明层会结束上一层缓冲，之后再往旧引用写顶点会抛 {@code Not building!}。
+     * 取玻璃 cutout 层会结束上一层缓冲，之后再往旧引用写顶点会抛 {@code Not building!}。
      *
      * <p>碰撞不受影响：外壳仍由 {@link AbstractCabinEntity#collisionBoxes()} 按原尺寸（0.2 格厚实心墙）生成，
      * 因此玻璃墙照样挡住乘客，井道尺寸、门口防夹与门联锁与普通轿厢逐位相同。
@@ -569,10 +546,10 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         float y0=.21f, y1=2.79f;                  // 地板面 0.2、顶板内侧 2.8
         float z0=-1.29f, z1=doorBack-.01f;        // 后角柱内缘 -1.3、前角柱背面 1.1
         float paneX=1.4f, paneZ=-1.4f;            // 侧壁厚 0.2 → 玻璃贴在墙心 X=±1.4；后壁同理 Z=-1.4
-        float[] uv=MATERIAL_UV[Mat.GLASS.ordinal()];
-        BoxMesh.planeX(matrices,glass,-paneX,y0,z0,y1,z1,light,GLASS_COLOR,uv); // 左侧玻璃（单面，正反都可见）
-        BoxMesh.planeX(matrices,glass,paneX,y0,z0,y1,z1,light,GLASS_COLOR,uv);  // 右侧玻璃
-        BoxMesh.planeZ(matrices,glass,paneZ,-1.29f,y0,1.29f,y1,light,GLASS_COLOR,uv); // 背面玻璃（X 留 0.01 缝）
+        float[] uv=BoxMesh.FULL_UV;
+        BoxMesh.glassX(matrices,glass,-paneX,y0,z0,y1,z1,light,GLASS_COLOR,uv); // 左侧玻璃（双面，按朝向剔除）
+        BoxMesh.glassX(matrices,glass,paneX,y0,z0,y1,z1,light,GLASS_COLOR,uv);  // 右侧玻璃
+        BoxMesh.glassZ(matrices,glass,paneZ,-1.29f,y0,1.29f,y1,light,GLASS_COLOR,uv); // 背面玻璃（X 留 0.01 缝）
         // 门扇的玻璃由 drawGlassDoorPanes 单独画（它要跟着门开合一起动）。
         // 观光舱的玻璃侧墙/后墙会在最后叠到门板上，于是从厢内朝外看仍能透过侧墙看到外面。
     }

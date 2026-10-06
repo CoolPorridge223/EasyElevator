@@ -10,9 +10,9 @@ import org.DJB.easyelevator.logic.LeafUv;
  * 画"铁框 + 中间玻璃"的门扇（观光轿厢的门、以及观光线路上的楼层门）。
  *
  * <p>为什么不是一个贴图搞定：中间那块玻璃要<b>真的透光</b>（能看见轿厢/井道），所以不能靠贴图画出玻璃，
- * 必须分成"不透明铁框"和"半透明玻璃面"两层画。铁框由四块小长方体组成（上下横框 + 两侧竖框），
- * 玻璃是<b>零厚度单面</b>，画在门扇厚度中线上，走 {@link GlassLayers} 的"只写颜色"层，
- * 因此正反两面都看得见、也不会把后画的方块实体剔掉。
+ * 必须分成"不透明铁框"和"透明玻璃面"两层画。铁框由四块小长方体组成（上下横框 + 两侧竖框），
+ * 玻璃是<b>零厚度双面</b>，画在门扇厚度中线上，走 {@link GlassLayers} 的 cutout 层，
+ * 透明像素直接丢弃，因此不会整片挡住后画的方块实体。
  *
  * <p>布局（边框多宽、玻璃多大）全部来自纯算术类 {@link FramedLeaf}：门扇越开越窄时边框会按比例缩，
  * 玻璃不会变成负宽度，也不会在快开完时闪一下。
@@ -41,6 +41,11 @@ public final class FramedGlassDoor {
      * @param light 打包后的光照值
      */
     public static void frame(MatrixStack matrices,VertexConsumer out,Box leaf,boolean alongZ,float[] window,int light) {
+        frame(matrices,out,leaf,alongZ,window,light,BoxMesh.AMBIENT);
+    }
+
+    /** Cabin frames may receive interior lamp shading; landing frames use ambient light. */
+    public static void frame(MatrixStack matrices,VertexConsumer out,Box leaf,boolean alongZ,float[] window,int light,BoxMesh.FaceLighting lighting) {
         double w0=alongZ?leaf.minX:leaf.minZ, w1=alongZ?leaf.maxX:leaf.maxZ;
         double y0=leaf.minY, y1=leaf.maxY;
         double[] l=FramedLeaf.layout(w0,w1,y0,y1);
@@ -50,15 +55,15 @@ public final class FramedGlassDoor {
         float[] stileUv=FramedLeaf.stileUv(window,width<=1e-9?1:l[5]-l[4]<=1e-9?1:(l[5]-l[4])/width);
         float[] railUv=FramedLeaf.railUv(window,height<=1e-9?1:(l[1]-l[0])/height);
         // 底框、顶框：满宽
-        bar(matrices,out,alongZ,w0,w1,l[0],l[1],t0,t1,railUv,light);
-        bar(matrices,out,alongZ,w0,w1,l[2],l[3],t0,t1,railUv,light);
+        bar(matrices,out,alongZ,w0,w1,l[0],l[1],t0,t1,railUv,light,lighting);
+        bar(matrices,out,alongZ,w0,w1,l[2],l[3],t0,t1,railUv,light,lighting);
         // 两侧竖框：满高
-        bar(matrices,out,alongZ,l[4],l[5],y0,y1,t0,t1,stileUv,light);
-        bar(matrices,out,alongZ,l[6],l[7],y0,y1,t0,t1,stileUv,light);
+        bar(matrices,out,alongZ,l[4],l[5],y0,y1,t0,t1,stileUv,light,lighting);
+        bar(matrices,out,alongZ,l[6],l[7],y0,y1,t0,t1,stileUv,light,lighting);
     }
 
     /**
-     * 画门扇中间的玻璃（玻璃层：零厚度单面，位于门扇厚度中线）。
+     * 画门扇中间的玻璃（玻璃层：零厚度双面，位于门扇厚度中线）。
      *
      * <p>玻璃的 UV 按玻璃面的宽高比取（{@link FramedLeaf#paneUv}），使贴图横竖像素密度一致，
      * 玻璃上的花纹不会被纵向拉长。
@@ -77,8 +82,8 @@ public final class FramedGlassDoor {
         if(!FramedLeaf.glassVisible(l)) return; // 全开时门扇宽度归零，没有玻璃可画
         float[] uv=FramedLeaf.paneUv(cell,l[9]-l[8],l[11]-l[10]);
         double mid=alongZ?(leaf.minZ+leaf.maxZ)/2:(leaf.minX+leaf.maxX)/2;
-        if(alongZ) BoxMesh.planeZ(matrices,glass,(float)mid,(float)l[8],(float)l[10],(float)l[9],(float)l[11],light,color,uv);
-        else BoxMesh.planeX(matrices,glass,(float)mid,(float)l[10],(float)l[8],(float)l[11],(float)l[9],light,color,uv);
+        if(alongZ) BoxMesh.glassZ(matrices,glass,(float)mid,(float)l[8],(float)l[10],(float)l[9],(float)l[11],light,color,uv);
+        else BoxMesh.glassX(matrices,glass,(float)mid,(float)l[10],(float)l[8],(float)l[11],(float)l[9],light,color,uv);
     }
 
     /**
@@ -101,10 +106,10 @@ public final class FramedGlassDoor {
      * @param light 打包后的光照值
      */
     private static void bar(MatrixStack matrices,VertexConsumer out,boolean alongZ,double a0,double a1,
-                            double y0,double y1,double t0,double t1,float[] uv,int light) {
+                            double y0,double y1,double t0,double t1,float[] uv,int light,BoxMesh.FaceLighting lighting) {
         if(a1-a0<=1e-6||y1-y0<=1e-6||t1-t0<=1e-6) return; // 退化件直接跳过，避免反向长方体
         float[][] faceUv=LeafUv.slabUv(uv,LeafUv.centredThinSlice(uv),alongZ);
-        if(alongZ) BoxMesh.cuboid(matrices,out,(float)a0,(float)y0,(float)t0,(float)a1,(float)y1,(float)t1,light,0xFFFFFFFF,faceUv);
-        else BoxMesh.cuboid(matrices,out,(float)t0,(float)y0,(float)a0,(float)t1,(float)y1,(float)a1,light,0xFFFFFFFF,faceUv);
+        if(alongZ) BoxMesh.cuboid(matrices,out,(float)a0,(float)y0,(float)t0,(float)a1,(float)y1,(float)t1,light,0xFFFFFFFF,faceUv,lighting);
+        else BoxMesh.cuboid(matrices,out,(float)t0,(float)y0,(float)a0,(float)t1,(float)y1,(float)a1,light,0xFFFFFFFF,faceUv,lighting);
     }
 }

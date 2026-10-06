@@ -1,6 +1,6 @@
 # EasyElevator 工程构建与打包说明书
 
-适用版本：模组 2.0.0，Minecraft 1.21.1，Fabric Loader 0.19.2。
+适用版本：模组 2.1.0，Minecraft 1.21.1，Fabric Loader 0.19.2。
 
 ## 1. 环境与已固定的构建配置
 
@@ -14,7 +14,7 @@
 | Yarn 映射 | 1.21.1+build.3 | yarn_mappings |
 | Fabric Loader | 0.19.2 | loader_version |
 | Fabric API | 0.116.17+1.21.1 | fabric_version |
-| 模组版本 | 2.0.0 | mod_version |
+| 模组版本 | 2.1.0 | mod_version |
 | 文件名前缀 | easyelevator | archives_base_name |
 | 构建内存/并行度 | 最大堆 2 GB，最多 4 个工作线程 | org.gradle.jvmargs / org.gradle.workers.max |
 | 缓存 | 启用 Gradle 构建缓存 | org.gradle.caching |
@@ -59,6 +59,8 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 | 开发游戏客户端 | `-Task runClient` | `runClient` |
 | 清理旧构建输出 | `-Task clean` | `clean` |
 
+2.1.0 发布包含轿厢局部照明与原版无色玻璃修复，不修改光影包。正式 JAR 的 `fabric.mod.json` 版本应为 `2.1.0`；发布包与工程包也必须包含本版文档。
+
 改完代码后的验收方式见 [人工验收清单](TESTING.md)：需要真人进游戏逐项确认，没有可替代的离线检查。
 
 ## 4. 给玩家的发布包
@@ -67,15 +69,15 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageRelease
 ```
 
-输出 `build/distributions/easyelevator-2.0.0-release.zip`，内容：
+输出 `build/distributions/easyelevator-2.1.0-release.zip`，内容：
 
-- `mods/easyelevator-2.0.0.jar`：玩家安装的模组。
-- `sources/easyelevator-2.0.0-sources.jar`：阅读用源码，不是安装文件。
+- `mods/easyelevator-2.1.0.jar`：玩家安装的模组。
+- `sources/easyelevator-2.1.0-sources.jar`：阅读用源码，不是安装文件。
 - `docs/`、README.md、LICENSE.txt：搭建、参数、替换素材、验收说明。
 
-也可以直接取 `build/libs/easyelevator-2.0.0.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
+也可以直接取 `build/libs/easyelevator-2.1.0.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
 
-在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。多人服务器和所有客户端均使用相同模组版本；2.0.0 使用楼层门站点及高精度运动同步，不应混用旧版客户端。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
+在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。多人服务器和所有客户端均使用相同模组版本；2.1.0 使用楼层门站点及高精度运动同步，不应混用旧版客户端。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
 
 ## 5. 给开发者的完整工程包
 
@@ -83,7 +85,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk 'E:\workspace\JAVA\JAVA21' -Task packageProject
 ```
 
-输出 `build/distributions/easyelevator-2.0.0-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
+输出 `build/distributions/easyelevator-2.1.0-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
 
 打包采用白名单，不包含 `.idea`、`.gradle`、`.gradle-user-home`、`.tools`、`build`、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
 
@@ -94,7 +96,7 @@ $env:JAVA_HOME = 'E:\workspace\JAVA\JAVA21'
 .\gradlew.bat packageRelease packageProject
 ```
 
-只改模组版本时修改 `gradle.properties` 的 `mod_version`，产物名称和 fabric.mod.json 会自动更新；同步更新本文、README 中的版本示例。
+只改模组版本时修改 `gradle.properties` 的 `mod_version`，产物名称和 fabric.mod.json 会自动更新；同步更新 README 和 docs 下全部文档的适用版本、产物名称与发布说明。
 
 ## 6. IntelliJ IDEA 设置
 
