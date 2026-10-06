@@ -37,7 +37,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 版本 | 2.0.0（见 [gradle.properties](../gradle.properties)） |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威） |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×3 型号（普通 / 高速 / 观光） |
-| 运动方式 | 直上直下；jerk 受限的 S 形曲线（受速度 / 加速度 / 加加速度三重上限）；不支持转弯、斜轨、分岔 |
+| 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
 | 线路约束 | 同一 X/Z、垂直连续、朝向一致；每条线路最多一台轿厢（三型号合计） |
 | 状态保存 | 轿厢实体 NBT + 楼层门方块实体 NBT |
 
@@ -290,8 +290,8 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | 文件 | 职责 | 直接依赖（项目内） |
 | --- | --- | --- |
 | [Easyelevator.java](../src/main/java/org/DJB/easyelevator/Easyelevator.java) | 全部注册：方块、物品、实体、方块实体、音效、物品栏、网络 | block, entity, item, network |
-| [logic/ElevatorParameters.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorParameters.java) | 编译期常量（巡航速度、加速度/jerk 上限、门时序、队列上限、几何内收、插值阈值） | 无 |
-| [logic/MotionProfile.java](../src/main/java/org/DJB/easyelevator/logic/MotionProfile.java) | 纯 Java S 形速度曲线：按峰值速度规划 jerk 受限曲线，按时间求值给出每刻位移 | ElevatorParameters |
+| [logic/ElevatorParameters.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorParameters.java) | 编译期常量（巡航速度、加/减速过渡时间、加速度硬上限、门时序、队列上限、几何内收、插值阈值） | 无 |
+| [logic/MotionProfile.java](../src/main/java/org/DJB/easyelevator/logic/MotionProfile.java) | 纯 Java S 形速度曲线：由巡航速度与过渡时间解出加速度/jerk 上限，按峰值速度规划曲线，按时间求值给出每刻位移 | ElevatorParameters |
 | [logic/ElevatorController.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorController.java) | 纯 Java 状态机：相位、门进度、目标、队列、厅外呼叫、集选调度（运动形状委托 MotionProfile） | ElevatorParameters, MotionProfile |
 | [logic/ElevatorLine.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorLine.java) | 轨道列扫描、站点收集、线路中心、线路轿厢查询 | Easyelevator, LandingDoorBlock, ElevatorRailBlock, AbstractCabinEntity |
 | [logic/ElevatorStatus.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorStatus.java) | 显示状态 UP/DOWN/IDLE 推导 | ElevatorController, ElevatorParameters |
@@ -300,7 +300,7 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [logic/PanelLayout.java](../src/main/java/org/DJB/easyelevator/logic/PanelLayout.java) | 选站面板网格与分页的纯算术 | 无 |
 | [entity/AbstractCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/AbstractCabinEntity.java) | 三型号共同父类：位移（按状态机给出的位移应用）、乘客、碰撞盒、障碍检测、存档、同步、门命令 | Easyelevator, api.ElevatorEvents, block.LandingDoorBlock, logic.*, network |
 | [entity/CabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/CabinEntity.java) | 普通型号：巡航速度 = SPEED，回收 CABIN_ITEM | AbstractCabinEntity, ElevatorParameters |
-| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：巡航速度 = HIGH_SPEED（jerk 更小 ⇒ 加/减速段更长） | AbstractCabinEntity, ElevatorParameters |
+| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：巡航速度 = HIGH_SPEED（同样 1.6 秒过渡 ⇒ 加/减速段 8.0 格、比普通型更长） | AbstractCabinEntity, ElevatorParameters |
 | [entity/ObservationCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/ObservationCabinEntity.java) | 观光型号：巡航速度 = SPEED，`glassWalls()=true` | AbstractCabinEntity, ElevatorParameters |
 | [block/LandingDoorBlock.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlock.java) | 3×3 门方块：放置、自检、联锁、厅外面板、基准层、拆门 | Easyelevator, entity, logic, network |
 | [block/LandingDoorBlockEntity.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlockEntity.java) | 根方块实体：门扇进度采样、基准层标记、门框显示缓存 | Easyelevator, entity, logic |
@@ -642,7 +642,8 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
     │     两行按"行心"定位：yOffset = -(行心 + fontHeight*scale/2)/scale
     └─ 半透明层（仅观光）：drawObservationGlass（压条/中梃由 OBSERVATION_PARTS 提供）
 
-  光照：lit = withLamp(采样光照) = 世界光照与 15 级方块光的较大者（顶灯照厢内，不动世界数据）
+  光照：直接用管线采样到的真实世界光照 light，不做抬升或压暗（光影包下整舱不会被当成光源）；
+        全舱唯一自发光件是顶灯灯罩（内饰表自发光标志 = 1 → MAX_LIGHT_COORDINATE）
 
   LandingDoorRenderer.render(door, tickDelta, ...)
     ├─ drawFloorDisplay（door.cabinFloor / door.cabinStatus / StatusArrow）
@@ -699,7 +700,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 字段 | 类型 | 作用 |
 | --- | --- | --- |
 | `speed` | `final double` | 实例巡航速度上限（格/刻），构造时注入；非正/非有限值退化为 `SPEED` |
-| `profile` | `MotionProfile` | S 形速度曲线实例（注入速度 / 加速度 / jerk 上限），回答"本刻走多远" |
+| `profile` | `MotionProfile` | S 形速度曲线实例（按巡航速度与 `CRUISE_RAMP_TICKS` 解出加速度/jerk 上限），回答"本刻走多远" |
 | `profileTick` | `double` | 曲线内时间（刻），每次规划后归零；按时间求值避免累加误差 |
 | `plannedTarget` | `double` | 当前曲线的计划终点，用于判断目的站是否变过（改道 / 读档） |
 | `velocity` / `acceleration` | `double` | 曲线同刻取样的速度与加速度，供改道时给新曲线一个正确初值 |
@@ -717,8 +718,8 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 方法 | 参数 | 返回 | 副作用 / 说明 |
 | --- | --- | --- | --- |
 | `ElevatorController()` | — | 实例 | 用 `SPEED` 构造（普通/观光） |
-| `ElevatorController(double speed)` | 巡航速度 | 实例 | 高速用 `HIGH_SPEED`；jerk 由 `MotionProfile.defaultJerk` 按型号推出 |
-| `ElevatorController(double speed, double jerk)` | 巡航速度、jerk 上限 | 实例 | 显式指定加加速度（调参用） |
+| `ElevatorController(double speed)` | 巡航速度 | 实例 | 高速用 `HIGH_SPEED`；加速度与 jerk 上限由 `MotionProfile.forCruiseSpeed` 按巡航速度与 `CRUISE_RAMP_TICKS` 解出 |
+| `ElevatorController(double speed, double rampTicks)` | 巡航速度、加/减速过渡刻数 | 实例 | 显式指定加/减速段长度（调参用）；非法时退化为 `CRUISE_RAMP_TICKS` |
 | `speed()` / `phase()` / `door()` / `target()` | — | 对应值 | 只读快照；`phase/door` 会被写入 DataTracker |
 | `currentSpeed()` / `profileTime()` / `profileTick()` | — | 格/刻、刻、刻 | 曲线诊断读数，不参与调度 |
 | `pending()` / `hallCalls()` | — | 不可变 List | 供同步与存档 |
@@ -760,7 +761,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 字段 | 作用 |
 | --- | --- |
-| `controller` / `speed` | 状态机实例与只读巡航速度上限（S 形曲线的形状由状态机内注入的 jerk/加速度上限决定） |
+| `controller` / `speed` | 状态机实例与只读巡航速度上限（S 形曲线的形状由状态机内按 `CRUISE_RAMP_TICKS` 解出的加速度/jerk 上限决定） |
 | `railX / railZ` | 线路水平坐标（**不进 DataTracker**，客户端恒 0，必须按世界坐标匹配） |
 | `previousDoor` | 上一刻门进度，供渲染插值 |
 | `motionSettleTicks` | 停车后补发静止运动包的剩余刻数 |
@@ -772,7 +773,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 方法 | 参数 | 返回 | 说明 / 副作用 |
 | --- | --- | --- | --- |
-| `AbstractCabinEntity(type, world, speed)` | 类型/世界/巡航速度 | — | `setNoGravity(true)`；注入速度（及按型号推出的 jerk）构造 controller |
+| `AbstractCabinEntity(type, world, speed)` | 类型/世界/巡航速度 | — | `setNoGravity(true)`；注入速度构造 controller（加速度/jerk 上限由 `MotionProfile.forCruiseSpeed` 解出） |
 | `speed()` | — | double | final，供渲染/面板读取 |
 | `cabinItem()` | — | Item | **abstract**，子类给回收物品 |
 | `glassWalls()` | — | boolean | 默认 false；观光覆写 true（纯客户端提示） |
@@ -937,7 +938,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 类 | 关键成员 | 要点 |
 | --- | --- | --- |
 | `EasyelevatorClient` | `sounds: Map<int, CabinRunningSound>` | 注册 3 个轿厢渲染器（同一 `CabinRenderer::new`）与 1 个方块实体渲染器；5 个 S2C 处理器都走 `context.client().execute`；END_CLIENT_TICK 清理+补充运行声；DISCONNECT 停止音效并 `CabinMotion.clear()` |
-| `CabinRenderer<T>` | `TEXTURE`、`GLASS_LAYER`、`GLASS_COLOR`、`LAMP_LEVEL=15`/`withLamp`（厢内照明）、`Mat`/`MATERIAL_UV`（4×4 图集分格，`DOOR` 格给门扇）、`STANDARD_PARTS`/`OBSERVATION_PARTS`（内饰数据表，最后 6 行必须相同）、行心 `ARROW_LINE_CENTRE/FLOOR_LINE_CENTRE`、字号 | 只画不模拟；**分层顺序硬约束**：不透明（外壳+内饰+门口+门扇）→ 文字 → 半透明玻璃；玻璃层专用「只写颜色不写深度」（`COLOR_MASK`），否则楼层门被剔除；观光舱不画实心门扇 |
+| `CabinRenderer<T>` | `TEXTURE`、`GLASS_LAYER`、`GLASS_COLOR`、`Mat`/`MATERIAL_UV`（4×4 图集分格，`DOOR` 格给门扇）、`STANDARD_PARTS`/`OBSERVATION_PARTS`（内饰数据表，最后 6 行必须相同；自发光标志 = 1 的行用最高亮度绘制，全舱只有顶灯灯罩）、行心 `ARROW_LINE_CENTRE/FLOOR_LINE_CENTRE`、字号 | 只画不模拟；**分层顺序硬约束**：不透明（外壳+内饰+门口+门扇）→ 文字 → 半透明玻璃；玻璃层专用「只写颜色不写深度」（`COLOR_MASK`），否则楼层门被剔除；观光舱不画实心门扇；全舱用管线采样到的真实世界光照，不做任何抬升（光影下整舱不会被当成光源） |
 | `BoxMesh` | `FULL_UV`、`float[] uv`（六面同一分格）与 `float[][] faceUv`（**逐面**分格，顺序 -Z,+Z,-X,+X,+Y,-Y） | 长方体网格 / 零厚度单面；UV 矩形默认铺满整张图，传分格即取图集一格；**逐面分格用于滑门**（大面随门滑动、断面固定一小段）；平面单面的 UV 方向与顶点顺序绑定（`planeZ` 从 +X 侧起步，u 才沿 X 增长） |
 | `LandingDoorRenderer` | `TEXTURE=blank_door`、`FLOOR_SCALE=.016f`、`SCREEN_CENTRE_Y=2.90625`、`SCREEN_INSET=.75/16`、`TEXT_STANDOFF=.008`、`STATUS_GAP=6f` | 先画层号再画门扇（全开无门扇直接返回）；文字按行心定位（`draw` 的 y 是顶边）；门扇 UV 只取"还露在外面"的一段（贴图随门板滑而不是被压扁）；`rendersOutsideBoundingBox=true`（门扇会滑出根方块那格，默认剔除会让它提前消失） |
 | `ElevatorScreen` | `BUTTON=20,GAP=4`、`MAX_COLUMNS/ROWS=8`、`PADDING=16,HEADER=64,FOOTER=40`、配色常量 | 站点自行按 Y→X→Z 排序；`init()` 算网格与面板矩形并铺控件；`tick()` 用宽松 `staysInside` 自动关闭；`render` 每帧刷新区按钮可用性；`renderBackground` 只做淡黑叠加（不用模糊） |
@@ -1046,7 +1047,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 轿厢模型（三种共用） | `CabinRenderer`：`drawStandardShell` / `drawObservationShell` / `drawDoorway` / `drawLeaves` / `drawObservationGlass` + 内饰表 `STANDARD_PARTS` / `OBSERVATION_PARTS` | 同上 |
 | 轿厢材质 | `textures/entity/cabin.png`（4×4 图集）+ `CabinRenderer.Mat` / `MATERIAL_UV`；方块贴图见 `textures/block/` | 同上 |
 | 观光玻璃颜色/通透度 | `CabinRenderer.GLASS_COLOR / GLASS_DOOR_COLOR`（顶点色 ARGB） | 同上 |
-| 厢内照明 | `CabinRenderer.withLamp` 把渲染光照抬到"世界光照与 15 级方块光的较大者"（`LAMP_LEVEL`）；不放置光源方块、不动世界数据 | 同上 |
+| 厢内照明 | `CabinRenderer.render` 直接用管线采样到的真实世界光照，不抬升也不压暗（光影包下整舱不会被当成光源）；不放置光源方块、不动世界数据 | 同上 |
 | 音效音频 | `assets/easyelevator/sounds.json` 的 `sounds` 数组 + ogg 文件 | 同上 |
 | 门动画取值 | 轿厢 `doorProgress(tickDelta)`；楼层门 `openProgress(tickDelta)`，0 关 1 开 | 同上 |
 
@@ -1071,9 +1072,8 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | `TICKS_PER_SECOND` | 20 | 刻/秒 | 仅换算用 |
 | `SPEED` | 0.20 | 格/刻 | 4 格/秒**巡航上限**；普通与观光 |
 | `HIGH_SPEED` | `SPEED*2.5` = 0.50 | 格/刻 | 10 格/秒巡航上限；高速。约束：`speed + POSITION_EPSILON ≤ 1` |
-| `MAX_ACCELERATION` | 0.15 | 格/刻² | S 形曲线的加速度**上限**（60 格/秒²）；短行程实际峰值由 jerk 决定 |
-| `JERK` | 0.045 | 格/刻³ | 普通/观光的加加速度上限（720 格/秒³）；峰值加速度 ≈ `sqrt(JERK·Δv)` ≈ 1.9 m/s² |
-| `HIGH_SPEED_JERK` | `JERK*SPEED/HIGH_SPEED` = 0.018 | 格/刻³ | 高速的加加速度上限；斜坡是普通车的 2.5 倍长 |
+| `CRUISE_RAMP_TICKS` | 32 | 刻 | 从静止加到本型号巡航速度的时间；加速度上限 = `速度/它`、jerk 上限 = `2·加速度/它`（`MotionProfile.forCruiseSpeed`） |
+| `MAX_ACCELERATION` | 0.15 | 格/刻² | 加速度**硬上限**（60 格/秒²），只在 `CRUISE_RAMP_TICKS` 被调得极小时起作用 |
 | `POSITION_EPSILON` | 1e-7 | 格 | 服务端到站/请求判定容限 |
 | `SYNC_POSITION_EPSILON` | 0.01 | 格 | **仅**客户端门扇进度与显示判定 |
 | `DOOR_TICKS` | 20 | 刻 | 开关门各 1 秒；不随速度变 |
@@ -1095,21 +1095,22 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 量 | 公式 |
 | --- | --- |
 | 速度上限（格/秒） | `SPEED × TICKS_PER_SECOND`，例如 0.20 × 20 = 4 |
-| 加速度上限（格/秒²） | `MAX_ACCELERATION × TICKS_PER_SECOND²` = 0.15 × 400 = 60（这是**上限**；短行程实际峰值 ≈ 1.9 m/s²，由 jerk 与速度差共同决定） |
-| 加速度斜坡时长（刻） | 纯三角形状下 `t1 = sqrt(Δv / JERK)`，加速度峰值 `sqrt(JERK·Δv)`；普通车 Δv=0.2 时约 2.1 刻、高速车约 5.2 刻 |
+| 加速度上限（格/秒²） | 工作点 `(速度 / CRUISE_RAMP_TICKS) × TICKS_PER_SECOND²`：普通/观光 0.00625 × 400 = 2.5、高速 0.015625 × 400 = 6.25；`MAX_ACCELERATION × TICKS_PER_SECOND²` = 0.15 × 400 = 60 只是**硬上限** |
+| 加/减速段时长（刻） | `CRUISE_RAMP_TICKS`（本型号从静止加到巡航速度的时间；实际行程到不了巡航速度时按比例缩短） |
+| 加/减速段距离（格） | 满速段为 `速度 × CRUISE_RAMP_TICKS / 2`：普通/观光 3.2 格、高速 8.0 格 |
 | 门单程 | `DOOR_TICKS / 20` 秒 |
 | 最短停站总时长 | S 形运行段 + 关门 + `DWELL_TICKS/20` + 开门 |
 | 轿厢中心 | 轨道中心 + 朝向前方 **2 格** |
 | 楼层门根方块 | 轨道 + 朝向前方 `RAIL_DISTANCE = 3` 格，同 Y |
 | 单扇门行程 | `(DOOR_WIDTH - 2*FRAME - SEAM)/2 = 20.5`（1/16 格）= 1.28125 格 |
-| 观光隔两面玻璃透过率 | `(1-0.25)^2 ≈ 0.5625` → 约 44% 被吸收 |
+| 观光隔两面玻璃透过率 | 每面 10% 不透明度 → `(1-0.10)^2 ≈ 0.81`，即两面合计约 19% 被吸收 |
 
 ### 7.3 参数联动「改一处、跟着改」清单
 
 | 改动 | 必须一起改 |
 | --- | --- |
 | 提高 `HIGH_SPEED` | 确认 `speed + POSITION_EPSILON ≤ 1`（否则单刻可能跨过整格站点），并进游戏复核加/减速手感与到站对齐 |
-| 改 `MAX_ACCELERATION` / `JERK` | 复跑 `MotionProfileTest`（三重上限与精确到站）；注意"舒服"与"快"是此消彼长：jerk 越小加/减速段越长 |
+| 改 `CRUISE_RAMP_TICKS` / `MAX_ACCELERATION` | 加/减速段的时长、距离与加速度峰值都由 `CRUISE_RAMP_TICKS` 与巡航速度推出（`MAX_ACCELERATION` 只是硬上限）；注意"舒服"与"快"是此消彼长：过渡时间越长，段越长、加速度峰值越低、每趟越慢 |
 | 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留，以及渲染同步 |
 | 改轿厢尺寸 | 实体 `dimensions`、`localBox`/`collisionBoxes`、`containsPassenger` 边界、`doorwayBlocked`、渲染几何、`ElevatorLine.cabins` 包围盒 |
 | 改选站面板布局 | `PanelLayout` + `ElevatorScreen` 常量 + `MAX_COLUMNS/MAX_ROWS` |

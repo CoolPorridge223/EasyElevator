@@ -58,11 +58,10 @@ import org.DJB.easyelevator.logic.SlidingDoor;
  * 自发光为 1 的格子（顶灯灯罩）用最高亮度绘制，井道再暗也看得见灯亮着。
  *
  * <h2>厢内照明</h2>
- * 实体不参与方块光照，灯罩画得再亮也照不亮井道（原版世界里只有方块能发光）。因此轿厢走
- * {@link #withLamp}：把所有几何用的光照值换成"采样的世界光照与 {@link #LAMP_LEVEL} 级方块光的较大者"，
- * 等价于在轿厢里挂一盏 15 级灯——<b>只改渲染用的光照值，不放置任何光源方块、不动世界数据</b>，
- * 所以存档、区块加载、联机行为与模组兼容性都不变。天光分量原样保留，白天不会被压成偏黄；
- * 灯罩那一件再单独用最高亮度，于是"灯罩比周围更亮"，看起来是真的在发光。
+ * 轿厢是<b>实体</b>，它拿到的光照值就是渲染管线按轿厢位置采样到的真实世界光照：井道亮它就亮、
+ * 井道暗它就暗，不做任何抬高或压暗。灯罩那一件是唯一的例外——它用
+ * {@link LightmapTextureManager#MAX_LIGHT_COORDINATE} 绘制，因此无论外界多暗都保持满亮度，
+ * 看起来就是"灯罩自己亮着"，而舱内其余部分仍旧被真实光照照亮。
  *
  * <p>两种外观（几何与碰撞完全一致，只有材质与哪几块面透明不同）：
  * <ul>
@@ -135,16 +134,6 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private static final float DOOR_RENDER_BOTTOM=FLOOR_TOP+.0005f;
     /** 与外壳相接的内饰件嵌进外壳的深度（格）：绝不与外壳面共面，否则两面互相抢深度。 */
     private static final float BITE=.002f;
-    /**
-     * 顶灯的实际亮度：<b>方块光 15 级</b>，与一盏普通火把同级。
-     *
-     * <p>实体不参与方块光照——灯罩画得再亮也照不亮井道（原版世界里只有方块能发光），
-     * 所以这里走另一条路：{@link #withLamp} 把采样到的世界光照与"15 级方块光"取最大值，
-     * 也就是把顶灯当成一盏挂在轿厢里的灯。井道再暗厢内也有稳定亮度，
-     * 而在白天或亮处，天光那一半（skyLight）原样保留，因此不会被压暗、也不会改变户外的观感。
-     */
-    private static final int LAMP_LEVEL=15;
-
     /**
      * 普通 / 高速轿厢的内饰件：{x,y,z,X,Y,Z,材质格号,自发光}，单位格，轿厢局部坐标。
      *
@@ -247,16 +236,22 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     /** 面板上文字的颜色（红色）；与门框顶部、选站面板显示同一个楼层号与状态。 */
     private static final int FLOOR_COLOR=0xFFFF4040;
     /**
-     * 观光轿厢墙面的玻璃色（ARGB）：淡蓝白 + 25% 不透明度。
+     * 观光轿厢墙面的玻璃色（ARGB）：中性淡蓝 + 10% 不透明度（0x1A = 26/255）。
      *
      * <p>为什么是"每面一次"的透明度：玻璃用<b>零厚度单面</b>绘制（见 {@link BoxMesh#planeX}），
-     * 每层玻璃在视线里只叠一次 25%；隔着轿厢看穿两面玻璃约 44%，透过玻璃看外面的景物仍然清楚。
+     * 每层玻璃在视线里只叠一次 10%；隔着轿厢看穿两面玻璃约 19%，透过玻璃看外面的景物基本无损。
      * 若改用 0.12 格厚的薄板（正反两面都画），同一面墙就会叠两次、透明度翻倍而发灰。
-     * 图集里的玻璃格只提供一层极淡的底色，透明度全部来自顶点色，因此只改这一个常量即可调通透度。
+     *
+     * <p>为什么要压这么低：观光舱的玻璃正对整片视野，而不同光影包对"平面半透明面"的处理差别很大
+     * ——有的会把它当镜面/覆盖层（Complementary 的 COATED_TEXTURES + GENERATED_NORMALS 就是典型），
+     * 于是玻璃自身会叠上一层白。既然"看起来干净透明的观光电梯"是硬要求，就把玻璃的<b>存在感</b>压到最低：
+     * 贴图压成低对比的中性灰（{@code tools/generate_art.py} 的 {@code tile_glass}），顶点色只给 10%。
+     * 这样无论光影怎么处理这一层，它都没有多少颜色与亮度可以加，看出去就是窗外的景色。
+     * 调通透度只改这一个常量。
      */
-    private static final int GLASS_COLOR=0x40BFE4F5;
-    /** 观光舱门扇的玻璃色（ARGB）：铁框中间那块玻璃，比舱壁玻璃略不透一点，隔着它仍看得清外面的井道。 */
-    private static final int GLASS_DOOR_COLOR=0x59A8D2EC;
+    private static final int GLASS_COLOR=0x1AD2E2F0;
+    /** 观光舱门扇的玻璃色（ARGB）：铁框中间那块玻璃，比舱壁玻璃略实一点（20%），隔着它仍看得清外面的井道。 */
+    private static final int GLASS_DOOR_COLOR=0x33B0D4EA;
 
     /** 构造渲染器。副作用：仅保存 EntityRenderer 上下文（光源、模型加载器等）。 */
     public CabinRenderer(EntityRendererFactory.Context context) { super(context); }
@@ -302,54 +297,31 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
         float open=cabin.doorProgress(delta);
-        // 顶灯：把采样到的世界光照换成"世界光照与 15 级方块光的较大者"（见 LAMP_LEVEL、withLamp）。
-        // 后面所有几何都用这个值，因此井道很暗时厢内照样亮着，白天则保持原本的天光观感。
-        int lit=withLamp(light);
+        // 全舱直接用管线采样到的真实世界光照：不做任何抬高或压暗，因此光影包看到的光照值与
+        // 轿厢所在位置的光照一致，不会把整台电梯当成一个光源（见类注释「厢内照明」）。
+        // 唯一的自发光是顶灯灯罩那一件，由 drawParts 按表里的自发光标志单独换成满亮度。
         // 第 1 组（不透明层）：外壳 + 内饰 + 门口构件 + 门扇。所有不透明几何必须在这一组里画完，
         // 否则切到文字层之后再回头写它就会触发 Not building!（见类注释）
         VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutoutNoCull(TEXTURE));
         if(cabin.glassWalls()) {
             // 观光舱：结构与内饰 + 玻璃单面（门板同样是不透明的钢框门，见 drawDoors）
-            drawObservationShell(matrices,out,front,doorBack,lit);
-            drawParts(matrices,out,OBSERVATION_PARTS,lit);
+            drawObservationShell(matrices,out,front,doorBack,light);
+            drawParts(matrices,out,OBSERVATION_PARTS,light);
         } else {
-            drawStandardShell(matrices,out,front,lit);
-            drawParts(matrices,out,STANDARD_PARTS,lit);
+            drawStandardShell(matrices,out,front,light);
+            drawParts(matrices,out,STANDARD_PARTS,light);
         }
-        drawGuideShoes(matrices,out,lit);   // 背面的抱轨导靴：让轿厢看起来骑在轨道上（两种外观共用，且不进碰撞）
-        drawDoors(matrices,out,lit,open,cabin.glassWalls()); // 两扇对开滑门（观光型号画铁框，玻璃在后面一组）
-        drawDoorway(matrices,out,front,doorBack,lit); // 门槛 + 门楣轨道
+        drawGuideShoes(matrices,out,light);   // 背面的抱轨导靴：让轿厢看起来骑在轨道上（两种外观共用，且不进碰撞）
+        drawDoors(matrices,out,light,open,cabin.glassWalls()); // 两扇对开滑门（观光型号画铁框，玻璃在后面一组）
+        drawDoorway(matrices,out,front,doorBack,light); // 门槛 + 门楣轨道
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号。
-        drawFloorDisplay(cabin,matrices,buffers,lit);
+        drawFloorDisplay(cabin,matrices,buffers);
         // 第 3 组（半透明层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
         if(cabin.glassWalls()) {
-            drawObservationGlass(matrices,buffers,front,doorBack,lit);
-            drawGlassDoorPanes(matrices,buffers,lit,open); // 门扇中间的玻璃（与玻璃墙同一层）
+            drawObservationGlass(matrices,buffers,front,doorBack,light);
+            drawGlassDoorPanes(matrices,buffers,light,open); // 门扇中间的玻璃（与玻璃墙同一层）
         }
         matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
-    }
-
-    /**
-     * 把"世界光照"换成"世界光照与顶灯（{@link #LAMP_LEVEL} 级方块光）的较大者"。
-     *
-     * <p>打包后的 lightmap 坐标 = {@code (天光 << 20) | (方块光 << 4)}（原版
-     * {@code LightmapTextureManager.pack} 的布局，{@code MAX_LIGHT_COORDINATE = 0xF000F0} 就是 15/15）。
-     * 实体的渲染光照由管线按实体位置采样给出，这里只在渲染时抬高其中的方块光分量：
-     * <ul>
-     *   <li><b>不动世界数据</b>：不放置光源方块、不改光照引擎，因此存档、区块加载与联机行为一个字都不变，
-     *       多人服务器上没装模组的客户端也看不出异常；</li>
-     *   <li><b>只加不减</b>：天光分量原样保留，所以白天的轿厢不会被一盏 15 级灯压成偏黄；</li>
-     *   <li>灯罩那几件仍然用 {@link LightmapTextureManager#MAX_LIGHT_COORDINATE} 绘制，
-     *       于是"灯罩比周围更亮一点"，看起来是真的在发光。</li>
-     * </ul>
-     *
-     * @param light 管线采样到的打包光照值
-     * @return 抬高方块光分量之后的打包光照值
-     */
-    private static int withLamp(int light) {
-        int block=Math.max((light>>4)&0xF,LAMP_LEVEL); // 低 4 位之外的高位是"坐标扩展位"，这里只取 4 位亮度
-        int sky=(light>>20)&0xF;
-        return sky<<20|block<<4;
     }
 
     // ----------------------------------------------------------------------------------
@@ -361,9 +333,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param out 不透明顶点缓冲
      * @param parts 内饰清单，每行 {x,y,z,X,Y,Z,材质格号,自发光}
-     * @param light 已经过 {@link #withLamp} 抬高的打包光照值；
-     *              表中自发光那一件再改用 {@link LightmapTextureManager#MAX_LIGHT_COORDINATE}，
-     *              因此灯罩始终比它照亮的舱内更亮一档
+     * @param light 管线采样到的打包光照值；
+     *              表中自发光那一件（顶灯灯罩）改用 {@link LightmapTextureManager#MAX_LIGHT_COORDINATE}，
+     *              因此在再暗的井道里也保持满亮度，而它周围的舱内几何仍旧按真实世界光照绘制
      */
     private static void drawParts(MatrixStack matrices,VertexConsumer out,float[][] parts,int light) {
         for(float[] p:parts) {
@@ -620,9 +592,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param cabin 轿厢（提供同步过来的楼层号与运行状态）
      * @param matrices 渲染矩阵栈（已包含轿厢朝向与位置）
      * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
-     * @param light 打包后的光照值
      */
-    private static void drawFloorDisplay(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers,int light) {
+    private static void drawFloorDisplay(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers) {
         int floor=cabin.floorNumber();
         if(floor==0) return; // 还没经过任何站点（或线路无效）：不显示，避免出现"0 层"（负数 = 地下 B1、B2…，要显示）
         TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;

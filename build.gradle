@@ -33,6 +33,10 @@ repositories {
     // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html
     // for more information about repositories.
+    // 仅开发环境：光影栈（Iris）走 Modrinth 的 maven。版本留空即不添加，构建产物与打包任务都不受影响。
+    if (project.hasProperty('iris_version') && project.iris_version) {
+        maven { url = 'https://api.modrinth.com/maven'; name = 'Modrinth' }
+    }
 }
 
 dependencies {
@@ -42,6 +46,15 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // 光影栈（仅开发环境，见 gradle.properties）：让 `runClient` 能开光影复现观感。
+    // 用 modRuntimeOnly：模组源码不引用它们的 API，只需要它们在运行时在场。
+    // 注意 artifactId 是 Modrinth 的项目 ID（Iris = YL57xq9U、Sodium = AANobbMI），不是 slug；
+    // Iris 硬依赖 Sodium 0.6.x，缺了它连游戏都起不来。
+    if (project.hasProperty('iris_version') && project.iris_version) {
+        modRuntimeOnly "maven.modrinth:YL57xq9U:${project.iris_version}"
+        modRuntimeOnly "maven.modrinth:AANobbMI:${project.sodium_version}"
+    }
 }
 
 processResources {

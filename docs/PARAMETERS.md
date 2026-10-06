@@ -11,9 +11,8 @@
 | `TICKS_PER_SECOND` | 20 | 换算用的标准游戏 tick/s；不能通过改这个数改变 Minecraft 时钟 |
 | `SPEED` | 0.20 | 格/tick，正常 20 TPS 时为 **4 格/秒**，是 1.0 的两倍；普通轿厢与观光轿厢的**巡航速度上限** |
 | `HIGH_SPEED` | 0.50 | 格/tick，`SPEED × 2.5`，正常 20 TPS 时为 **10 格/秒**；只给高速轿厢用 |
-| `MAX_ACCELERATION` | 0.15 | 格/tick²，加速度**上限**（60 格/秒²）；短行程实际峰值由 jerk 决定，约 1.9 m/s²；三型号共用 |
-| `JERK` | 0.045 | 格/tick³，普通/观光轿厢的加加速度上限（720 格/秒³）；实际峰值加速度 ≈ `sqrt(JERK·Δv)`，升到峰值约 2.1 刻 |
-| `HIGH_SPEED_JERK` | 0.018 | 格/tick³，高速轿厢的 jerk = `JERK × SPEED / HIGH_SPEED`，斜坡是普通车的 2.5 倍长（约 5.2 刻） |
+| `CRUISE_RAMP_TICKS` | 32 | 刻，轿厢从静止加到**本型号巡航速度**所需的时间（1.6 秒）。S 形曲线的唯一舒适度旋钮：加/减速段时长 = 它，加速度峰值 = `巡航速度 / 它`，单段距离 = `巡航速度 × 它 / 2` 格 |
+| `MAX_ACCELERATION` | 0.15 | 格/tick²，加速度**硬上限**（60 格/秒²），只在 `CRUISE_RAMP_TICKS` 被调得极小时才起作用；实际工作点由 `CRUISE_RAMP_TICKS` 推出：普通/观光 0.00625（≈1.22 m/s²）、高速 0.015625（≈3.05 m/s²） |
 | `POSITION_EPSILON` | 0.0000001 | 格，同层判断和最后一步的浮点误差容限 |
 | `DOOR_TICKS` | 20 | 单次开门或关门各 1 秒（三种轿厢共用，不随速度变化） |
 | `DWELL_TICKS` | 40 | 门完全打开后的最短停留 2 秒；到点自动关门（**没有请求也关**，关着门停在本层待命） |
@@ -27,42 +26,46 @@
 ## 1.1 S 形速度曲线（Jerk-limited profile）
 
 轿厢**不是**匀速运行：位移由 `logic/MotionProfile` 按时间参数化的 S 形曲线给出——启动缓慢加速、
-中段匀速、到站前平滑减速。曲线满足三重上限：速度 ≤ 巡航上限、`|加速度| ≤ MAX_ACCELERATION`、
-`|jerk| ≤ JERK`（高速车用 `HIGH_SPEED_JERK`）。整条曲线在"开始移动 / 运行途中改道"时一次规划完成，
-之后每刻只按时间求值，因此没有逐刻累加误差，也不需要客户端外推。
+中段匀速、到站前平滑减速。曲线满足三重上限：速度 ≤ 巡航上限、`|加速度| ≤ MAX_ACCELERATION`（硬上限）、
+`|jerk| ≤ 2·a_p/T`。实际工作的加速度峰值与 jerk 不是常量，而是由**巡航速度与
+`CRUISE_RAMP_TICKS`（T）解出**：`a_p = v / T`、`j = 2·a_p / T`，于是加/减速段恰好各 T 刻，
+速度在这 T 刻里从 0 升到 v（加速度走一个等腰三角形，峰值 a_p）。整条曲线在"开始移动 / 运行途中改道"时
+一次规划完成，之后每刻只按时间求值，因此没有逐刻累加误差，也不需要客户端外推。
 
 | 现象 | 旧实现（每刻固定步长） | 现在（S 形曲线） |
 | --- | --- | --- |
-| 启动 | 第一刻直接 0.20 / 0.50 格，"一顿就起步" | 从 0 连续升上去；普通车约 2.1 刻（0.10 s）、高速车约 5.2 刻（0.26 s）达到加速度峰值 |
+| 启动 | 第一刻直接 0.20 / 0.50 格，"一顿就起步" | 从 0 连续升上去；16 刻（0.8 s）升到加速度峰值，再过 16 刻到达巡航速度 |
 | 到站 | 最后一刻从巡航速度直接归零 | 提前若干格开始平滑收速，最后一刻速度已经很低 |
 | 短行程峰值 | 固定等于 `SPEED` | 由距离反解（可能低于巡航上限），近距离不会"猛冲一下再急停" |
 | 长行程峰值 | `SPEED` | 恰好 `SPEED`，且巡航段与旧实现一样快 |
-| 实际加速度峰值 | 无（速度突变） | 普通/高速同为约 1.9 m/s²（真实电梯舒适区 1.0~1.6 的稍上方） |
+| 实际加速度峰值 | 无（速度突变） | 由 `v / CRUISE_RAMP_TICKS` 给出：普通/观光 0.00625 格/刻² ≈ 1.22 m/s²、高速 0.015625 ≈ 3.05 m/s²（真实电梯舒适区 1.0~1.6 m/s² 内） |
+| 加/减速距离 | 无（瞬时启停） | 普通/观光各 **3.2 格**、高速各 **8.0 格**（= `速度 × T / 2`），比旧的 1.86 / 2.64 格明显拉长 |
 
-调参口径：`MAX_ACCELERATION` 是**上限**，而"实际加速有多猛"在短行程里由 `JERK` /
-`HIGH_SPEED_JERK` 决定（峰值加速度 ≈ `sqrt(JERK · Δv)`，约 1.9 m/s²）；jerk 同时也决定加/减速段
-有多长。实测（普通车 / 高速车，纯运行时间）：
+调参口径：`CRUISE_RAMP_TICKS` 是**唯一**的舒适度旋钮——加/减速段的时长、距离与加速度峰值全部由它
+与巡航速度推出，`MAX_ACCELERATION` 只是兜底硬上限（防止把 T 调得过小）。实测（普通车 / 高速车，纯运行时间）：
 
 | 行程 | 普通车（4 格/秒） | 高速车（10 格/秒） |
 | --- | --- | --- |
-| 1 格 | 约 0.6 s | 约 0.7 s |
-| 5 格 | 约 1.6 s | 约 1.2 s |
-| 10 格 | 约 2.7 s | 约 1.5 s |
-| 100 格 | 约 25.2 s | 约 10.5 s |
+| 1 格 | 约 2.2 s | 约 1.6 s |
+| 5 格 | 约 3.7 s | 约 2.7 s |
+| 10 格 | 约 4.9 s | 约 3.5 s |
+| 100 格 | 约 27.4 s | 约 12.4 s |
 
 短行程里"平滑"占了主要时间（这正是舒适度的代价）；距离越长，S 段的固定开销占比越小，
-高速车的巡航速度优势才体现出来——与真实高速梯一致。
+高速车的巡航速度优势才体现出来——与真实高速梯一致。作为对照：把 `CRUISE_RAMP_TICKS` 改小到 24
+（单段 2.4 格）能让 4 格行程从 3.45 s 回到约 2.6 s，加速度峰值升到 1.63 m/s²。
 
 控制器最后一步直接使用站点 Y；没有“必须移动满 0.2 格才能动”的门槛。小于一步的剩余距离仍会移动，
 不会来回越过楼层——只是这一小段会分摊到若干刻上（曲线减速），最终严格落在站点高度。
 到站误差容限从旧版 1e-5 收紧为 1e-7；这不是显示帧率，也不是一个强制的最小位移。
 位置与运动同步包使用 double，不把高度取整到格、0.1 格或小数两位。
 
-以相差 8 格的楼层为例：普通车纯运行约 2.4 秒（旧匀速实现 2 秒）；再加等候、关门、开门时间。
+以相差 8 格的楼层为例：普通车纯运行约 4.5 秒；再加等候、关门、开门时间。
 提高速度不会同比缩短固定的门动画与等候时间。
 
-建议保持 SPEED>0、MAX_ACCELERATION>0、JERK>0、DOOR_TICKS≥1、DWELL_TICKS≥0、MAX_REQUESTS≥1。
-过高速度需要重新验证乘客、障碍及客户端同步；调 jerk 会同时改变"舒适度"和每趟耗时，改完请进游戏按
+建议保持 SPEED>0、MAX_ACCELERATION>0、CRUISE_RAMP_TICKS≥1、DOOR_TICKS≥1、DWELL_TICKS≥0、MAX_REQUESTS≥1。
+过高速度需要重新验证乘客、障碍及客户端同步；调 `CRUISE_RAMP_TICKS` 会同时改变"舒适度"和每趟耗时
+（它与加/减速段时长成正比、与加速度峰值成反比），改完请进游戏按
 [人工验收清单](TESTING.md) 的乘坐类条目确认手感，并核对启停看起来仍然平滑。
 
 ## 2. 平滑显示与网络
@@ -87,7 +90,7 @@
 | 参数/规则 | 默认值 | 修改位置及联动 |
 | --- | --- | --- |
 | 轨道走向 | 同 X/Z、连续、朝向一致的竖直列 | `ElevatorLine.scan/matches` |
-| 轿厢型号 | 三种：普通 `easyelevator:cabin`（4 格/秒巡航、拉丝不锈钢内舱）、高速 `easyelevator:high_speed_cabin`（10 格/秒巡航、世界里的外观与普通逐面相同，只有物品图标是金色带速度标记）、观光 `easyelevator:observation_cabin`（4 格/秒巡航、四面玻璃分格窗，保留四个支撑边） | `entity/AbstractCabinEntity` 为共同父类；三个子类只声明巡航速度（构造注入）、回收物品与 `glassWalls()`。加/减速段：普通车用 `JERK`、高速车用 `HIGH_SPEED_JERK`（更长更绵） |
+| 轿厢型号 | 三种：普通 `easyelevator:cabin`（4 格/秒巡航、拉丝不锈钢内舱）、高速 `easyelevator:high_speed_cabin`（10 格/秒巡航、世界里的外观与普通逐面相同，只有物品图标是金色带速度标记）、观光 `easyelevator:observation_cabin`（4 格/秒巡航、四面玻璃分格窗，保留四个支撑边） | `entity/AbstractCabinEntity` 为共同父类；三个子类只声明巡航速度（构造注入）、回收物品与 `glassWalls()`。加/减速段：三种型号共用 `CRUISE_RAMP_TICKS`，加速度与 jerk 上限按巡航速度解出（`MotionProfile.forCruiseSpeed`），因此高速车的加/减速距离更长（3.2 格 → 8.0 格）、加速度峰值也更高 |
 | 每线路轿厢数量 | 1（三种型号一起计数） | `CabinItem`、`AbstractCabinEntity.requestStop`、运行检查 |
 | 轿厢外观开关 | `glassWalls()` = false/true（仅观光为 true）；**纯客户端渲染提示**，不参与任何判定，也不进存档与网络包 | `CabinRenderer.drawStandardShell` / `drawObservationShell` + `drawObservationGlass` |
 | 轿厢内饰件 | 18 件（普通/高速）：三面踢脚线、三面不锈钢扶手、一圈顶棚灯槽 + 灯槽框 + 自发光顶灯、操纵面板六件（边框/面板/下沉显示窗/三颗按钮）；观光舱 31 件 = 同样的扶手/灯槽/顶灯/面板六件 + 玻璃上下压条 6 + 横向中梃 3 + 竖向分格 6 + 面板安装座 1 | `CabinRenderer.STANDARD_PARTS` / `OBSERVATION_PARTS`（每行 `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标） |
@@ -97,12 +100,13 @@
 | 轿厢门布局（两扇对开滑门） | 门洞半宽 `DOORWAY_HALF=1.3`（**门洞 = 整个轿厢正面**）、外缘内收 `OUTER_INSET=0.001`、外缘位置 `OUTER_EDGE=1.299`、中缝半宽 `SEAM=0.005`；门区 Z `DOOR_Z_BACK=1.1`..`DOOR_Z_FRONT=1.3`（0.2 格，门扇前表面与轿厢正面齐平） | `logic/SlidingDoor`：`panelX(右?, 进度)` 给出两扇的横向区间——**外缘固定在 ±OUTER_EDGE、内缘（先导端）从 SEAM 线性移到 OUTER_EDGE**，`clearHalfWidth(进度)` 给出净开度，`visible(进度)` 决定全开时是否还生成门扇。**改这里等于同时改渲染与碰撞**（`CabinRenderer.drawDoors` 与 `AbstractCabinEntity.collisionBoxes` 都调同一份函数）。与楼层门（`LandingDoorGeometry.leafEdge`）是同一套"外缘固定、内缘外移"的做法，所以里外两道门看起来一致；`OUTER_INSET` 用于避免门扇外缘与侧壁内表面共面。改这里等于同时改渲染与碰撞，务必同时复核"关门拼满正面只留中缝、外缘不动、内缘线性外移、两扇镜像、全开归零且门洞全通、不越出轿厢、与门框留 0.0125 格" |
 | 观光玻璃几何 | 每个面都是**零厚度单面**（正反都可见）：左右侧墙贴在墙心 X=∓1.4、后墙 Z=-1.4、两扇门 Z=轿厢正面-0.01；四周与角柱/地板/顶板各留 0.01 格缝（Y=0.21..2.79、Z=-1.29..门背面-0.01、后墙 X=∓1.29）；四根角柱 0.2×0.2 保持不透明；不透明的上下压条（Y 0.198..0.36 / 2.64..2.802）、一道横向中梃（Y 1.42..1.48）与每面两道竖向分格**横跨玻璃平面**，把每面分成 2×3 格窗 | 单面每层只叠一次透明度；换成 0.12 格厚薄板会正反各叠一次而发灰。0.01 格缝是为了不与不透明面共面——共面时浮点深度差会造成"玻璃与框架衔接处闪烁"。只影响绘制；碰撞仍取 `collisionBoxes()` 的 0.2 格实心墙 |
 | 观光玻璃渲染层 | 专用层 `easyelevator_cabin_glass`：照抄原版 `entity_translucent`（同着色器、贴图、混合、禁止剔除），只把写掩码换成 `COLOR_MASK`（**只写颜色、不写深度**） | `CabinRenderer.GLASS_LAYER`。世界渲染顺序是**实体 → 方块实体**（`WorldRenderer.render` 里 "entities" 早于 "blockentities"），而玻璃比楼层门更靠近观察者；玻璃若写深度，之后才绘制的楼层门会被深度测试整片剔除（"坐观光轿厢看不见每层电梯门"）。只写颜色后玻璃不遮挡任何后画几何，自身仍受深度测试约束 |
-| 观光玻璃通透度 | 墙面 `GLASS_COLOR` = 0x40BFE4F5（每面 25%，左右侧墙与后墙）、门扇玻璃 `GLASS_DOOR_COLOR` = 0x59A8D2EC（每面 35%，铁框中间那块）；单面各叠一次，隔着轿厢看穿两面约 44%；alpha 全在顶点色里，图集/方块玻璃贴图只提供一层极淡底色 | `CabinRenderer` + `client/GlassLayers`；调通透度只改这两个常量 |
-| 铁框玻璃门扇（几何） | 边框 `FramedLeaf.FRAME` = 2/16 格（≈12 厘米）；门扇变窄时边框最多占宽度 `FRAME_MAX_RATIO` = 0.34、上下横框最多占高度 `RAIL_MAX_RATIO` = 0.2（否则玻璃会被挤成负宽度、门快开完时闪一下）；玻璃是门扇厚度中线上的零厚度单面。楼层门的玻璃色 `LandingDoorRenderer.GLASS_COLOR` = 0x66A8D2EC | 几何 `logic/FramedLeaf`（纯算术），绘制 `client/FramedGlassDoor`，玻璃层 `client/GlassLayers.DOOR`；门是不是玻璃门由线路上的轿厢决定（`LandingDoorBlockEntity.glassDoors()`），观光线路的每一层都是玻璃门 |
+| 观光玻璃通透度 | 墙面 `GLASS_COLOR` = 0x1AD2E2F0（每面 **10%**，左右侧墙与后墙）、门扇玻璃 `GLASS_DOOR_COLOR` = 0x33B0D4EA（每面 20%，铁框中间那块）；单面各叠一次，隔着轿厢看穿两面约 19%；alpha 全在顶点色里，图集/方块玻璃贴图只提供低对比的中性灰底色（**不再自带高光**） | `CabinRenderer` + `client/GlassLayers` + `tools/generate_art.py` 的 `tile_glass`；调通透度只改这两个常量 |
+| 铁框玻璃门扇（几何） | 边框 `FramedLeaf.FRAME` = 2/16 格（≈12 厘米）；门扇变窄时边框最多占宽度 `FRAME_MAX_RATIO` = 0.34、上下横框最多占高度 `RAIL_MAX_RATIO` = 0.2（否则玻璃会被挤成负宽度、门快开完时闪一下）；玻璃是门扇厚度中线上的零厚度单面。楼层门的玻璃色 `LandingDoorRenderer.GLASS_COLOR` = 0x33B0D4EA（每面 20%） | 几何 `logic/FramedLeaf`（纯算术），绘制 `client/FramedGlassDoor`，玻璃层 `client/GlassLayers.DOOR`；门是不是玻璃门由线路上的轿厢决定（`LandingDoorBlockEntity.glassDoors()`），观光线路的每一层都是玻璃门 |
+| 玻璃在光影下的表现 | 三块玻璃的**贴图**都是低对比中性灰（图集 `Mat.GLASS` 均值 182,196,210；`blank_glass.png` 内芯均值 176,192,208、无高光像素），**顶点色 alpha** 决定通透度（10% / 20% / 20%）。压这么低的原因：不同光影包对"平面半透明面"的处理差别很大（Complementary ULTRA 档的 `COATED_TEXTURES` + `GENERATED_NORMALS` 会给它叠反射与泛光），把玻璃的**存在感**降到最低，无论哪套光影都看不出"一层白" | 贴图：`tools/generate_art.py` 的 `tile_glass` / `tex_glass_plate`（改完必须重跑脚本）；alpha：`CabinRenderer.GLASS_COLOR` / `GLASS_DOOR_COLOR`、`LandingDoorRenderer.GLASS_COLOR`。**这不是"玻璃自己发光"，也不是光照值问题**——全舱光照值一律用真实世界光照（见上表"厢内照明"） |
 | 铁框玻璃门扇（贴图） | **每一块构件的 UV 取用范围都跟着它自己的尺寸走**（与普通电梯门门扇用 `LeafUv.leafRange` 让贴图窗口随门板收窄是同一套思路）：竖框 `FramedLeaf.stileUv(窗口, 边框宽/门扇宽)` 只取横向那一段、纵向取整段；横框 `railUv(窗口, 边框高/门扇高)` 反过来；玻璃面 `paneUv(格子, 玻璃宽, 玻璃高)` 按宽高比取（u 取宽/高那段、v 取整段），使横竖像素密度一致；每块构件的四周断面再用 `LeafUv.centredThinSlice` 取中心一小块 | `logic/FramedLeaf`。**不这么做就会出现实机反馈的"贴图拉伸"**：整张贴图铺到 2/16 格宽的竖框上，整块门板贴图被压成一条"条形码"。改这几个比例时要保证"竖框取用宽度 = 边框占门扇的比例""横框取用高度 = 边框占门扇的比例""玻璃 UV 的宽高比 = 玻璃面的宽高比"，否则又会被拉伸 |
 | 轿厢材质图集 | 一张 4×4 共 16 格的 `textures/entity/cabin.png`，格号 = `CabinRenderer.Mat` 的枚举顺序（WALL/TRIM/DARK/FLOOR/CEIL/LAMP/RAIL/SILL/PANEL/BEZEL/BUTTON/GLASS/ACCENT + 三个备用格） | `CabinRenderer.Mat/MATERIAL_UV`、`BoxMesh` 的 UV 矩形重载；换格数或顺序必须同步 `tools/generate_art.py` 的 `ATLAS_TILES`，否则脚本报错 |
-| 厢内照明 | 顶灯按 **15 级方块光**参与渲染：`withLamp(light)` 取"采样世界光照"与"15 级方块光"的较大者（只抬方块光分量、天光原样保留），**不放置光源方块、不改世界数据** | `CabinRenderer.LAMP_LEVEL / withLamp`。实体不参与方块光照，所以灯罩画得再亮也照不亮井道；抬高渲染光照值是唯一不改存档/联机行为的做法。井道再暗厢内都有稳定亮度，白天也不会被压成偏黄 |
-| 顶棚自发光 | 顶灯灯罩那一行自发光标志 = 1，用 `LightmapTextureManager.MAX_LIGHT_COORDINATE` 绘制，因此永远比它照亮的舱内亮一档 | `CabinRenderer.drawParts` |
+| 厢内照明 | 轿厢**不做任何光照抬升**：外壳、内饰、玻璃一律用渲染管线按轿厢位置采样到的真实世界光照绘制（井道亮则亮、暗则暗），因此**光影包下整台电梯不会被当成一个光源**（1.9.0 曾把全舱抬到 15 级方块光，光影会把它当真实光源、连外壳一起照亮） | `CabinRenderer.render` 直接用管线传入的 `light`。实体不参与方块光照，所以舱内亮度本来就跟着井道走；只有顶灯灯罩自发光（见下一行） |
+| 顶棚自发光 | 顶灯灯罩那一行自发光标志 = 1，用 `LightmapTextureManager.MAX_LIGHT_COORDINATE` 绘制，因此在再暗的井道里也保持满亮度；全舱仅此一件自发光 | `CabinRenderer.STANDARD_PARTS` / `OBSERVATION_PARTS` 里的灯罩行（材质格 `Mat.LAMP`、标志 1），绘制见 `drawParts`（`p[7] != 0` 的行走最高亮度） |
 | 面板文字行位 | 两行用**行心**定位：箭头 +0.08 格、楼层号 −0.10 格（相对面板中心）；字体坐标由 `yOffset = -(行心 + fontHeight*scale/2)/scale` 换算（`TextRenderer.draw` 的 y 是**顶边**而不是中心） | `CabinRenderer.ARROW_LINE_CENTRE / FLOOR_LINE_CENTRE / drawPanelLine`。落位：箭头的字格 Y=1.481..1.679、楼层号 Y=1.319..1.481，都在显示窗 1.31..1.73 内且不与按钮（1.21..1.29）相撞 |
 | 站点数量来源 | 每扇完整的3×3楼层门产生一个站点 | `ElevatorLine.scan`、`LandingDoorBlock.complete` |
 | 厅外呼叫 | 每站两个方向各一条（▲ 上行 / ▼ 下行），带方向入状态机，最多 128 条；到站开门时清除该站两条，门被拆也清除 | `ElevatorController.HallCall/callHall`、`AbstractCabinEntity.requestHallCall` |
@@ -265,7 +269,7 @@
 按**运行方向上的位置顺序**处理请求（不是按键先后）：同一方向上更近的楼层先停，因此上行途中不会越过同方向的楼层去更远的那层；重复的同一门请求合并。厅外呼叫带方向，只有正在按该方向运行的轿厢才顺路接走它；两侧都没有顺路请求时按距离兜底（空车去接反方向的孤立呼叫），保证任何请求最终都会被服务。请求删除或不完整的门会被拒绝；已排队但被拆除的门被移除，被拆门所在站的厅外呼叫也一并取消。运行中目的门拆除会暂停，避免半空开门；新的有效请求可以恢复运行。断轨、朝向改变、多个轿厢、实体/方块障碍、世界边界和区块加载状态也会影响移动。
 
 不会主动加载区块，没有能耗、载重量、横向转弯和站点自定义名称参数。加速度与减速度由 S 形曲线的
-`MAX_ACCELERATION` / `JERK` 给定（不再是"匀速、无加减速"），插值仍然只用于平滑显示。
+`CRUISE_RAMP_TICKS` 与巡航速度共同给定（不再是"匀速、无加减速"），插值仍然只用于平滑显示。
 
 ## 5. 面板与安全边界
 
@@ -341,8 +345,8 @@
 最终高度准确、障碍不会穿越、门口防夹正常。工程内已无自动化测试，逐项检查表见
 [人工验收清单](TESTING.md)。
 
-改 `HIGH_SPEED`、`MAX_ACCELERATION` 或 `JERK` / `HIGH_SPEED_JERK`（或新增第四种型号）后至少确认：
+改 `HIGH_SPEED`、`CRUISE_RAMP_TICKS` 或 `MAX_ACCELERATION`（或新增第四种型号）后至少确认：
 ① `巡航速度 + POSITION_EPSILON ≤ 1 格` 仍然成立（否则单刻位移可能跨过整格站点、到站吸附失效）；
-② 三种型号的加/减速手感（高速车的 jerk 更小，斜坡是普通车的 2.5 倍长）；
+② 三种型号的加/减速手感（加/减速段各 `CRUISE_RAMP_TICKS` 刻，距离 = `速度 × T / 2`：普通 3.2 格、高速 8.0 格）；
 ③ 到站仍精确停在楼层高度、运行途中门保持关闭、开关门与停留时间不变。
 

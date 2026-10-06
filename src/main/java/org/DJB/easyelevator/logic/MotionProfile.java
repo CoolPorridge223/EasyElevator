@@ -24,10 +24,12 @@ import java.util.List;
  * <ul>
  *   <li><b>限速</b>：曲线速度恒 ≤ 巡航上限（即轿厢型号速度），因此单刻位移恒 ≤ 巡航上限，
  *       "单刻位移 + {@link ElevatorParameters#POSITION_EPSILON} ≤ 1 格"这一到站精度前提继续成立。</li>
- *   <li><b>限加速度</b>：|a| 恒 ≤ {@code maxAcceleration}（默认 {@link ElevatorParameters#MAX_ACCELERATION}）。</li>
- *   <li><b>限加加速度</b>：S 段的 |j| 恒等于 {@code maxJerk}（按型号取 {@link ElevatorParameters#JERK}
- *       或 {@link ElevatorParameters#HIGH_SPEED_JERK}，后者更小 ⇒ 高速梯的加/减速段更长）；
- *       收尾斜坡段的 j = 0，因此不存在无界的加速度跳变。</li>
+ *   <li><b>限加速度</b>：|a| 恒 ≤ 生效的加速度上限。按型号构造（{@link #forCruiseSpeed}）时它就是
+ *       "巡航速度 / {@link ElevatorParameters#CRUISE_RAMP_TICKS}"，因此曲线走的是<b>三角形</b>加速度波形
+ *       （没有匀加速平台），加/减速段长度与舒适度由该时间唯一决定；{@link ElevatorParameters#MAX_ACCELERATION}
+ *       只是兜底硬上限。</li>
+ *   <li><b>限加加速度</b>：S 段的 |j| 恒等于生效的 jerk 上限（按型号构造时由加速度峰值与斜坡时长推出，
+ *       {@code j = 2·a_p/T}）；收尾斜坡段的 j = 0，因此不存在无界的加速度跳变。</li>
  *   <li><b>精确到站</b>：曲线终点就是目标站点本身，因此 {@link #advance} 在最后一刻直接给出"恰好到站"
  *       的位移，不需要最小位移量子或容差兜底（与旧实现的精确吸附语义一致）。</li>
  *   <li><b>可重规划</b>：{@link #plan} 接受任意初速度/初加速度，因此"运行途中顺路改道到更近的楼层"
@@ -86,35 +88,76 @@ public final class MotionProfile {
     private final double maxJerk;
 
     /**
-     * 以轿厢型号的速度与型号相关的 jerk/加速度上限构造。
+     * jerk 的兜底值：只在调用方显式传入非法 jerk（{@code forCruiseSpeed} 永远不会走到这里）时使用。
+     *
+     * <p>必须存在的原因与速度、加速度的兜底一样：jerk 一旦是 0 或 NaN，斜坡时长 {@code sqrt(Δv/j)}
+     * 会变成除零或 NaN，曲线既规划不出来也走不到站。取值只需"与按型号推出的默认值同量级"，
+     * 生产路径上的 jerk 一律由 {@link #forCruiseSpeed} 解出，不经过这里。
+     */
+    private static final double DEFAULT_RAMP_JERK = .0004;
+
+    /**
+     * 以显式的三条上限构造（供测试与特殊调参使用）。
      *
      * @param cruiseSpeed 巡航速度上限（格/刻）；非正、NaN 或无穷大时退化为 {@link ElevatorParameters#SPEED}
      * @param maxAcceleration 加速度上限（格/刻²）；非法时退化为 {@link ElevatorParameters#MAX_ACCELERATION}
-     * @param maxJerk 加加速度上限（格/刻³）；非法时退化为 {@link ElevatorParameters#JERK}
+     * @param maxJerk 加加速度上限（格/刻³）；非法时退化为 {@link #DEFAULT_RAMP_JERK}
      */
     public MotionProfile(double cruiseSpeed, double maxAcceleration, double maxJerk) {
         this.cruiseSpeed = positive(cruiseSpeed, ElevatorParameters.SPEED);
         this.maxAcceleration = positive(maxAcceleration, ElevatorParameters.MAX_ACCELERATION);
-        this.maxJerk = positive(maxJerk, ElevatorParameters.JERK);
+        this.maxJerk = positive(maxJerk, DEFAULT_RAMP_JERK);
     }
 
-    /** 以默认参数（普通轿厢的速度与加速度上限）构造。 */
-    public MotionProfile() { this(ElevatorParameters.SPEED, ElevatorParameters.MAX_ACCELERATION, ElevatorParameters.JERK); }
+    /**
+     * 以默认参数构造：巡航速度取 {@link ElevatorParameters#SPEED}，加速度与 jerk 上限按
+     * {@link ElevatorParameters#CRUISE_RAMP_TICKS} 解出。
+     *
+     * <p>与 {@code forCruiseSpeed(SPEED)} 等价，只是 {@code this(...)} 必须是首句、不能写成工厂调用，
+     * 因此把那条路径的三步算式就地展开（见 {@link #forCruiseSpeed(double, double)}）。
+     */
+    public MotionProfile() {
+        this(ElevatorParameters.SPEED,
+                Math.min(ElevatorParameters.SPEED / ElevatorParameters.CRUISE_RAMP_TICKS, ElevatorParameters.MAX_ACCELERATION),
+                2 * Math.min(ElevatorParameters.SPEED / ElevatorParameters.CRUISE_RAMP_TICKS, ElevatorParameters.MAX_ACCELERATION)
+                        / ElevatorParameters.CRUISE_RAMP_TICKS);
+    }
 
     /**
-     * 按轿厢型号推出默认的加加速度（jerk）上限。
+     * 按轿厢型号构造：由"巡航速度 + {@link ElevatorParameters#CRUISE_RAMP_TICKS}"解出加/减速段的几何。
      *
-     * <p>为什么按型号分档：加速度上限三型相同（体感强度一致），而 jerk 决定"加速度升到上限要多久"。
-     * 高速梯以 10 格/秒运行，同样的斜坡会明显更突兀，且现实中越快的电梯加/减速段越长，因此
-     * 高速档取普通档的 {@code SPEED / HIGH_SPEED} 倍（更小 ⇒ 加/减速段更长）。
+     * <p>这是生产路径（{@link ElevatorController} 走的就是它）。给定巡航速度 v 与过渡时间 T（刻）：
+     * 加速度上限 {@code a_p = v / T}、jerk 上限 {@code j = 2·a_p / T}（于是加速度波形是"斜坡 T/2 +
+     * 回落 T/2"的三角形，峰值恰好 a_p、加/减速段各 T 刻、各走 {@code v·T/2} 格）。
+     * 因为 slew 率与斜坡时长由同一个 a_p 推出，{@link #planRamp} 的"加速度触顶"分支不会触发，
+     * 曲线永远走三角形波形——这正是"加/减速距离由 T 唯一决定"的含义。
      *
-     * @param speed 轿厢巡航速度（格/刻）
-     * @return 该型号的 jerk 上限（格/刻³）；速度非高速档时返回 {@link ElevatorParameters#JERK}
+     * <p>加速度仍与 {@link ElevatorParameters#MAX_ACCELERATION} 取较小值：把
+     * {@code CRUISE_RAMP_TICKS} 调得特别小时，加速度会先撞上硬上限，加/减速段比 T 短——
+     * 这是"不许把乘客甩出去"的底线，而不是正常工作点。
+     *
+     * @param cruiseSpeed 巡航速度上限（格/刻）；非法时退化为 {@link ElevatorParameters#SPEED}
+     * @param rampTicks 从静止加到该巡航速度所需的刻数；非有限或非正时退化为
+     *                  {@link ElevatorParameters#CRUISE_RAMP_TICKS}
+     * @return 该型号的曲线参数
      */
-    public static double defaultJerk(double speed) {
-        if (!Double.isFinite(speed) || speed <= 0) return ElevatorParameters.JERK;
-        // 与 HIGH_SPEED 同档（含浮点相等）即视为高速型号：构造时注入的就是该常量本身。
-        return speed >= ElevatorParameters.HIGH_SPEED ? ElevatorParameters.HIGH_SPEED_JERK : ElevatorParameters.JERK;
+    public static MotionProfile forCruiseSpeed(double cruiseSpeed, double rampTicks) {
+        double speed = positive(cruiseSpeed, ElevatorParameters.SPEED);
+        double ramp = Double.isFinite(rampTicks) && rampTicks > 0 ? rampTicks : ElevatorParameters.CRUISE_RAMP_TICKS;
+        double acceleration = Math.min(speed / ramp, ElevatorParameters.MAX_ACCELERATION);
+        // 斜坡时长取 T/2（而不是"从 0 加到 a_p 所需的最短时长"），加速度波形因此是等腰三角形。
+        double jerk = 2 * acceleration / ramp;
+        return new MotionProfile(speed, acceleration, jerk);
+    }
+
+    /**
+     * 按轿厢型号构造，过渡时间取 {@link ElevatorParameters#CRUISE_RAMP_TICKS}。
+     *
+     * @param cruiseSpeed 巡航速度上限（格/刻）
+     * @return 该型号的曲线参数
+     */
+    public static MotionProfile forCruiseSpeed(double cruiseSpeed) {
+        return forCruiseSpeed(cruiseSpeed, ElevatorParameters.CRUISE_RAMP_TICKS);
     }
 
     /**

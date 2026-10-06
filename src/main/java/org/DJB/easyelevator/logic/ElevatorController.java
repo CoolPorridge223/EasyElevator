@@ -137,9 +137,9 @@ public final class ElevatorController {
     /**
      * 本实例的 S 形速度曲线（Jerk-limited profile）：负责回答"本刻该走多远"。
      *
-     * <p>状态机只管"什么时候能走、往哪走、门怎么联动"，运动形状全部委托给它。曲线按型号注入
-     * 速度、加速度与 jerk 上限，因此高速梯天然拥有更长的加/减速段（见
-     * {@link ElevatorParameters#HIGH_SPEED_JERK}）。
+     * <p>状态机只管"什么时候能走、往哪走、门怎么联动"，运动形状全部委托给它。曲线在构造时
+     * 按巡航速度与 {@link ElevatorParameters#CRUISE_RAMP_TICKS} 解出加速度与 jerk 上限
+     * （见 {@link MotionProfile#forCruiseSpeed(double)}），因此换型号只改变巡航速度与加/减速段的长度。
      */
     private final MotionProfile profile;
     /**
@@ -211,20 +211,20 @@ public final class ElevatorController {
      * @param speed 巡航速度上限（单位：格/刻）；非正数、NaN 或无穷大时退化为
      *              {@link ElevatorParameters#SPEED}，避免存档载入的坏值让轿厢永远到不了站
      */
-    public ElevatorController(double speed) { this(speed, MotionProfile.defaultJerk(speed)); }
+    public ElevatorController(double speed) { this(speed, ElevatorParameters.CRUISE_RAMP_TICKS); }
 
     /**
-     * 用指定巡航速度与加加速度上限构造状态机。
+     * 用指定巡航速度与加/减速过渡时间构造状态机。
      *
      * @param speed 巡航速度上限（单位：格/刻）；非法时退化为 {@link ElevatorParameters#SPEED}
-     * @param jerk 加加速度上限（单位：格/刻³）；非法时按型号推出（见 {@link MotionProfile#defaultJerk(double)}）。
-     *             jerk 越小，加/减速段越长：高速梯默认取普通梯的 0.4 倍，因此同样升到加速度上限
-     *             需要 2.5 倍的时间，10 格/秒的"推背感"被摊得更开。
+     * @param rampTicks 从静止加到该巡航速度所需的刻数；越大加/减速段越长、越绵软，
+     *                  非法时退化为 {@link ElevatorParameters#CRUISE_RAMP_TICKS}。
+     *                  加速度与 jerk 上限都由它与速度推出（见 {@link MotionProfile#forCruiseSpeed}）。
      */
-    public ElevatorController(double speed, double jerk) {
+    public ElevatorController(double speed, double rampTicks) {
         this.speed = Double.isFinite(speed) && speed > 0 ? speed : ElevatorParameters.SPEED;
         // 曲线在构造时一次性注入速度/加速度/jerk 上限，运行中不变：状态机仍然完全确定、可脱离游戏单测。
-        this.profile = new MotionProfile(this.speed, ElevatorParameters.MAX_ACCELERATION, jerk);
+        this.profile = MotionProfile.forCruiseSpeed(this.speed, rampTicks);
     }
 
     /** @return 本实例的巡航速度上限（单位：格/刻）：普通 0.20、高速 0.50；只读，运行中不变。 */

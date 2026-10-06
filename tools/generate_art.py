@@ -328,29 +328,35 @@ def tex_speed_plate():
 
 
 def tex_glass_plate():
-    """``blank_glass.png`` - laminated pane with a steel mullion frame and reflections."""
-    base = (191, 216, 238)
+    """``blank_glass.png`` - laminated pane with a soft sheen and a plain steel rim.
+
+    Every colour stays low-contrast and mid-dark on purpose.  The plate used to carry two hard
+    diagonal reflections plus a (226,240,252) mitre line, i.e. it painted its own highlights; the
+    framed glass door draws that same inner area at 20..30 % alpha, so those highlights landed on
+    top of whatever was behind the door and read as white glare through the glass.  A pane should
+    modulate what is behind it - brightness comes from the world, not from the texture.
+    """
+    base = (176, 192, 208)
     rnd = random.Random(1508)
     v = Canvas(BLOCK_SIZE, BLOCK_SIZE)
     for y in range(BLOCK_SIZE):
         for x in range(BLOCK_SIZE):
             # Soft corner-to-corner sheen: brighter top-left, cooler bottom-right.
-            delta = int(round(16 - 24 * (x + y) / (2 * (BLOCK_SIZE - 1))))
+            delta = int(round(10 - 16 * (x + y) / (2 * (BLOCK_SIZE - 1))))
             v.set(x, y, shade(base, delta + rnd.randint(-2, 2)))
-    # Two wide diagonal reflections.
+    # Two wide, gentle diagonal reflections (soft: no bright band on top of the scenery).
     for offset in (6, -12):
         for step in range(BLOCK_SIZE * 2):
             x = step - BLOCK_SIZE // 2
             y = x + offset + 14
             for thick in range(3):
-                v.set(x, y + thick, shade(base, 30 - thick * 8))
-    # Steel frame: 2 px border plus one bright mitre line.
-    v.frame(0, 0, BLOCK_SIZE - 1, BLOCK_SIZE - 1, (126, 150, 172, 255))
-    v.frame(1, 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2, (168, 190, 210, 255))
-    v.frame(2, 2, BLOCK_SIZE - 3, BLOCK_SIZE - 3, (150, 176, 200, 255))
-    v.hline(3, 3, BLOCK_SIZE - 4, (226, 240, 252, 255))
+                v.set(x, y + thick, shade(base, 12 - thick * 4))
+    # Steel rim: plain, one shade darker than the pane, no bright mitre.
+    v.frame(0, 0, BLOCK_SIZE - 1, BLOCK_SIZE - 1, (142, 156, 172, 255))
+    v.frame(1, 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2, (158, 174, 190, 255))
+    v.frame(2, 2, BLOCK_SIZE - 3, BLOCK_SIZE - 3, (164, 180, 196, 255))
     for _ in range(14):
-        v.shift(rnd.randrange(4, BLOCK_SIZE - 4), rnd.randrange(4, BLOCK_SIZE - 4), rnd.choice((-9, 9)))
+        v.shift(rnd.randrange(4, BLOCK_SIZE - 4), rnd.randrange(4, BLOCK_SIZE - 4), rnd.choice((-8, 8)))
     return v
 
 
@@ -483,12 +489,19 @@ def tile_button(v, rnd):
 
 
 def tile_glass(v, rnd):
-    """Plain pane for the observation cabin: the vertex colour supplies tint and alpha."""
+    """Plain pane for the observation cabin: the vertex colour supplies tint and alpha.
+
+    Deliberately neutral and only mid-dark.  The tile used to be near-white (246,250,254) and is
+    drawn at a low alpha across the whole view, so under a shader pack that treats flat translucent
+    surfaces as glossy (Complementary's "coated textures" / generated normals, for instance) the
+    pane used to read as a white film over the scenery.  A low-albedo, low-contrast tile leaves the
+    pane almost nothing to add: what you see through the glass is the world.
+    """
     for y in range(TILE):
         for x in range(TILE):
-            v.set(x, y, shade((246, 250, 254, 255), int(round(4 - 8 * y / (TILE - 1)))))
+            v.set(x, y, shade((182, 196, 210, 255), int(round(4 - 8 * y / (TILE - 1)))))
     for _ in range(10):
-        v.shift(rnd.randrange(TILE), rnd.randrange(TILE), rnd.choice((-4, 4)))
+        v.shift(rnd.randrange(TILE), rnd.randrange(TILE), rnd.choice((-3, 3)))
 
 
 def tile_accent(v, rnd):
