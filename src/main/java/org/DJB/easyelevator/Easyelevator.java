@@ -49,7 +49,7 @@ public class Easyelevator implements ModInitializer {
     /** 电梯轨道方块单例：垂直放置的一列连续轨道，朝向即轿厢所在方向。 */
     public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
-    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
+    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque().dynamicBounds());
     /**
      * 楼层电梯门的方块实体类型单例（注册 ID {@code easyelevator:landing_door}）。
      *

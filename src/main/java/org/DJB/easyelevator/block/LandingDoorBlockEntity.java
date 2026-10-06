@@ -33,7 +33,7 @@ import org.DJB.easyelevator.logic.ElevatorStatus;
  * 客户端与服务端各自就地算出的结果必然一致，因此不需要任何自定义包，也不写世界状态。
  *
  * <p>采样按刻对齐：{@link #sample()} 用世界刻号当闸门，一刻只推进一次样本。同一刻内无论
- * 碰撞查询被调用多少次、面板是否刷新、渲染跑多少帧，都共享同一对样本（上一刻/当前刻），
+     * 面板是否刷新、渲染跑多少帧，都共享同一对渲染样本（上一刻/当前刻），碰撞独立读取最新进度；
  * 渲染器再用 tickDelta 在两者之间线性插值——这与轿厢渲染器读 DataTracker 的上一刻/当前值
  * 完全同构，因此两层门在画面上不会互相错位。
  */
@@ -83,7 +83,13 @@ public final class LandingDoorBlockEntity extends BlockEntity {
 
     /** 不做插值的门扇进度，用于碰撞形状与联锁判定。
      * @return 当前刻进度 0..1（0 全关、1 全开） */
-    public float openProgress() { sample(); return progress; }
+    public float openProgress() {
+        if (world == null) return 0f;
+        BlockState state = world.getBlockState(pos);
+        // 碰撞必须读最新进度；本刻早些时候的渲染采样可能早于轿厢 tick 或客户端状态包。
+        return state.isOf(Easyelevator.LANDING_DOOR) && state.get(LandingDoorBlock.OPEN)
+                ? LandingDoorBlock.leafProgress(world, pos) : 0f;
+    }
 
     /** 渲染用的插值进度：与轿厢门用同一个 tickDelta 在上一刻/当前刻样本之间插值。
      * @param tickDelta 渲染插值系数，0..1，由渲染管线给出

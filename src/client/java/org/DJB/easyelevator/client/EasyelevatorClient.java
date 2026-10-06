@@ -89,7 +89,8 @@ public class EasyelevatorClient implements ClientModInitializer {
                     // 已经为同一扇门开着面板时只刷新内容：避免每次点按钮都重建界面（会打断连点）。
                     if(context.client().currentScreen instanceof DoorSoundScreen screen && screen.station().equals(payload.station()))
                         screen.apply(payload.enabled(),payload.choice(),payload.baseFloor(),payload.preview());
-                    else context.client().setScreen(new DoorSoundScreen(payload));
+                    // 广播只刷新：不能抢走旁观者的游戏画面、背包或另一扇门的面板。
+                    else if (payload.open()) context.client().setScreen(new DoorSoundScreen(payload));
                 }));
         // 收到某个门槽的音频内容（服务端分发、或进服补齐的回应）：存进权威副本 -> 标记待重载。
         // 这一步让"上传者以外的玩家、以及上传之后才进服的人"也能听到同一段音频。

@@ -25,7 +25,7 @@ public final class CabinMotion {
     private static final class Track {
         final MotionTimeline timeline = new MotionTimeline();
         long receivedAt; // 最近一次收到 MotionFrame 时的客户端世界时刻（刻，world.getTime()），用于过期判定
-        double lastY, riderOffset = Double.NaN; // lastY：最近同步的服务端绝对 Y（格）；riderOffset：乘客相对轿厢底部的偏移（格），NaN=本机玩家不是该轿厢乘客
+        double lastY, riderOffset = Double.NaN; // lastY：服务端绝对 Y；riderOffset：乘客相对高度，NaN=非乘客或已停止运行，不绑定镜头
         boolean initialized; // 是否已收过样本；首个样本没有"上一次位置"，故用实体当前 Y 作锚点
     }
     // 纯静态工具类，禁止实例化。
@@ -33,7 +33,7 @@ public final class CabinMotion {
     /** 接收一帧服务端运动同步并写入该轿厢的时间线。
      * 只在客户端主线程执行（由 ClientPlayNetworking 回调用 context.client().execute 派发）。
      * @param frame 服务端心跳包：entityId 轿厢实体 id、tick 服务端世界刻、y 轿厢绝对 Y（格）、
-     *              riderOffset 观察者相对轿厢底部的偏移（格），非乘客为 NaN
+     *              riderOffset 观察者相对轿厢底部的偏移（格），非乘客或已停止运行时为 NaN
      * 副作用：更新 TRACKS 中的时间线与 localRiderCabin；不发包、不改世界方块、不播放音效。
      */
     public static void receive(ElevatorNetworking.MotionFrame frame) {
@@ -47,7 +47,7 @@ public final class CabinMotion {
         track.timeline.add(frame.tick(), frame.y(), now, track.initialized ? track.lastY : cabin.getY());
         track.receivedAt = now; track.lastY = frame.y(); track.initialized = true;
         track.riderOffset = frame.riderOffset();
-        // riderOffset 为 NaN 表示本机玩家不在该轿厢内；只有当前记录仍指向它时才清空，避免被别的轿厢的无乘客包误清。
+        // riderOffset 为 NaN 表示不绑定镜头（非乘客或已停车）；只清空当前轿厢的绑定。
         if (Double.isFinite(frame.riderOffset())) localRiderCabin = cabin;
         else if (localRiderCabin == cabin) localRiderCabin = null;
     }
@@ -77,10 +77,11 @@ public final class CabinMotion {
         // 只处理本机第一人称主体；其它实体视角（副相机、回放）不介入，防止污染旁观视角。
         if (focused != client.player || cabin == null) return 0;
         Track track = TRACKS.get(cabin);
-        // 下列条件任一不成立（轿厢已移除、跨世界、旁观模式、骑乘载具、无乘客偏移、同步过期、
+        // 下列条件任一不成立（轿厢已移除、跨世界、旁观模式、骑乘载具、已停止运行、无乘客偏移、同步过期、
         // 玩家离开轿厢水平 1.5 格以上、与记录高度差超过 0.5 格）都表示"本机乘客"关系已失效：
         // 立即放弃平滑让原版相机接管，避免把玩家镜头锁在错误的轿厢上。
         if (cabin.isRemoved() || client.world != cabin.getWorld() || focused.isSpectator() || focused.hasVehicle()
+                || cabin.phase() != org.DJB.easyelevator.logic.ElevatorController.Phase.MOVING || !cabin.hasTarget()
                 || track == null || !Double.isFinite(track.riderOffset)
                 || cabin.getWorld().getTime() - track.receivedAt > ElevatorParameters.MOTION_STALE_TICKS
                 || Math.abs(focused.getX() - cabin.getX()) > 1.5 || Math.abs(focused.getZ() - cabin.getZ()) > 1.5
@@ -89,10 +90,6 @@ public final class CabinMotion {
             return 0;
         }
         double visualY = renderY(cabin, delta);
-        // 静止且视觉位置与服务端位置一致（误差 <= POSITION_EPSILON = 1e-7 格）时不加偏移：
-        // 否则相机插值与实体插值两条独立曲线会产生亚像素级抖动。
-        if (cabin.phase() != org.DJB.easyelevator.logic.ElevatorController.Phase.MOVING
-                && Math.abs(visualY - track.lastY) <= ElevatorParameters.POSITION_EPSILON) return 0;
         // 视觉轿厢底 Y + 乘客相对底部偏移（格）- 玩家原版插值 Y（格）= 需要补偿的高度差；
         // 锚点仍是"脚下"，因此原版随后的眼高、视角摆动与第三人称贴墙检测照常工作。
         return visualY + track.riderOffset - MathHelper.lerp(delta, focused.prevY, focused.getY());

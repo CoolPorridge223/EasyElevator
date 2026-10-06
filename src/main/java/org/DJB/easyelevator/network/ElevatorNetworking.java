@@ -77,7 +77,7 @@ public final class ElevatorNetworking {
      * @param entityId 轿厢实体在网络层中的运行时 id，单位：无；同一存档内不保证稳定
      * @param tick 采集该样本时的世界时间，单位：刻（tick），用于把样本对齐到客户端时间轴
      * @param y 轿厢本体的绝对 Y 坐标，单位：格（方块）
-     * @param riderOffset 该接收者自身 Y 与轿厢 Y 的差值，单位：格；非乘客为 {@link Double#NaN}，
+     * @param riderOffset 该接收者自身 Y 与轿厢 Y 的差值，单位：格；非乘客或已停止运行时为 {@link Double#NaN}，
      *                    表示"本机玩家不在这个轿厢里"，客户端据此禁用乘客镜头补偿
      */
     public record MotionFrame(int entityId, long tick, double y, double riderOffset) implements CustomPayload {
@@ -104,13 +104,16 @@ public final class ElevatorNetworking {
      * 因此静止时没有持续的网络流量。
      *
      * <p>副作用：向每个追踪者发包（每玩家一帧，偏移量因人而异，不能用广播包代替）。
-     * 乘客偏移量按接收者单独计算：乘客得到真实的自身 Y 与轿厢 Y 之差，非乘客得到 {@link Double#NaN}。
+     * 乘客偏移量按接收者单独计算：运行中的乘客得到真实的自身 Y 与轿厢 Y 之差，其他情况得到 {@link Double#NaN}。
      *
      * @param cabin 要同步的轿厢，必须位于服务端世界
      */
     public static void syncMotion(AbstractCabinEntity cabin) {
         for (ServerPlayerEntity observer : PlayerLookup.tracking(cabin)) {
-            double riderOffset = cabin.containsPassenger(observer) ? observer.getY() - cabin.getY() : Double.NaN;
+            // 到站（包括最后一帧位移）立即释放镜头；停车补帧只平滑轿厢，不再绑定乘客。
+            double riderOffset = cabin.phase() == org.DJB.easyelevator.logic.ElevatorController.Phase.MOVING
+                    && cabin.hasTarget() && cabin.containsPassenger(observer)
+                    ? observer.getY() - cabin.getY() : Double.NaN;
             ServerPlayNetworking.send(observer, new MotionFrame(cabin.getId(), cabin.getWorld().getTime(), cabin.getY(), riderOffset));
         }
     }
@@ -298,18 +301,19 @@ public final class ElevatorNetworking {
      * @param choice    到站提示音的选项序号
      * @param baseFloor 这一站是否就是整条线路的基准层（1 层）
      * @param soundSlot 该门在运行时资源包里的音效槽位（面板据此显示自定义音频的文件名）
+     * @param open      true 允许主动打开面板；false 仅刷新已经打开的同站点面板
      * @param preview   本次下发前服务端是否刚试听过（非 0 表示面板上那一行要闪一下）
      */
     public record OpenDoorPanel(BlockPos station, String floorLabel,
                                 boolean enabled, int choice,
-                                boolean baseFloor, int soundSlot, int preview) implements CustomPayload {
+                                boolean baseFloor, int soundSlot, int preview, boolean open) implements CustomPayload {
         /** 该负载的类型 id，注册与路由键：{@code easyelevator:open_door_panel}。 */
         public static final Id<OpenDoorPanel> ID = new Id<>(Easyelevator.id("open_door_panel"));
         /** {@link #preview} 的取值：本次没有试听。 */
         public static final int PREVIEW_NONE = 0;
         /** {@link #preview} 的取值：服务端刚试听过到站提示音。 */
         public static final int PREVIEW_PLAYED = 1;
-        /** 线格式编解码器：坐标、层号文本、两个设置标量、基准层、槽位、试听标记。 */
+        /** 线格式编解码器：坐标、层号文本、两个设置标量、基准层、槽位、试听标记、打开标记。 */
         public static final PacketCodec<RegistryByteBuf,OpenDoorPanel> CODEC = new PacketCodec<>() {
             /** 读回一份面板快照；层号文本做了长度上限校验，避免畸形包构造超长字符串。 */
             @Override public OpenDoorPanel decode(RegistryByteBuf buf) {
@@ -319,7 +323,7 @@ public final class ElevatorNetworking {
                 boolean baseFloor=buf.readBoolean();
                 int slot=buf.readVarInt();
                 int preview=buf.readVarInt();
-                return new OpenDoorPanel(station,label,enabled,choice,baseFloor,slot,preview);
+                return new OpenDoorPanel(station,label,enabled,choice,baseFloor,slot,preview,buf.readBoolean());
             }
             /** 写出面板快照：字段顺序必须与解码严格一致。 */
             @Override public void encode(RegistryByteBuf buf,OpenDoorPanel p) {
@@ -329,6 +333,7 @@ public final class ElevatorNetworking {
                 buf.writeBoolean(p.baseFloor());
                 buf.writeVarInt(p.soundSlot());
                 buf.writeVarInt(p.preview());
+                buf.writeBoolean(p.open());
             }
         };
         /** @return 负载类型 id，框架据此把包分发到对应接收器 */
@@ -763,7 +768,7 @@ public final class ElevatorNetworking {
      */
     public static void broadcastDoorPanel(World world,BlockPos origin,int preview) {
         if (!(world instanceof ServerWorld server)) return;
-        OpenDoorPanel payload=doorPanel(server,origin,preview);
+        OpenDoorPanel payload=doorPanel(server,origin,preview,false);
         if (payload==null) return;
         for (ServerPlayerEntity observer : PlayerLookup.around(server,origin,64d)) ServerPlayNetworking.send(observer,payload);
     }
@@ -779,7 +784,7 @@ public final class ElevatorNetworking {
      */
     public static void sendDoorPanel(ServerPlayerEntity player,BlockPos origin,int preview) {
         if (!(player.getServerWorld() instanceof ServerWorld server)) return;
-        OpenDoorPanel payload=doorPanel(server,origin,preview);
+        OpenDoorPanel payload=doorPanel(server,origin,preview,true);
         if (payload!=null) ServerPlayNetworking.send(player,payload);
     }
     /**
@@ -791,13 +796,14 @@ public final class ElevatorNetworking {
      * @param server 服务端世界
      * @param origin 站点根方块坐标
      * @param preview 本次要提示的试听状态
+     * @param open 是否允许客户端主动打开界面
      * @return 面板快照；拿不到门时返回 null
      */
-    private static OpenDoorPanel doorPanel(ServerWorld server,BlockPos origin,int preview) {
+    private static OpenDoorPanel doorPanel(ServerWorld server,BlockPos origin,int preview,boolean open) {
         if (!(doorEntity(server,origin) instanceof LandingDoorBlockEntity door)) return null;
         DoorArrivalSound sound=door.arrivalSound();
         return new OpenDoorPanel(origin.toImmutable(),floorLabel(server,origin),
-                sound.enabled(),sound.choice(),door.baseFloor(),door.soundSlot(),preview);
+                sound.enabled(),sound.choice(),door.baseFloor(),door.soundSlot(),preview,open);
     }
     /**
      * 算某个站点当前的层号显示文本（例如 {@code "3"} / {@code "B1"}），供设置面板显示。

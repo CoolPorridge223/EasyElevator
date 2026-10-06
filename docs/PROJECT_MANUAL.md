@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.1.0** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
+> 适用模组版本 **2.1.1** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -34,7 +34,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 维度 | 事实 |
 | --- | --- |
 | 模组 ID / 命名空间 | `easyelevator` |
-| 版本 | 2.1.0（见 [gradle.properties](../gradle.properties)） |
+| 版本 | 2.1.1（见 [gradle.properties](../gradle.properties)） |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威） |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×3 型号（普通 / 高速 / 观光） |
 | 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
@@ -448,7 +448,7 @@ tick()
  ├─4  before = controller.phase()                   用于末尾判断音效/事件
  ├─5  currentLine = line()                          ElevatorLine.scan
  ├─6  unique = 线路有效 && 朝向一致 && cabins==1      运行许可
- ├─7  waitingForPassengers = tickPassengers()       乘客名册：记录/找回/淘汰/决定能否移动
+ ├─7  waitingForPassengers = tickPassengers()       乘客名册：记录/开门离厢注销/闭门恢复/决定能否移动
  ├─8  nextY = controller.tick(getY(), Environment{...})
  │        valid / canMove / doorwayBlocked / canResume / arrived
  ├─9  dy = nextY - getY()
@@ -850,7 +850,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `progress / previousProgress / sampledTick` | 门扇进度样本与刻闸门 |
 | `baseFloor` | 基准层标记（随 NBT 存档） |
 | `cabinFloor / cabinStatus` | 门框顶部显示缓存，每刻一次 |
-| `openProgress()` | 不插值，供碰撞与联锁 |
+| `openProgress()` | 不插值，每次读当前开度，绕过渲染采样缓存，供碰撞与联锁 |
 | `openProgress(tickDelta)` | `lerp(previousProgress, progress, clamp(t))`，供渲染 |
 | `sample()` | 私有；同刻只推进一次；`progress = OPEN ? leafProgress : 0`；刷新 cabin 显示 |
 | `cabinOf(world, state)` | 按线路中心 + 高度区间定位轿厢；多辆时取 **id 最小** |
@@ -944,7 +944,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `LandingDoorRenderer` | `TEXTURE=blank_door`、`FLOOR_SCALE=.016f`、`SCREEN_CENTRE_Y=2.90625`、`SCREEN_INSET=.75/16`、`TEXT_STANDOFF=.008`、`STATUS_GAP=6f` | 先画层号再画门扇（全开无门扇直接返回）；文字按行心定位（`draw` 的 y 是顶边）；门扇 UV 只取"还露在外面"的一段（贴图随门板滑而不是被压扁）；`rendersOutsideBoundingBox=true`（门扇会滑出根方块那格，默认剔除会让它提前消失） |
 | `ElevatorScreen` | `BUTTON=20,GAP=4`、`MAX_COLUMNS/ROWS=8`、`PADDING=16,HEADER=64,FOOTER=40`、配色常量 | 站点自行按 Y→X→Z 排序；`init()` 算网格与面板矩形并铺控件；`tick()` 用宽松 `staysInside` 自动关闭；`render` 每帧刷新区按钮可用性；`renderBackground` 只做淡黑叠加（不用模糊） |
 | `LandingDoorScreen` | `BUTTON=20,GAP=6,PADDING=10` | 按钮数 = 显示的方向数 + 1（关闭）；`pending` 决定是否红色 |
-| `CabinMotion` | `TRACKS: WeakHashMap<AbstractCabinEntity, Track>`、`localRiderCabin` | `receive` 入时间线；`renderY` 过期（> `MOTION_STALE_TICKS`）回退原版插值；`cameraOffset` 多重条件校验后给补偿量 |
+| `CabinMotion` | `TRACKS: WeakHashMap<AbstractCabinEntity, Track>`、`localRiderCabin` | `receive` 入时间线；`renderY` 过期（> `MOTION_STALE_TICKS`）回退原版插值；`cameraOffset` 仅在 MOVING 且有目标时校验乘客并补偿，到站立即释放 |
 | `CabinRunningSound` | `cabin` | `super(Easyelevator.RUNNING, BLOCKS, createRandom())`；`repeat=true, repeatDelay=0`；`tick()` 中实体移除或非 MOVING → `setDone()` |
 | `StatusArrow` | `BLINK_MS=500`、`UP="▲"`、`DOWN="▼"` | `moving / lit / glyph / width`；用墙钟毫秒而非游戏刻（暂停菜单里仍闪） |
 | `BoxMesh` | `FULL_UV = {0,0,1,1}` | `cuboid`×4（裸坐标 / `Box` × 有无 UV 矩形）、`planeX/Y/Z` 各两个重载、私有 `quad`；UV 矩形按"第 0 顶点 (u0,v1)、第 2 顶点 (u1,v0)"落到四个角，因此默认值时就是原版 (0,1)(1,1)(1,0)(0,0)；`planeZ` 的顶点从 +X 侧起步，u 才沿 X 增长 |
@@ -991,12 +991,12 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | Payload | ID | 字段 | 触发时机 | 客户端处理 |
 | --- | --- | --- | --- | --- |
-| `MotionFrame` | `easyelevator:motion_frame` | `int entityId, long tick, double y, double riderOffset` | `syncMotion`：移动中每刻 + 停车后 `MOTION_SETTLE_TICKS` | `CabinMotion.receive`；`riderOffset=NaN` 表示本机非乘客 |
+| `MotionFrame` | `easyelevator:motion_frame` | `int entityId, long tick, double y, double riderOffset` | `syncMotion`：移动中每刻 + 停车后 `MOTION_SETTLE_TICKS` | `CabinMotion.receive`；`riderOffset=NaN` 表示不绑定镜头（非乘客、已到站或停车补帧） |
 | `OpenPanel` | `easyelevator:open_panel` | `int entityId, List<BlockPos> stops, List<BlockPos> planned, int baseFloorY` | `open()`：进入轿厢右键、选站/开关门成功后刷新 | `setScreen(new ElevatorScreen)` |
 | `PanelState` | `easyelevator:panel_state` | `int entityId, List<BlockPos> planned, int baseFloorY` | 计划或基准层变化 | 只刷新 `entityId` 匹配的已打开面板 |
 | `OpenHallPanel` | `easyelevator:open_hall_panel` | `BlockPos station, boolean up, down, showUp, showDown` | 右键楼层门 | `setScreen(new LandingDoorScreen)` |
 | `HallPanelState` | `easyelevator:hall_panel_state` | `BlockPos station, boolean up, boolean down` | 登记/到站清扫/拆门 `syncHallState` | 只刷新 `station` 匹配的已打开面板 |
-| `OpenDoorPanel` | `easyelevator:open_door_panel` | `BlockPos station, String floorLabel, boolean enabled, int choice, boolean baseFloor, int soundSlot, int preview` | 潜行右键楼层门（`openDoorSettings`）、以及任何人改动设置后 `broadcastDoorPanel` | 打开或刷新 `DoorSoundScreen`（同站点则只刷新内容）；`preview` 让值格闪一下 |
+| `OpenDoorPanel` | `easyelevator:open_door_panel` | `BlockPos station, String floorLabel, boolean enabled, int choice, boolean baseFloor, int soundSlot, int preview, boolean open` | 潜行右键楼层门（`openDoorSettings`）、以及任何人改动设置后 `broadcastDoorPanel` | `open=true` 允许打开；广播 `open=false` 仅刷新同站点已打开的 `DoorSoundScreen`，其他界面保持原样；`preview` 让值格闪一下 |
 | `DoorSoundData` | `easyelevator:door_sound_data` | `int slot, byte[] bytes` | 上传成功后广播给站点 64 格内的玩家；或回应 `RequestDoorSound` | 存进权威副本 → 标记待重载 → 刻末统一 `DoorSoundPack.ensureReady`（指纹没变就不重载）；空数组表示"服务端也没有"，保持静音 |
 
 **C2S（客户端 → 服务端，7 个）**
@@ -1160,7 +1160,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `./gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.1.0.jar`） |
+| 构建 | `./gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.1.1.jar`） |
 | 本机快捷构建 | `./tools/build.ps1 -Jdk <JDK21> -Task build` |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（`build/distributions/`） |
 | 开发启动 | `./gradlew.bat runClient` |
@@ -1309,6 +1309,14 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ---
 
-*本手册由代码通读整理，覆盖版本 2.1.0。改动架构或接口后请同步更新本文对应章节。*
+*本手册由代码通读整理，覆盖版本 2.1.1。改动架构或接口后请同步更新本文对应章节。*
 
 
+
+### 2.1.1 多人交互与开门离厢修复
+
+门设置广播保留 64 格范围，但必须携带 `open=false`；仅主动潜行右键的单人响应携带 `open=true`。已打开同门设置的玩家仍同步内容，关闭面板后不会被迟到广播重新打开。服务器与客户端必须同时升级。
+
+乘客名册先登记厢内玩家；开门（含进度为 0 的 OPENING）或门未关严时，先移除正常离厢的在线玩家并跳过传送归位；门全关时才执行读档/掉线乘客恢复。离线名册和读档等待上限保留。到站运动帧及停车补帧以 NaN 释放镜头，客户端也在非 MOVING 或无目标时停止补偿。
+
+楼层门注册使用 `dynamicBounds()`，连续变化的门形状不缓存为静态 OPEN/CLOSED 形状。`openProgress()` 每次读取当前状态和轿厢开度；带 tickDelta 的重载仍用于渲染采样插值。服务端到站联锁和两扇门的实体碰撞保留。

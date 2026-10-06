@@ -1,6 +1,6 @@
 # 模型、音效与门动画接口
 
-适用模组版本 **2.1.0**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
+适用模组版本 **2.1.1**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
 
 > **模型与贴图由脚本生成，不要手改单个数不出来源的文件。**
 > `python tools/generate_art.py` 写全部方块/物品模型与贴图，`python tools/generate_data.py`
@@ -47,7 +47,7 @@
 另外两张表的**最后 6 行必须逐字相同**（操纵面板）：观光舱的侧壁是玻璃，但层号与呼梯键同样要有，
 漏掉就会出现"红字浮在空中"——脚本会断言 `STANDARD_PARTS[-6:] == OBSERVATION_PARTS[-6:]`。
 
-**厢内照明（2.1.0）**：`logic/CabinLighting.surface` 根据轿厢局部面中心、法线与灯位
+**厢内照明（自 2.1.0 起）**：`logic/CabinLighting.surface` 根据轿厢局部面中心、法线与灯位
 `(0, 2.78, -0.25)` 计算距离和朝向衰减。外壳、顶板外侧、底面、门外侧与导靴保持环境光；
 舱内朝向灯具的面才获得补光，补光上限 13 级。`CabinLighting.lamp` 仅将灯罩朝下的面提高到
 15 级方块光，灯罩背面和侧边保持环境光。全部处理保留天光，不修改世界数据。
@@ -148,7 +148,7 @@ Box left  = LandingDoorGeometry.leafBox(facing, progress, false); // 相对根�
 Box right = LandingDoorGeometry.leafBox(facing, progress, true);  // 全开时返回 null（已收进门框）
 ```
 
-进度是"已同步的轿厢门进度 + 已同步的 `open` 方块状态"的纯函数，客户端与服务端各自就地算出，因此不需要额外的同步包。方块状态 `open` 只表示联锁是否解除（能否交出真实碰撞），不表示门扇位置；门扇位置一律取 `LandingDoorBlockEntity.openProgress`。
+进度是"已同步的轿厢门进度 + 已同步的 `open` 方块状态"的纯函数，客户端与服务端各自就地算出，因此不需要额外的同步包。方块状态 `open` 只表示联锁是否解除（能否交出真实碰撞），不表示门扇位置；门扇位置一律取 `LandingDoorBlockEntity.openProgress`。2.1.1 起楼层门使用 `dynamicBounds()`：无参数重载每次读取最新进度供碰撞使用，带 `tickDelta` 的重载保留渲染插值，避免同刻旧样本使碰撞滞后。
 
 改动画时长、运行速度、开门停留时间：修改 `ElevatorParameters.DOOR_TICKS / SPEED / HIGH_SPEED / DWELL_TICKS`；完整参数见 [PARAMETERS.md](PARAMETERS.md)。其中 `SPEED` 是普通与观光轿厢的步长、`HIGH_SPEED` 是高速轿厢的步长，两者都在实体构造时注入各自的 `ElevatorController` 实例。
 
