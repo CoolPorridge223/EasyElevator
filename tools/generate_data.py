@@ -91,6 +91,16 @@ def item_model(name):
     return {'parent': f'easyelevator:block/{name}'}
 
 
+def ingredient(name):
+    """Build a recipe ingredient from a short name.
+
+    A bare name is read as vanilla (``iron_ingot`` -> ``minecraft:iron_ingot``); a name that
+    already carries a namespace is used verbatim, which is what the high-speed cabin's
+    "upgrade an existing cabin" recipe needs (``easyelevator:cabin``).
+    """
+    return {'item': name if ':' in name else f'minecraft:{name}'}
+
+
 def loot_block(name, **conditions):
     entry = {'type': 'minecraft:item', 'name': f'easyelevator:{name}'}
     conds = [{'condition': 'minecraft:survives_explosion'}] + list(conditions.values())
@@ -123,19 +133,30 @@ def main():
                       'properties': {'column': '1', 'level': '0'}}}))
 
     # --- recipes ------------------------------------------------------------------
+    # ``key`` order is the JSON key order; keep it stable so re-running this script is a no-op
+    # on a clean tree.  Every recipe here must match the file already shipped in the repo -
+    # if it does not, the script would silently change a recipe the next time somebody runs it.
     recipes = {
         'elevator_rail': (['I I', 'IRI', 'I I'], {'I': 'iron_ingot', 'R': 'redstone'}, 8),
         'call_button': ([' B ', 'IRI', '   '], {'B': 'stone_button', 'I': 'iron_ingot', 'R': 'redstone'}, 2),
         'cabin': (['III', 'IRI', 'IPI'], {'I': 'iron_ingot', 'R': 'redstone', 'P': 'piston'}, 1),
-        # High-speed cabin: the drive core is gold instead of redstone; shape is identical.
-        'high_speed_cabin': (['III', 'IGI', 'IPI'], {'I': 'iron_ingot', 'G': 'gold_ingot', 'P': 'piston'}, 1),
+        # High-speed cabin: a field upgrade of the plain cabin - eight redstone blocks around
+        # one cabin item.  (An older revision of this script wrote a standalone gold-core
+        # recipe instead; the shipped resource file has been the upgrade recipe for several
+        # releases, so the script now reproduces it rather than overwriting it.)
+        'high_speed_cabin': (['RRR', 'RCR', 'RRR'],
+                             {'C': 'easyelevator:cabin', 'R': 'redstone_block'}, 1),
         # Observation cabin: the two top corners become glass, matching the glazed shell.
         'observation_cabin': (['IGI', 'IRI', 'IPI'], {'I': 'iron_ingot', 'G': 'glass', 'R': 'redstone', 'P': 'piston'}, 1),
+        # Powerful cabin (2.2.1): a heavier car - the bottom corners are iron *blocks* and the
+        # drive core is a redstone block, so the recipe reads as "the load-bearing model".
+        'powerful_cabin': (['III', 'IRI', 'TPT'],
+                           {'I': 'iron_ingot', 'T': 'iron_block', 'R': 'redstone_block', 'P': 'piston'}, 1),
     }
     for name, (pattern, keys, count) in recipes.items():
         write(ROOT / f'data/easyelevator/recipe/{name}.json',
               {'type': 'minecraft:crafting_shaped', 'category': 'redstone', 'pattern': pattern,
-               'key': {k: {'item': f'minecraft:{v}'} for k, v in keys.items()},
+               'key': {k: ingredient(v) for k, v in keys.items()},
                'result': {'id': f'easyelevator:{name}', 'count': count}})
     write(ROOT / 'data/minecraft/tags/block/mineable/pickaxe.json',
           {'replace': False, 'values': ['easyelevator:elevator_rail', 'easyelevator:call_button']})
@@ -158,6 +179,7 @@ def main():
         'block.easyelevator.call_button': '电梯门', 'item.easyelevator.cabin': '电梯轿厢', 'entity.easyelevator.cabin': '电梯轿厢',
         'item.easyelevator.high_speed_cabin': '高速电梯轿厢', 'entity.easyelevator.high_speed_cabin': '高速电梯轿厢',
         'item.easyelevator.observation_cabin': '观光电梯轿厢', 'entity.easyelevator.observation_cabin': '观光电梯轿厢',
+        'item.easyelevator.powerful_cabin': '强力电梯轿厢', 'entity.easyelevator.powerful_cabin': '强力电梯轿厢',
         'message.easyelevator.no_cabin': '这条线路没有轿厢，请先在轨道上放置轿厢。',
         'message.easyelevator.multiple_cabins': '这条线路存在多个轿厢，请移除多余轿厢。',
         'message.easyelevator.called': '呼叫已加入队列。', 'message.easyelevator.invalid_stop': '站点或线路已变化，或请求队列已满，请检查轨道和电梯门。',
@@ -178,6 +200,10 @@ def main():
         'screen.easyelevator.prev_page': '上一页', 'screen.easyelevator.next_page': '下一页',
         'phase.easyelevator.open': '开门停靠', 'phase.easyelevator.closing': '正在关门', 'phase.easyelevator.moving': '运行中',
         'phase.easyelevator.opening': '正在开门', 'phase.easyelevator.blocked': '暂停：请检查轨道或障碍',
+        # 超载：强力型号超过限载人数时，相位变成 OVERLOAD（门保持全开），面板与门框都显示这两个字
+        'phase.easyelevator.overload': '超载',
+        # 强力型号后壁载重铭牌上的那一行（%s = 限载人数，取自 ElevatorParameters.HIGH_PASSENGER_NUM_LIMIT）
+        'text.easyelevator.capacity': '限载 %s 人',
         'status.easyelevator.up': '电梯上行', 'status.easyelevator.down': '电梯下行', 'status.easyelevator.idle': '停靠',
         'subtitles.easyelevator.elevator_running': '电梯运行', 'subtitles.easyelevator.elevator_arrival': '电梯到站',
         'subtitles.easyelevator.elevator_arrival_custom': '电梯到站（自定义音效）',
@@ -203,6 +229,7 @@ def main():
         'Easy Elevator', 'Elevator Rail', 'Landing Door', 'Elevator Cabin', 'Elevator Cabin',
         'High-Speed Elevator Cabin', 'High-Speed Elevator Cabin',
         'Observation Elevator Cabin', 'Observation Elevator Cabin',
+        'Powerful Elevator Cabin', 'Powerful Elevator Cabin',
         'No cabin on this line. Place a cabin on the rail first.', 'Multiple cabins on this line. Remove the extra cabin.',
         'Call queued.', 'Station/line changed or queue full. Check the rails and landing doors.',
         'This line already has a cabin.', 'The cabin requires a clear, loaded 3 x 3 x 3 space.',
@@ -217,6 +244,9 @@ def main():
         'Select a station', 'Station %s  /  Y = %s', 'Height %s  |  %s', '%s stations  /  Page %s of %s',
         'No complete landing doors on this line', 'Open', 'Close', 'Previous page', 'Next page',
         'Doors open', 'Closing doors', 'Moving', 'Opening doors', 'Paused: check rails or obstacles',
+        # overload (powerful cabin only) + the rated-load plate inside it
+        'Overload',
+        'Max %s people',
         'Going up', 'Going down', 'Parked',
         'Elevator running', 'Elevator arriving',
         'Elevator arriving (custom)',

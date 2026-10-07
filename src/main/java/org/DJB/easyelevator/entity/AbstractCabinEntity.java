@@ -45,23 +45,27 @@ import java.util.UUID;
 /**
  * 电梯轿厢的共同父类：3x3x3 的空心轿厢，也是整条线路的服务端权威载体。
  *
- * <p>为什么要有这一层：模组提供三种轿厢——普通轿厢 {@link CabinEntity}、
+ * <p>为什么要有这一层：模组提供四种轿厢——普通轿厢 {@link CabinEntity}、
  * 高速轿厢 {@link HighSpeedCabinEntity}（巡航速度是普通的 {@link ElevatorParameters#HIGH_SPEED} 倍，
- * 且加/减速段更长）、观光轿厢 {@link ObservationCabinEntity}（四面墙换成玻璃）。三者的运动学、乘客处理、
- * 门联锁、存档与同步<b>完全相同</b>，差别只有两项：构造时传入的巡航速度，以及子类覆写的
- * {@link #cabinItem()}（回收时掉落哪一种物品）与 {@link #glassWalls()}（纯客户端渲染提示）。
- * 因此全部逻辑集中在这里，三个子类各自只有十几行，不存在第二份需要同步维护的运动代码。
+ * 且加/减速段更长）、观光轿厢 {@link ObservationCabinEntity}（四面墙换成玻璃）、
+ * 强力轿厢 {@link PowerfulCabinEntity}（限载 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人，
+ * 外壳不变、内饰换重载件）。四者的运动学、乘客处理、
+ * 门联锁、存档与同步<b>完全相同</b>，差别只有三项：构造时传入的巡航速度与限载人数，以及子类覆写的
+ * {@link #cabinItem()}（回收时掉落哪一种物品）、{@link #glassWalls()} 与 {@link #heavyDuty()}
+ * （两项纯客户端渲染提示）。
+ * 因此全部逻辑集中在这里，四个子类各自只有十几行，不存在第二份需要同步维护的运动代码。
  *
  * <p>在整体架构中的位置：所有运动学都委托给纯 Java 状态机 {@link ElevatorController}
  * （不引用任何 Minecraft 类，因而可以脱离游戏单测）；状态机再把"每刻走多远"委托给 S 形速度曲线
  * {@link org.DJB.easyelevator.logic.MotionProfile}。本实体每刻在 {@link #tick()} 中通过匿名
- * {@link ElevatorController.Environment} 把世界查询（valid / canMove / doorwayBlocked / arrived）
- * 注入状态机，再把状态机返回的 Y 应用到实体位置；实体自身不保存速度、加速度或插值轨迹。
+ * {@link ElevatorController.Environment} 把世界查询（valid / canMove / doorwayBlocked / arrived /
+ * outOfPassengerNumLimit）注入状态机，再把状态机返回的 Y 应用到实体位置；实体自身不保存速度、
+ * 加速度或插值轨迹。
  * 客户端读取权威运动包，在玩家物理更新前承托乘客；行程决策仍只在服务端执行。
  *
  * <p>关键不变量与约束：
  * <ul>
- *   <li>线路唯一：一段竖直连续、朝向一致的轨道列（线路）最多一个轿厢（三种型号一起计数）；
+ *   <li>线路唯一：一段竖直连续、朝向一致的轨道列（线路）最多一个轿厢（四种型号一起计数）；
  *       轿厢数不为 1 时不允许移动。</li>
  *   <li>门未完全关闭（DOOR 未降到 0）不得移动；楼层门联锁由 {@link LandingDoorBlock#refresh}
  *       依据本实体 Y（误差 &lt;= {@link ElevatorParameters#POSITION_EPSILON} 格）与门进度决定。</li>
@@ -70,6 +74,8 @@ import java.util.UUID;
  *       {@link #collisionBoxes()}，否则实心包围盒会把乘客挡在轿厢外。</li>
  *   <li>BLOCKED 表示受阻暂停（断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站门被拆），
  *       不是失败；条件恢复后继续原行程。</li>
+ *   <li>限载人数为 0 或负数 = 不限载（限载只能在构造时给出、运行中不变），见 {@link #overloaded()}；
+ *       超载只影响"门开着、不派发行程"，不改变碰撞、承托与存档。</li>
  *   <li>乘客名册（{@link #passengers}）随存档保存：读档后必须先等这些人回到世界，才能继续原行程，
  *       否则轿厢会抢在玩家实体载入之前开走，把乘客留在空掉的井道里（见 {@link #tickPassengers()}）。</li>
  * </ul>
@@ -77,7 +83,7 @@ import java.util.UUID;
  * <p>几何与单位：局部坐标原点在轿厢底部中心，+Z 指向门口，长度单位一律为格（方块）。
  * 轿厢中心位于轨道朝向前方 2 格，底部 Y 与被点击的轨道相同，因而与站点 Y 对齐。
  * 速度单位为格/刻（1 秒 = 20 刻），见 {@link #speed()}；它是 S 形曲线的<b>巡航速度上限</b>，
- * 启动与到站的若干刻里实际步长小于它。三个型号的几何、碰撞与同步字段
+ * 启动与到站的若干刻里实际步长小于它。四个型号的几何、碰撞与同步字段
  * 完全一致，因此换乘任意型号都不会改变井道尺寸、站点位置或门联锁语义。
  */
 public abstract class AbstractCabinEntity extends Entity {
@@ -102,6 +108,12 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /** 确定性状态机实例：Phase、门进度、当前目标与请求队列都存放在这里，实体内不重复保存。速度在构造时注入。 */
     private final ElevatorController controller;
+
+    /**
+     * 本型轿厢的限载人数（构造时注入，运行中不变）：<b>0 或负数 = 不限载</b>（普通 / 高速 / 观光），
+     * 强力型号用 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。判超载见 {@link #overloaded()}。
+     */
+    private final int passengerNumLimit;
 
     /** 本型轿厢的巡航速度上限（格/刻）：普通与观光 0.20、高速 0.50；与 {@link ElevatorController#speed()} 同值，供外部读取。 */
     private final double speed;
@@ -132,6 +144,15 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /** 当前楼层号（1 起；0 = 尚未经过任何站点）；与同步字段 FLOOR 保持一致，便于服务端自身读取。 */
     private int floorNumber;
+
+    /**
+     * 厢内玩家数（服务端每刻重数一次，不写存档、不同步）。
+     *
+     * <p>只服务于 {@link #overloaded()}：数的是"这一刻站在厢内的玩家"，与乘客名册
+     * （{@link #passengers}，用于读档归位）是两件事——名册会保留掉线的人，超载只看此刻车里的人。
+     * 数在 {@link #tick()} 里、状态机之前，因此本刻的超载判定与车门动作用的是同一份计数。
+     */
+    private int passengerNum;
 
     /**
      * 本厢负责的乘客名册：玩家 UUID -> 相对轿厢底部中心的偏移（格，与 {@link #localBox} 同一坐标系）。
@@ -199,17 +220,23 @@ public abstract class AbstractCabinEntity extends Entity {
      * 构造轿厢实体。所属线路与初始位置随后由 {@link #initialize(BlockPos, Direction)} 或存档载入设定。
      *
      * @param type 实体类型（由子类传入各自的注册类型，例如 {@code easyelevator:cabin}、
-     *             {@code easyelevator:high_speed_cabin}、{@code easyelevator:observation_cabin}）
+     *             {@code easyelevator:high_speed_cabin}、{@code easyelevator:observation_cabin}、
+     *             {@code easyelevator:powerful_cabin}）
      * @param world 所在世界
-     * @param speed 本型轿厢的巡航速度上限（格/刻）：普通与观光用 {@link ElevatorParameters#SPEED}，
+     * @param speed 本型轿厢的巡航速度上限（格/刻）：普通 / 观光 / 强力用 {@link ElevatorParameters#SPEED}，
      *              高速用 {@link ElevatorParameters#HIGH_SPEED}。用构造参数而不是子类覆写方法，
      *              是为了避免"父类构造期间调用子类方法"，也让速度天然成为 final 的只读事实。
      *              加加速度（jerk）由状态机按该速度推出：高速档更小 ⇒ 加/减速段更长。
+     * @param passengerNumLimit 本型轿厢的限载人数：<b>0 或负数 = 不限载</b>
+     *              （普通 / 高速 / 观光），强力型号用 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。
+     *              超过它时状态机进入 {@link ElevatorController.Phase#OVERLOAD}（门保持全开、不走车），
+     *              判据见 {@link #overloaded()}；它同时是渲染后壁载重铭牌上那个数字的来源
      */
-    protected AbstractCabinEntity(EntityType<?> type, World world, double speed) {
+    protected AbstractCabinEntity(EntityType<?> type, World world, double speed, int passengerNumLimit) {
         super(type, world);
         setNoGravity(true); // 禁用重力：Y 完全由状态机决定，交给原版物理会被下拽并触发下落判定
         this.speed = speed;
+        this.passengerNumLimit = passengerNumLimit;
         this.controller = new ElevatorController(speed); // 速度在构造时一次性注入状态机，运行中不变
     }
 
@@ -217,7 +244,31 @@ public abstract class AbstractCabinEntity extends Entity {
     public final double speed() { return speed; }
 
     /**
-     * 本型轿厢回收时掉落的生成物品。三种轿厢共用同一个回收交互（潜行、空手、门全开、厢内无人），
+     * @return 本型轿厢的限载人数；<b>0 或负数表示不限载</b>（普通 / 高速 / 观光三型的原有行为：
+     *         只要人站得进来就能走）。强力型号为 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。
+     *         只读，渲染（后壁载重铭牌上的数字）与状态机（超载判定）读的是同一个值。
+     */
+    public final int passengerNumLimit() { return passengerNumLimit; }
+
+    /**
+     * 本厢此刻是否<b>超载</b>：厢内乘客数超过 {@link #passengerNumLimit()}。
+     *
+     * <p>唯一判据是"限载人数为正"：{@code limit <= 0} 一律视为不限载，因此把
+     * {@link ElevatorParameters#PASSENGER_NUM_LIMIT} 改回 0 就完全回到没有这个功能的旧行为，
+     * 不会因为"站进来一个人"就误判超载（{@code 人数 > 0} 在限载 0 时会恒真——那会让普通轿厢再也开不走）。
+     *
+     * <p>计数口径：只数<b>玩家</b>（{@link #containsPassenger} 里算乘客的生物也占地方，但"准乘几人"
+     * 说的是人；召唤一堆动物不会触发超载）。服务端每刻刷新一次，见 {@link #tick()}。
+     *
+     * <p>超载的表现由状态机决定：门保持全开、不派发行程，面板上显示
+     * {@code phase.easyelevator.overload}，直到有人走出厢门（见 {@link ElevatorController.Phase#OVERLOAD}）。
+     *
+     * @return 超载时为 true；不限载的型号恒为 false
+     */
+    public final boolean overloaded() { return passengerNumLimit > 0 && passengerNum > passengerNumLimit; }
+
+    /**
+     * 本型轿厢回收时掉落的生成物品。四种轿厢共用同一个回收交互（潜行、空手、门全开、厢内无人），
      * 只有"掉哪一件"由子类决定；不覆写则回收会产出错误型号的物品。
      *
      * @return 对应的生成物品单例，例如 {@link org.DJB.easyelevator.Easyelevator#CABIN_ITEM}
@@ -234,6 +285,18 @@ public abstract class AbstractCabinEntity extends Entity {
      * @return true 时 {@code CabinRenderer} 用半透明材质画侧墙/后墙/门扇，并保留四个角柱
      */
     public boolean glassWalls() { return false; }
+
+    /**
+     * 是否是强力轿厢：外壳与普通型号完全相同，但内饰换成"重载"那一套（双扶手、双顶灯、载重铭牌、
+     * 防滑钢踏板）。**纯客户端渲染提示**，与 {@link #glassWalls()} 同一性质、同样不写同步字段。
+     *
+     * <p>为什么不直接用 {@link #passengerNumLimit()} 判断：限载人数是状态机的数据，
+     * "画哪一套内饰"是型号的静态属性；两者恰好同源（只有强力型号限载），但把它们绑在一起
+     * 会让"给普通型号加个限载"这种改动意外改掉它的外观。渲染只认型号，读数据只读数据。
+     *
+     * @return true 时 {@code CabinRenderer} 在内饰表上叠加 {@code POWERFUL_PARTS} 的强化件
+     */
+    public boolean heavyDuty() { return false; }
 
     /**
      * 初始化 DataTracker 的默认同步值：Phase = OPEN（序号 0）、门全开 1、朝向 NORTH、无目标。
@@ -585,8 +648,8 @@ public abstract class AbstractCabinEntity extends Entity {
      *   <li>整个过程中<b>不改呼叫队列与目的站</b>：不会把本层排进队列，因此不会出现"先开走、之后再回来"。</li>
      * </ul>
      *
-     * <p><b>两种可开门的情形</b>（判据统一在 {@link ElevatorController#canOpenDoor}，客户端面板用同一条，
-     * 因此不会出现"按钮亮着点了没反应"）：
+     * <p><b>三种可开门的情形</b>（判据统一在 {@link ElevatorController#canOpenDoor(boolean, boolean)}，
+     * 客户端面板用同一条纯函数判据，因此不会出现"按钮亮着点了没反应"）：
      * <ol>
      *   <li><b>正常停靠</b>：轿厢停稳在某个完整站点上，{@link ElevatorStatus#IDLE} 且高度精确对齐。
      *       为什么必须要求"停稳"：轿厢以 0.20 或 0.50 格/刻为巡航上限运行（见 {@link #speed()}），
@@ -596,24 +659,36 @@ public abstract class AbstractCabinEntity extends Entity {
      *       方块或实体障碍、区块未加载、目的站的门被拆。这时轿厢多半卡在两层之间，正常规则一律不成立，
      *       而乘客很可能被困在里面，因此<b>刻意不要求停在站点上</b>：开门键必须可用，让人能自己走出来。
      *       故障解除后 {@link ElevatorController#tick} 会把这扇门关回去，再继续原行程。</li>
+     *   <li><b>无站线路脱困</b>：这条线路上<b>一扇完整的楼层门都没有</b>（典型情形：轿厢刚放到轨道上、
+     *       还没建门）。此时状态机永远选不出目的站，这辆车再也不会动，而"停在站点上"必然不成立——
+     *       只看前两条的话，门一关乘客就被永久锁在厢内。因此 {@code hasStations} 为假时一律受理开门。</li>
      * </ol>
+     *
+     * <p>两个事实（{@code atStation} 与 {@code hasStations}）都<b>在这里扫线路算出来</b>再交给状态机：
+     * 只有服务端才拿得到线路（{@code railX/railZ} 不进 DataTracker），状态机侧因此保持"只吃入参、不查世界"。
      *
      * <p>关门键交给 {@link ElevatorController#forceClose()}：允许在队列为空时先把门关上、停在本层等待呼叫。
      *
      * @param open true = 开门，false = 关门
-     * @return 指令被接受时 true；既没有停稳在站点上、也不处于故障时 false（调用方据此提示玩家）
+     * @return 指令被接受时 true；既没有停稳在站点上、也不处于故障、线路上又有站点时 false（调用方据此提示玩家）
      */
     public boolean doorCommand(boolean open) {
         if (getWorld().isClient) return false; // 指令只在服务端执行，客户端点击后会收到服务端下发的面板刷新
         if (open) {
             // 车体是否精确停在某个完整站点上：站点高度是整数、到站时会精确吸附到该值，
             // 因此这里的 1e-7 判定等价于"就在这一层"。线路扫不到（轨道被拆/区块未加载）时不算停在站点。
+            //
+            // 另外要把"这条线路上到底有没有完整的门"一并算出来交给状态机（hasStations）：
+            // 刚放下的轿厢还没来得及建门时，这辆车永远选不出目的站，门一关就必须允许乘客开出来，
+            // 否则人就被锁死在厢内（见 ElevatorController.canOpenDoor 的第 3 种可用情形）。
+            // 注意这两个事实都只能在这里（服务端）算：客户端的 railX/railZ 不进 DataTracker，恒为 0。
             ElevatorLine currentLine = line();
             boolean atStation = false;
             if (currentLine != null)
                 for (BlockPos stop : currentLine.stops())
                     if (Math.abs(stop.getY() - getY()) <= ElevatorParameters.POSITION_EPSILON) { atStation = true; break; }
-            boolean allowed = controller.canOpenDoor(atStation);
+            boolean hasStations = currentLine != null && !currentLine.stops().isEmpty();
+            boolean allowed = controller.canOpenDoor(atStation, hasStations);
             if (!allowed) return false; // 运行途中、且没有故障：不受理
             return controller.forceOpen();
         }
@@ -635,9 +710,11 @@ public abstract class AbstractCabinEntity extends Entity {
     /**
      * 轿厢门此刻是否完全打开。
      *
-     * <p>为什么同时接受 {@link ElevatorController.Phase#OPENING} 与 {@link ElevatorController.Phase#OPEN}：
-     * 两者在门进度上都是"已经全开"——{@code OPENING} 是门开到 1 之后、状态机还没切到 {@code OPEN} 的
-     * 那一小段（<b>到站开门后的第一刻就是 OPENING</b>）。只看 {@code OPEN} 会让"刚到站"那几刻的判定
+     * <p>为什么同时接受 {@link ElevatorController.Phase#OPENING}、{@link ElevatorController.Phase#OPEN}
+     * 与 {@link ElevatorController.Phase#OVERLOAD}：
+     * 三者在门进度上都是"已经全开"——{@code OPENING} 是门开到 1 之后、状态机还没切到 {@code OPEN} 的
+     * 那一小段（<b>到站开门后的第一刻就是 OPENING</b>），而 {@code OVERLOAD} 是超载期间门一直保持全开
+     * 的状态（见 {@code Phase#OVERLOAD}）。只看 {@code OPEN} 会让"刚到站"或"超载中"那几刻的判定
      * 莫名其妙地失败（例如楼层门联锁、开门键可用性、回收）。
      *
      * <p>为什么还要看相位而不是只看 {@code door == 1}：故障脱困时门可能停在半开，而"门正在关"的
@@ -647,7 +724,8 @@ public abstract class AbstractCabinEntity extends Entity {
      */
     private boolean doorsOpen() {
         return dataTracker.get(DOOR) >= .999f
-                && (phase() == ElevatorController.Phase.OPENING || phase() == ElevatorController.Phase.OPEN);
+                && (phase() == ElevatorController.Phase.OPENING || phase() == ElevatorController.Phase.OPEN
+                    || phase() == ElevatorController.Phase.OVERLOAD);
     }
 
     /**
@@ -704,8 +782,9 @@ public abstract class AbstractCabinEntity extends Entity {
      *
      * <p>执行顺序（不可调换）：先记录上一刻门进度（客户端与渲染插值用）；客户端 tick 到此结束，只读同步数据与运动包。
      * 服务端随后扫描当前线路并判定唯一性，先按乘客名册把归位的乘客放回厢内（必要时本刻保持静止，见
-     * {@link #tickPassengers()}），再调用 {@link ElevatorController#tick(double, ElevatorController.Environment)}
-     * 取得本刻的目标 Y，然后按位移带乘客一起移动，最后同刻刷新楼层门联锁、写回 DataTracker、发包、播音效、触发事件。
+     * {@link #tickPassengers()}），再数一遍厢内玩家数（限载判定用，见 {@link #overloaded()}），
+     * 然后调用 {@link ElevatorController#tick(double, ElevatorController.Environment)}
+     * 取得本刻的目标 Y，再按位移带乘客一起移动，最后同刻刷新楼层门联锁、写回 DataTracker、发包、播音效、触发事件。
      *
      * <p>副作用（仅服务端）：修改本实体与乘客的位置/下落距离、设置 DataTracker 字段、刷新线路内所有站点的
      * 楼层门方块状态、发送运动包、播放音效、触发 {@link ElevatorEvents} 回调。
@@ -720,6 +799,19 @@ public abstract class AbstractCabinEntity extends Entity {
         final boolean unique = currentLine != null && currentLine.facing() == facing() && currentLine.cabins(getWorld()).size() == 1; // 线路存在、朝向一致、且恰好一个轿厢，才允许运动
         // 乘客名册必须在状态机之前处理：本刻是否允许移动、以及归位乘客下一刻能否被承托，都取决于这一趟的结果。
         final boolean waitingForPassengers = tickPassengers();
+
+        // 厢内乘客名单必须在状态机之前、更要在 setPosition 之前收集：位置一变包围盒就选不中他们，
+        // 而这份名单下面还要用来带乘客一起移动。顺带在同一趟里数出厢内玩家数——
+        // 限载判定（Environment.outOfPassengerNumLimit）与门动作用的是同一份计数，
+        // 不能数两次（两次数出来的结果可能在读档归位那一瞬不同）。
+        // 数的是"这一刻站在厢内的玩家"（containsPassenger），与上面维护的乘客名册不是一回事：
+        // 名册保留掉线的人，超载只看此刻车里的人。
+        List<Entity> riders = getWorld().getOtherEntities(AbstractCabinEntity.this, getBoundingBox(), AbstractCabinEntity.this::containsPassenger);
+        int ridersInCabin = 0;
+        for (Entity e : riders)
+            if (e instanceof PlayerEntity) ridersInCabin++;
+        passengerNum = ridersInCabin;
+
         double nextY = controller.tick(getY(), new ElevatorController.Environment() {
             /**
              * 站点是否仍然有效：门被拆、3x3 不完整、或该门已不再对应本轿厢所在轨道与高度时判定失效。
@@ -788,6 +880,18 @@ public abstract class AbstractCabinEntity extends Entity {
                 // 有目的站：按"从现在到目的站"整段判可通行（含井道障碍），而不是只看脚下那一格
                 return pathClear(getY(), controller.target().y());
             }
+
+            /**
+             * 本厢此刻是否超载。判据只有一条，写在 {@link AbstractCabinEntity#overloaded()} 里：
+             * 限载人数为正、且厢内玩家数超过它。<b>限载 0 或负数 = 不限载</b>，
+             * 因此普通 / 高速 / 观光三型永远不会因为"车里有个人"而被判超载。
+             *
+             * @return 超载时为 true；状态机会据此把相位切到
+             *         {@link ElevatorController.Phase#OVERLOAD}（门保持全开、不派发行程）
+             */
+            @Override
+            public boolean outOfPassengerNumLimit() { return overloaded(); }
+
             /**
              * 井道在 {@code [from, to]} 这一段是否可通行：线路唯一且朝向一致、扫过的每一格轨道都在、
              * 井道预留空间内没有方块或非乘客实体。
@@ -846,7 +950,6 @@ public abstract class AbstractCabinEntity extends Entity {
         });
         double dy = nextY - getY(); // 本刻位移（格）：必须在 setPosition 之前算出，之后 getY() 已是新值
         if (dy != 0) {
-            List<Entity> riders = getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger); // 先按旧位置收集乘客：位置一变包围盒就选不中他们
             setPosition(getX(), nextY, getZ());
 
             // Include the final arrival step even when the controller already switched to OPENING.

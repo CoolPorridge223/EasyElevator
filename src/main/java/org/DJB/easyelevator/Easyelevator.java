@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityT
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.item.BlockItem;
@@ -19,10 +20,7 @@ import net.minecraft.util.Identifier;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
 import org.DJB.easyelevator.block.ElevatorRailBlock;
-import org.DJB.easyelevator.entity.AbstractCabinEntity;
-import org.DJB.easyelevator.entity.CabinEntity;
-import org.DJB.easyelevator.entity.HighSpeedCabinEntity;
-import org.DJB.easyelevator.entity.ObservationCabinEntity;
+import org.DJB.easyelevator.entity.*;
 import org.DJB.easyelevator.item.CabinItem;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 
@@ -34,10 +32,11 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  * {@link org.DJB.easyelevator.entity.AbstractCabinEntity}（世界适配层，三个型号的父类）承担。</p>
  *
  * <p>游戏内组件：电梯轨道 {@link #RAIL}、楼层电梯门 {@link #LANDING_DOOR}（注册 ID 仍为
- * {@code easyelevator:call_button}），以及三种共用父类 {@link AbstractCabinEntity} 的轿厢——
+ * {@code easyelevator:call_button}），以及四种共用父类 {@link AbstractCabinEntity} 的轿厢——
  * 普通 {@link #CABIN} / {@link #CABIN_ITEM}、高速 {@link #HIGH_SPEED_CABIN} / {@link #HIGH_SPEED_CABIN_ITEM}
  * （速度 2.5 倍，外观不变）、观光 {@link #OBSERVATION_CABIN} / {@link #OBSERVATION_CABIN_ITEM}
- * （四面玻璃，性能不变）。三种轿厢的实体 ID 与物品 ID 一一对应。</p>
+ * （四面玻璃，性能不变）、强力 {@link #POWERFUL_CABIN} / {@link #POWERFUL_CABIN_ITEM}
+ * （限载 20 人、内饰换成重载件，外壳与速度不变）。四种轿厢的实体 ID 与物品 ID 一一对应。</p>
  *
  * <p>注册顺序约束：所有注册都必须在 {@link #onInitialize()} 内、且晚于类加载时创建的静态单例字段，
  * 否则可能出现“注册了未初始化的实例”或 Fabric API 未就绪的问题。注册 ID 一经发布不可更改，
@@ -61,15 +60,40 @@ public class Easyelevator implements ModInitializer {
     public static final BlockEntityType<LandingDoorBlockEntity> LANDING_DOOR_BE = Registry.register(Registries.BLOCK_ENTITY_TYPE,
             id("landing_door"), FabricBlockEntityTypeBuilder.create(LandingDoorBlockEntity::new, LANDING_DOOR).build());
     /**
+     * 造一台轿厢的实体类型（碰撞箱、追踪参数四种型号完全一致），由调用方负责注册。
+     *
+     * <p><b>这里必须用 Fabric 的无参 {@code build()}，不能用原版的 {@code build(String id)}</b>——
+     * 后者会在 {@code saveable}（默认 true）时先向<b>原版数据修复器</b>要这个 id 的 choice type：
+     * <pre>
+     *   if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, id);
+     * </pre>
+     * 原版 schema 里只有原版实体，模组 id 一定查不到，于是每次注册都会在日志里刷一条
+     * <b>{@code No data fixer registered for easyelevator:xxx}</b>（开发环境里 {@code SharedConstants.isDevelopment}
+     * 为真，还会把异常直接抛出去，模组初始化直接崩）。Fabric API 的 {@code EntityTypeBuilderMixin}
+     * 提供无参 {@code build()} → 内部走 {@code build(null)}，并用 {@code WrapOperation} 拦下
+     * {@code Util.getChoiceType}："id == null 就直接不查"，因此既没有那条报错，也不会有别的副作用
+     * ——1.21.1 的原版 {@code build(String)} 本来就<b>只造对象、不注册</b>，注册一直是调用方的事，
+     * 所以丢掉那个 id 参数不损失任何功能（mod 实体本来也不在原版数据修复器的迁移范围里）。
+     *
+     * @param factory 实体构造工厂，例如 {@code CabinEntity::new}
+     * @param <T> 轿厢实体类型
+     * @return 尚未注册的实体类型；调用方必须立刻把它 {@code Registry.register} 到
+     *         {@link Registries#ENTITY_TYPE}，并用与存档一致的 ID
+     */
+    private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
+        return EntityType.Builder.create(factory, SpawnGroup.MISC)
+                .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build();
+    }
+
+    /**
      * 普通电梯轿厢实体类型单例（注册 ID {@code easyelevator:cabin}）。
      *
      * <p>碰撞箱固定 3x3（宽 3.0 格、高 3.0 格）；{@code maxTrackingRange(10)} 单位为区块，
      * 即 10 * 16 = 160 格；{@code trackingTickInterval(1)} 表示每刻都向追踪者同步位置，
      * 这是必需的——轿厢以 0.20 格/刻运行，间隔追踪会明显抖动。</p>
      */
-    public static final EntityType<CabinEntity> CABIN = Registry.register(Registries.ENTITY_TYPE, id("cabin"),
-            EntityType.Builder.<CabinEntity>create(CabinEntity::new, SpawnGroup.MISC)
-                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:cabin"));
+    public static final EntityType<CabinEntity> CABIN =
+            Registry.register(Registries.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new));
     /**
      * 高速电梯轿厢实体类型单例（注册 ID {@code easyelevator:high_speed_cabin}）。
      *
@@ -77,18 +101,25 @@ public class Easyelevator implements ModInitializer {
      * org.DJB.easyelevator.logic.ElevatorParameters#HIGH_SPEED}（2.5 倍 = 10 格/秒）；
      * 尺寸、追踪范围、渲染外观与普通轿厢完全一致，因此旧建筑与井道无需任何改动。</p>
      */
-    public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN = Registry.register(Registries.ENTITY_TYPE, id("high_speed_cabin"),
-            EntityType.Builder.<HighSpeedCabinEntity>create(HighSpeedCabinEntity::new, SpawnGroup.MISC)
-                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:high_speed_cabin"));
+    public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN =
+            Registry.register(Registries.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new));
     /**
      * 观光电梯轿厢实体类型单例（注册 ID {@code easyelevator:observation_cabin}）。
      *
      * <p>碰撞与追踪参数与 {@link #CABIN} 相同（性能一致），差别只在客户端渲染：四面墙与门扇
      * 用半透明玻璃材质绘制，保留四个角柱、地板与顶板。</p>
      */
-    public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN = Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"),
-            EntityType.Builder.<ObservationCabinEntity>create(ObservationCabinEntity::new, SpawnGroup.MISC)
-                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build("easyelevator:observation_cabin"));
+    public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN =
+            Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
+    /**
+     * 强力电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
+     *
+     * <p>碰撞与追踪参数与 {@link #CABIN} 相同（井道尺寸一致），差别有两处：限载
+     * {@link org.DJB.easyelevator.logic.ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人（超过就超载、门不再关），
+     * 以及客户端渲染的"重载"内饰（双扶手、双顶灯、载重铭牌、防滑钢踏板）。外壳、门与速度都与普通轿厢相同。</p>
+     */
+    public static final EntityType<PowerfulCabinEntity> POWERFUL_CABIN =
+            Registry.register(Registries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
     /**
      * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
      *
@@ -100,6 +131,8 @@ public class Easyelevator implements ModInitializer {
     public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> HIGH_SPEED_CABIN);
     /** 观光轿厢生成物品单例：右键轨道生成观光轿厢（四面玻璃，性能与普通一致）。 */
     public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> OBSERVATION_CABIN);
+    /** 强力轿厢生成物品单例：右键轨道生成强力轿厢（运载人数更高） */
+    public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> POWERFUL_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
     /**
@@ -166,6 +199,7 @@ public class Easyelevator implements ModInitializer {
         Registry.register(Registries.ITEM, id("cabin"), CABIN_ITEM);
         Registry.register(Registries.ITEM, id("high_speed_cabin"), HIGH_SPEED_CABIN_ITEM);
         Registry.register(Registries.ITEM, id("observation_cabin"), OBSERVATION_CABIN_ITEM);
+        Registry.register(Registries.ITEM, id("powerful_cabin"), POWERFUL_CABIN_ITEM);
         // 自定义物品栏分组：图标固定用普通轿厢物品；entries 回调在分组内容被构建时执行，
         // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、三种轿厢），
         // 避免依赖注册顺序或每次打开物品栏都重建列表。
@@ -174,7 +208,7 @@ public class Easyelevator implements ModInitializer {
                 .icon(() -> new ItemStack(CABIN_ITEM))
                 .entries((context, entries) -> {
                     entries.add(RAIL); entries.add(LANDING_DOOR);
-                    entries.add(CABIN_ITEM); entries.add(HIGH_SPEED_CABIN_ITEM); entries.add(OBSERVATION_CABIN_ITEM);
+                    entries.add(CABIN_ITEM); entries.add(HIGH_SPEED_CABIN_ITEM); entries.add(OBSERVATION_CABIN_ITEM); entries.add(POWERFUL_CABIN_ITEM);
                 }).build());
         // 网络注册必须晚于实体注册：payload 与处理逻辑会按实体 ID 查找已登记的轿厢。
         ElevatorNetworking.register();

@@ -27,7 +27,7 @@ public class ObservationCabinEntity extends AbstractCabinEntity {
      * @param type 实体类型（由 {@link Easyelevator#OBSERVATION_CABIN} 注册）
      * @param world 所在世界
      */
-    public ObservationCabinEntity(EntityType<?> type, World world) { super(type, world, ElevatorParameters.SPEED); }
+    public ObservationCabinEntity(EntityType<?> type, World world) { super(type, world, ElevatorParameters.SPEED, ElevatorParameters.PASSENGER_NUM_LIMIT); }
 
     /** @return 观光轿厢物品 {@link Easyelevator#OBSERVATION_CABIN_ITEM}：回收后仍得到观光轿厢 */
     @Override protected Item cabinItem() { return Easyelevator.OBSERVATION_CABIN_ITEM; }

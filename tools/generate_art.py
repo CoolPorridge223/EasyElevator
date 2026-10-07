@@ -7,9 +7,10 @@ Run with Python 3, no third-party dependencies:
 This script owns everything the player *sees*:
 
 * ``models/block/*.json``  - rail, the nine landing-door frame models, the door item icon;
-* ``models/item/*.json``   - the three cabin icons and the two block item models;
+* ``models/item/*.json``   - the four cabin icons and the two block item models;
 * ``textures/block/*.png`` - brushed-steel frame plate, dark anodised door leaf, the two
-  cabin icon plates, the door-header display band and the machined dark plate;
+  cabin icon plates, the powerful cabin's red load plate, the door-header display band and the
+  machined dark plate;
 * ``textures/entity/cabin.png`` - the 4x4 material atlas the cabin renderer addresses;
 * ``icon.png``             - the mod list icon.
 
@@ -26,6 +27,7 @@ STEEL (200,205,211) light brushed steel - door frame, rail guide, cabin walls
 DARK  ( 74, 79, 85) dark anodised - door leaf, skirting, accents
 PLATE ( 62, 67, 72) machined dark plate - plinth, sill, rail base, brackets
 GOLD  (227,193,121) high-speed cabin plate
+RED   (198, 74, 80) powerful cabin plate
 GLASS (191,216,238) observation cabin pane
 ===== ========== ===========================================================
 """
@@ -326,6 +328,42 @@ def tex_speed_plate():
                 v.set(x, y + arm, dark)
                 v.set(x, y - arm, dark)
                 v.set(x - 1, y - arm, light)
+    v.frame(0, 0, BLOCK_SIZE - 1, BLOCK_SIZE - 1, shade(base, -46))
+    v.frame(1, 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2, shade(base, 22))
+    for y in range(2, BLOCK_SIZE - 2):
+        v.shift(2, y, 12)
+        v.shift(BLOCK_SIZE - 3, y, -10)
+    return v
+
+
+def tex_powerful_plate():
+    """``blank_powerful.png`` - red load plate carrying three standing figures.
+
+    The powerful cabin icon keeps the high-speed plate's construction (brushed base, machined
+    frame, one bold group of marks) and only changes what the marks say: the car is *not* faster
+    than the others, it carries more people, so the three right-pointing speed chevrons become
+    three standing figures instead.  Red is the "load / warning" colour of the family (gold is
+    speed, glass-blue is the view), which keeps the four inventory icons readable side by side.
+
+    The figures are drawn oversized and blocky on purpose: the plate is mapped onto the 1/3-scale
+    mini cabin of ``item/cabin_body.json``, where each figure lands on a few inventory pixels.
+    """
+    base = (198, 74, 80)
+    rnd = random.Random(1509)
+    v = Canvas(BLOCK_SIZE, BLOCK_SIZE)
+    brushed(v, base, rnd, band=14, streaks=6, edges=18)
+    dark = (118, 22, 28)
+    light = (252, 172, 178)
+    # One figure = head, neck, shoulders, tapering body, two legs (8 px wide, 23 px tall).
+    for cx in (6, 16, 26):
+        v.rect(cx - 1, 5, cx + 2, 8, dark)      # head
+        v.rect(cx, 9, cx + 1, 9, dark)          # neck
+        v.rect(cx - 3, 10, cx + 4, 12, dark)    # shoulders / arms
+        v.rect(cx - 2, 13, cx + 3, 19, dark)    # torso
+        v.rect(cx - 2, 20, cx - 1, 27, dark)    # left leg
+        v.rect(cx + 1, 20, cx + 2, 27, dark)    # right leg
+        v.vline(cx - 3, 10, 12, light)          # catch-light so a figure is not a flat blob
+        v.vline(cx - 2, 13, 19, light)
     v.frame(0, 0, BLOCK_SIZE - 1, BLOCK_SIZE - 1, shade(base, -46))
     v.frame(1, 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2, shade(base, 22))
     for y in range(2, BLOCK_SIZE - 2):
@@ -670,6 +708,7 @@ DARK = 'easyelevator:block/blank_door'      # dark anodised (door leaves)
 PLATE = 'easyelevator:block/blank_plate'    # machined dark plate (plinths, sills, brackets)
 SCREEN = 'easyelevator:block/blank_screen'   # lit indicator screen in the door lintel
 GOLD = 'easyelevator:block/blank_speed'     # high-speed cabin plate
+POWERFUL = 'easyelevator:block/blank_powerful'  # powerful cabin plate (red load plate)
 PANE = 'easyelevator:block/blank_glass'     # observation cabin pane
 
 #: Landing door frame metrics, in 1/16 block, mirroring block/LandingDoorGeometry.java.
@@ -869,7 +908,7 @@ def cabin_item_model():
 
 
 def cabin_icon_models():
-    """Item models for the three cabins, plus the shared part model they all parent to."""
+    """Item models for the four cabins, plus the shared part model they all parent to."""
     body = cabin_item_model()
     return {
         'cabin_body': body,
@@ -881,6 +920,10 @@ def cabin_icon_models():
         # Observation car: same frame, glass panes everywhere the shell used to be solid.
         'observation_cabin': dict(parent='easyelevator:item/cabin_body', textures={
             'shell': STEEL, 'wall': PANE, 'door': PANE, 'base': PLATE, 'lamp': SCREEN}),
+        # Powerful car: red load plate with the capacity pictogram.  Frame, door and sill are the
+        # shared ones on purpose - the car is heavier, not bigger (its shell is identical in game).
+        'powerful_cabin': dict(parent='easyelevator:item/cabin_body', textures={
+            'shell': POWERFUL, 'wall': POWERFUL, 'door': DARK, 'base': PLATE, 'lamp': SCREEN}),
     }
 
 
@@ -944,7 +987,7 @@ def check_item_models(models):
     Also enforces the ``minecraft:block/block`` parent: without it an element-only model
     has no ``display`` transforms and shows up flat and unrotated in the inventory.
     """
-    known = {STEEL, DARK, PLATE, SCREEN, GOLD, PANE}
+    known = {STEEL, DARK, PLATE, SCREEN, GOLD, POWERFUL, PANE}
     for name, spec in models.items():
         if spec.get('elements'):
             assert spec.get('parent') == 'minecraft:block/block', \
@@ -1002,18 +1045,25 @@ DOORWAY = [
 #: take inside the shell so that no two faces end up coplanar.
 BOUNDS = {
     'STANDARD_PARTS': (-1.302, 1.302, .198, 2.82, -1.302, 1.09),
+    'POWERFUL_PARTS': (-1.302, 1.302, .198, 2.82, -1.302, 1.09),
     'OBSERVATION_PARTS': (-1.41, 1.41, .198, 2.82, -1.41, 1.09),
 }
 
 
-#: The control panel is the one group of interior parts both cabins must share: the
-#: observation car is glass, but it still has to show the floor number and the call buttons.
-#: The last row-count rows of both tables must therefore be identical.
+#: The control panel is the one group of interior parts every cabin must share: the observation
+#: car is glass and the powerful car is upholstered differently, but both still have to show the
+#: floor number and the call buttons.  The last row-count rows of every table must therefore be
+#: identical.
 PANEL_ROWS = 6
+#: How many parts the powerful car must add on top of the standard interior.  Enforced as ">0"
+#: rather than an exact count so that adding another strengthening part stays a one-line change;
+#: what must never happen is shipping a "powerful" car that looks exactly like the standard one
+#: (the 2.2.1 requirement was "keep the original look, add elements that read as more capacity").
+MIN_POWERFUL_EXTRAS = 1
 
 
 def parse_cabin_parts():
-    """Read the material order and the two cabin part tables straight out of the Java source.
+    """Read the material order and the cabin part tables straight out of the Java source.
 
     Parsing the source instead of duplicating the numbers here is deliberate: the tables are
     the single source of truth for the interior, and this way a typo in Java fails the art
@@ -1024,7 +1074,7 @@ def parse_cabin_parts():
     enum_body = re.sub(r'//[^\n]*', '', enum_body)  # drop the trailing per-row comments
     names = [tok.strip() for tok in enum_body.split(';', 1)[0].split(',') if tok.strip()]
     tables = {}
-    for name in ('STANDARD_PARTS', 'OBSERVATION_PARTS'):
+    for name in ('STANDARD_PARTS', 'POWERFUL_PARTS', 'OBSERVATION_PARTS'):
         body = text.split(f'{name}={{', 1)[1].split('\n    };', 1)[0]
         rows = []
         for match in re.finditer(r'\{([^{}]*)\}', body):
@@ -1058,7 +1108,7 @@ def _overlaps(a, b, axis):
 
 
 def check_cabin_parts():
-    """Validate the cabin interior tables against the three invariants of CabinRenderer.
+    """Validate the three cabin interior tables against the invariants of CabinRenderer.
 
     Raises ``AssertionError`` with the offending rows, so ``python tools/generate_art.py``
     doubles as the geometry regression test for the cabin (the Java equivalent of the
@@ -1067,13 +1117,29 @@ def check_cabin_parts():
     names, tables = parse_cabin_parts()
     assert names == MAT_ORDER, f'CabinRenderer.Mat order {names} != atlas order {MAT_ORDER}'
     assert len(ATLAS_TILES) == len(MAT_ORDER), 'atlas tile count and material count differ'
-    # The observation car must carry the same control panel as the standard one: without it
-    # the red floor number is drawn on thin air (the 1.5.6 report was exactly that).
+    # Every cabin must carry the same control panel as the standard one: without it the red floor
+    # number is drawn on thin air (the 1.5.6 report was exactly that), and the observation car is
+    # glass while the powerful car is upholstered differently - neither may lose the panel.
     standard_tail = tables['STANDARD_PARTS'][-PANEL_ROWS:]
-    observation_tail = tables['OBSERVATION_PARTS'][-PANEL_ROWS:]
-    assert standard_tail == observation_tail, (
-        'the last %d rows of STANDARD_PARTS and OBSERVATION_PARTS must be the identical control panel;\n'
-        '  standard   : %s\n  observation: %s' % (PANEL_ROWS, standard_tail, observation_tail))
+    for other in ('POWERFUL_PARTS', 'OBSERVATION_PARTS'):
+        tail = tables[other][-PANEL_ROWS:]
+        assert standard_tail == tail, (
+            'the last %d rows of STANDARD_PARTS and %s must be the identical control panel;\n'
+            '  standard: %s\n  %s: %s' % (PANEL_ROWS, other, standard_tail, other, tail))
+    # The powerful car is "the standard car plus strengthening parts": it must keep every standard
+    # interior row verbatim (that is the 2.2.1 requirement "keep the basic look") and then add at
+    # least one extra row of its own (otherwise the model would be indistinguishable in game).
+    standard_body = tables['STANDARD_PARTS'][:-PANEL_ROWS]
+    extras = len(tables['POWERFUL_PARTS']) - PANEL_ROWS - len(standard_body)
+    assert tables['POWERFUL_PARTS'][:len(standard_body)] == standard_body, (
+        'the first %d rows of POWERFUL_PARTS must be STANDARD_PARTS verbatim (the standard '
+        'interior is kept, the strengthening parts are appended after it);\n'
+        '  standard: %s\n  powerful: %s'
+        % (len(standard_body), standard_body, tables['POWERFUL_PARTS'][:len(standard_body)]))
+    assert extras >= MIN_POWERFUL_EXTRAS, (
+        'POWERFUL_PARTS adds %d part rows on top of the standard interior, but at least %d is '
+        'required: the powerful car has to look like it carries more people'
+        % (extras, MIN_POWERFUL_EXTRAS))
     for table, rows in tables.items():
         bounds = BOUNDS[table]
         assert rows, f'{table} is empty'
@@ -1095,8 +1161,10 @@ def check_cabin_parts():
         # since 1.3.0 and is verified in game; everything else - every interior part and every
         # doorway part, against the shell and against each other - must stay clear of it.
         parts = [(f'{table}[{i}]', [r[0], r[1], r[2], r[3], r[4], r[5]]) for i, r in enumerate(rows)]
+        # The powerful car is opaque like the standard one - only the observation car swaps the
+        # side/back walls for glass, so it is the one that gets the four-post shell.
         shell = [(name, [float(c) for c in coords]) for name, *coords in
-                 (SHELL_STANDARD if table == 'STANDARD_PARTS' else SHELL_OBSERVATION)]
+                 (SHELL_OBSERVATION if table == 'OBSERVATION_PARTS' else SHELL_STANDARD)]
         doorway = [(name, [float(c) for c in coords]) for name, *coords in DOORWAY]
         boxes = parts + doorway + shell
         for i in range(len(boxes)):
@@ -1157,6 +1225,7 @@ def main():
         BLOCK_TEX / 'blank_plate.png': tex_machined_plate(),
         BLOCK_TEX / 'blank_screen.png': tex_display_screen(),
         BLOCK_TEX / 'blank_speed.png': tex_speed_plate(),
+        BLOCK_TEX / 'blank_powerful.png': tex_powerful_plate(),
         BLOCK_TEX / 'blank_glass.png': tex_glass_plate(),
         ENTITY_TEX / 'cabin.png': build_atlas(),
         ASSETS / 'icon.png': build_icon(),

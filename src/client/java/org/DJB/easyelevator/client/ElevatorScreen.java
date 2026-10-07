@@ -242,18 +242,26 @@ public class ElevatorScreen extends Screen {
      *   <li>正常停靠（停在某一层）时可用——已经全开时按下只是续满停留时间，相当于按住开门键；</li>
      *   <li>故障脱困（{@link ElevatorStatus#faulted}，例如断轨或被卡在两层之间）时也可用，
      *       让被困的乘客能自己开门走出来；</li>
+     *   <li>本线路一扇完整的门都没有（{@code stops} 为空，例如轿厢刚放到轨道上还没建门）时也可用——
+     *       这辆车永远不会动，门关着就必须能开出来；</li>
      *   <li>运行途中一律不可用——运行时门会重新变灰，防止半空开门。</li>
      * </ul>
      * 关门键在门处于打开或开门过程中可用。
+     *
+     * <p><b>两个事实都由这里算好，不能改让 {@code ElevatorController} 去查世界</b>：
+     * 客户端的 {@code AbstractCabinEntity.railX/railZ} 不进 DataTracker（恒 0），
+     * {@code cabin.line()} 会去扫 (0, y, 0) 并返回 null，于是"没有线路"那一支会永远成立，
+     * 开门键从此常亮、点下去却被服务端拒绝。站点列表用服务端在 {@code OpenPanel} 里下发的 {@code stops}
+     * 即可——它本来就是"这条线路上现在有哪些站点"的权威答案，还省掉了每帧扫一次世界。
      *
      * @param cabin 面板绑定的轿厢；为 null（实体暂时未同步）时两个键都禁用
      */
     private void updateDoorButtons(AbstractCabinEntity cabin) {
         boolean atStation=false;
         if(cabin!=null) for(BlockPos stop:stops) if(parkedAt(cabin,stop.getY())) { atStation=true; break; }
-        // 开门：停稳在某一层、或处于故障（与服务端的 canOpenDoor 是同一条判据，见该方法的说明）
+        // 开门：停稳在某一层、处于故障、或这条线路上一扇门都没有（与服务端的 canOpenDoor 是同一条判据）
         if(doorOpen!=null) doorOpen.active=cabin!=null && ElevatorController.canOpenDoor(
-                cabin.phase(),cabin.hasTarget()?cabin.targetY():Integer.MIN_VALUE,atStation);
+                cabin.phase(),cabin.hasTarget()?cabin.targetY():Integer.MIN_VALUE,atStation,!stops.isEmpty());
         // 关门：门处于打开或开门过程中（此时必然已经停稳）
         if(doorClose!=null) doorClose.active=cabin!=null && stopped(cabin)
                 && (cabin.phase()==ElevatorController.Phase.OPEN || cabin.phase()==ElevatorController.Phase.OPENING);

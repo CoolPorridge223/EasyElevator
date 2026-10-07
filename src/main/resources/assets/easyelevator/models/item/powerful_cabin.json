@@ -1,0 +1,10 @@
+{
+  "parent": "easyelevator:item/cabin_body",
+  "textures": {
+    "shell": "easyelevator:block/blank_powerful",
+    "wall": "easyelevator:block/blank_powerful",
+    "door": "easyelevator:block/blank_door",
+    "base": "easyelevator:block/blank_plate",
+    "lamp": "easyelevator:block/blank_screen"
+  }
+}

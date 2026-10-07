@@ -1,6 +1,6 @@
 # 模型、音效与门动画接口
 
-适用模组版本 **2.2.0**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
+适用模组版本 **2.2.1**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
 
 > 面向**素材替换**：模型 / 贴图 / 音效的接口、门动画与几何的取值来源、以及"改了必须同步改哪里"。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
@@ -12,6 +12,10 @@
 > 可重复运行且输出逐字节一致，并且在写文件前会做几何自检（见各自文件头与
 > `check_door_models` / `check_item_models` / `check_cabin_parts` / `check_blockstates`）。
 > 只想换外观（贴图或模型数值）时改脚本再跑；只做资源包覆盖时可以照下表直接替换成品文件。
+>
+> 唯一的例外是**PNG 的压缩字节**：同一个脚本在不同 Python / zlib 版本下写出的像素完全一致，
+> 但压缩后的字节可能不同。跑完脚本若只有 `textures/**/*.png` 显示为已修改，先比对像素再决定是否提交
+> （`blank_glass.png` 与 `textures/entity/cabin.png` 就出现过这种情况：像素零差异、字节不同）。
 
 ## 模型
 
@@ -22,15 +26,16 @@
 | 轨道 | `models/block/elevator_rail.json` |
 | 楼层门**门框**（常驻的左右立柱与门楣） | 底行 `models/block/landing_door_frame_{left,middle,right}_bottom.json`（立柱底座 + 整条门槛）、中行 `landing_door_frame_{left,middle,right}.json`（立柱 / 门洞空模型）、顶行 `landing_door_frame_top.json`（中列门楣）与 `landing_door_frame_top_left.json` / `landing_door_frame_top_right.json`（顶行立柱 + 门楣） |
 | 楼层门物品图标（关门状态的整扇门切片；方块本身已不再使用它） | `models/block/call_button.json` |
-| 物品显示 | `models/item/elevator_rail.json`、`call_button.json` 直接以方块模型为父；三个轿厢图标共用 `models/item/cabin_body.json`（1/3 比例的迷你轿厢），各自只覆盖 `shell` / `wall` / `door` / `base` / `lamp` 五个贴图变量 |
+| 物品显示 | `models/item/elevator_rail.json`、`call_button.json` 直接以方块模型为父；四个轿厢图标共用 `models/item/cabin_body.json`（1/3 比例的迷你轿厢），各自只覆盖 `shell` / `wall` / `door` / `base` / `lamp` 五个贴图变量 |
 | 门框 / 轨道亮钢贴图 | `textures/block/blank.png` |
 | 亮钢门扇贴图（楼层门叶） | `textures/block/blank_door.png`（1.5.6 由 `blank_dark.png` 更名并改亮） |
 | 机加工深色板（立柱底座、门槛、轨道法兰与抱箍） | `textures/block/blank_plate.png` |
 | 门楣**显示屏**（近黑玻璃 + 掠光；横向均匀，因此三列门楣拼起来是同一块连续屏幕。屏幕本身在模型里是**凹进去**的一件，四周由压边与立柱收头当边框） | `textures/block/blank_screen.png` |
 | 高速轿厢图标金板（拉丝金 + 三个速度箭头） | `textures/block/blank_speed.png` |
+| 强力轿厢图标红色负载板（拉丝红 + 三个站立人形，2.2.1 起由生成脚本接管） | `textures/block/blank_powerful.png` |
 | 观光轿厢图标玻璃板（冷灰蓝玻璃 + 钢框，仅用于物品图标，不用于世界玻璃） | `textures/block/blank_glass.png` |
 | 厅外呼叫面板（右键楼层门弹出的 ▲ / ▼ / 关闭 三个按钮） | 纯 Java 绘制，见 `client/LandingDoorScreen`；按钮文字用的是 ▲(U+25B2) / ▼(U+25BC) 字符，由原版字体的 Unicode 回退提供，文案键为 `screen.easyelevator.hall_title / hall_up / hall_down / hall_station / close` |
-| 轿厢**材质图集**（三种型号共用一张 4×4 共 16 格） | `textures/entity/cabin.png` |
+| 轿厢**材质图集**（四种型号共用一张 4×4 共 16 格） | `textures/entity/cabin.png` |
 | 模组列表图标 | `icon.png` |
 
 图集格号由 `CabinRenderer.Mat` 的枚举顺序给出：`WALL`（亮钢舱壁）、`TRIM`（中性饰条：扶手压条、灯槽、门楣）、
@@ -47,26 +52,36 @@
 > 重画这一格时请保证"左缘约 15% 无图案"，否则侧面会重新出现半个圆。
 
 轿厢是移动实体，**不是可直接替换 block JSON 的方块**。`CabinRenderer` 用 `BoxMesh` 直接画几何：
-外壳五个长方体与 `AbstractCabinEntity.collisionBoxes()` 逐项对应，内饰件写在两张数据表里
-（`STANDARD_PARTS` / `OBSERVATION_PARTS`，每行 = `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标）。
+外壳五个长方体与 `AbstractCabinEntity.collisionBoxes()` 逐项对应，内饰件写在三张数据表里
+（`STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS`，每行 = `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标）。
 替换为你的 Java/Blockbench 实体模型时，保留注册的 `CabinRenderer`，在其 `render` 内调用你的模型即可。
 如果将来采用 GeckoLib，需要自行增加适用于 1.21.1 的依赖及动画控制器；当前实现不依赖动画库。
 
 内饰表有三条硬不变量，改表后必须让 `python tools/generate_art.py` 通过（它会解析 Java 源文件并逐条校验）：
 ① 所有件待在净空 `X ±1.3、Y 0.2..2.8、Z -1.3..门背面` 之内（允许向外壳嵌 0.002 格）；
 ② 与外壳或彼此相接时，相接面要错开 0.002 格以上，**不允许两个面共面**——即使采用背面剔除，同向共面片仍会互相抢深度；③ 材质格号 0..15、自发光只能 0/1。
-另外两张表的**最后 6 行必须逐字相同**（操纵面板）：观光舱的侧壁是玻璃，但层号与呼梯键同样要有，
-漏掉就会出现"红字浮在空中"——脚本会断言 `STANDARD_PARTS[-6:] == OBSERVATION_PARTS[-6:]`。
+另外三张表的**最后 6 行必须逐字相同**（操纵面板）：观光舱的侧壁是玻璃、强力舱的内饰是另一套，但层号与呼梯键同样要有，
+漏掉就会出现"红字浮在空中"——脚本会断言 `STANDARD_PARTS[-6:] == POWERFUL_PARTS[-6:] == OBSERVATION_PARTS[-6:]`。
+`POWERFUL_PARTS` 还多两条：**前 12 行必须与 `STANDARD_PARTS` 的前 12 行逐字相同**
+（"保留原来样貌、另外加料"），并且至少比它多出 `MIN_POWERFUL_EXTRAS = 1` 行——否则"强力舱看起来和普通舱一模一样"会直接被构建期拦下。
 
 **厢内照明（自 2.1.0 起）**：`logic/CabinLighting.surface` 根据轿厢局部面中心、法线与灯位
 `(0, 2.78, -0.25)` 计算距离和朝向衰减。外壳、顶板外侧、底面、门外侧与导靴保持环境光；
 舱内朝向灯具的面才获得补光，补光上限 13 级。`CabinLighting.lamp` 仅将灯罩朝下的面提高到
 15 级方块光，灯罩背面和侧边保持环境光。全部处理保留天光，不修改世界数据。
 这属于模型表面的局部照明，不会给玩家、附近方块提供真实动态光源。
-普通与高速共用模型和照明，观光型号使用同一套规则；本版保留之前的模型尺寸与门底防闪烁偏移。
 
-`CabinRenderer<T extends AbstractCabinEntity>` 同时服务三种轿厢，外观只分两个分支：**普通与高速**走
-`drawStandardShell` + `STANDARD_PARTS` + `drawDoorway` + `drawDoors`（完全不透明，两者逐面相同，因此高速型号没有独立模型）；
+**强力舱有两盏顶灯**（门口那盏见上一节），因此它的舱内与外壳内面改走 `CabinLighting.surfaceTwoLamps`：
+灯位多一个 `(0, 2.78, 0.77)`（与门口那块灯罩的几何中心一致），亮度取两盏灯里**更亮的一盏**
+（不是相加——相加会让舱内中央死白、层次全丢，也违反"上限 13 级"的约定）。
+普通、高速与观光三型仍然只调 `surface`，单灯路径与 2.2.0 的公式逐位相同，因此它们的舱内观感没有变化。
+渲染侧由 `CabinRenderer.render` 按 `heavyDuty()` 选采样器，并把同一个采样器同时交给外壳与内饰——
+外壳内面与扶手/铭牌必须用同一组灯位，否则两者接缝处能看出亮度对不上。
+普通、高速与强力共用外壳与照明，观光型号使用同一套规则；本版保留之前的模型尺寸与门底防闪烁偏移。
+
+`CabinRenderer<T extends AbstractCabinEntity>` 同时服务四种轿厢，外观分三个分支：**普通、高速与强力**走
+`drawStandardShell` + `drawDoorway` + `drawDoors`（完全不透明，外壳逐面相同，因此高速型号没有独立模型），
+内饰表按型号选：普通/高速用 `STANDARD_PARTS`，**强力用 `POWERFUL_PARTS`**（见下一节）；
 **观光**走 `drawObservationShell` + `OBSERVATION_PARTS` + `drawObservationGlass`（地板、顶板、四根角柱、上下压条、
 中梃与竖向分格、扶手、灯槽顶灯与**操纵面板**都不透明，左右侧墙 / 后墙 / 两扇门各画一张
 `BoxMesh.glassX/glassZ` 的**零厚度双面玻璃**，正反都可见，颜色常量是 `GLASS_COLOR` / `GLASS_DOOR_COLOR`）。
@@ -85,6 +100,35 @@
 `BoxMesh` 新增了 UV 矩形重载（`cuboid(..., float[] uv)` 与 `planeX/Y/Z` 的同名重载，`{u0,v0,u1,v1}` 归一化 0..1，
 传 `FULL_UV` 即旧行为）。这就是"一张图集画完不透明轿厢构件"的基础：实体渲染每层只有一个正在构建的缓冲，
 换一次贴图就要切一次缓冲、旧引用立刻失效，用 UV 分格可以在同一个缓冲里画完全部材质。
+
+### 强力轿厢的"重载"内饰（2.2.1）
+
+强力型号（`easyelevator:powerful_cabin`）的卖点是**载客量**，不是速度或尺寸，因此它的模型做法刻意分成两半：
+
+| 关注点 | 做法 |
+| --- | --- |
+| 外壳、地板、两扇滑门、门槛与门楣 | **与普通型号逐件相同**（`drawStandardShell` / `drawDoors` / `drawDoorway` 原样复用）——井道、碰撞盒、门口防夹与门联锁因此逐位一致，换型号不需要改建筑 |
+| 内饰 | 换成 `POWERFUL_PARTS` = `STANDARD_PARTS` 的前 12 行（普通内饰**原样保留**）+ 10 行重载件 + 与另外两张表逐字相同的操纵面板 6 行 |
+| 分支开关 | `AbstractCabinEntity.heavyDuty()`（**纯客户端渲染提示**，与 `glassWalls()` 同一性质，不进存档与网络包）；`PowerfulCabinEntity` 覆写为 true |
+
+10 行重载件分别是（坐标与不变量校验见 [PARAMETERS.md](PARAMETERS.md) 第 3 节）：
+
+| 件 | 数量 | 为什么它读起来是"能拉更多人" |
+| --- | --- | --- |
+| 第二道不锈钢扶手（Y=1.55..1.62） | 3 | 站着的乘客也有地方扶；右壁那一条在操纵面板前**收头**（Z 止于 0.18），与真实电梯"扶手让开操纵盘"一致 |
+| 后壁立柱 | 2 | 把上下两道扶手连成整体，看上去是承力件而不只是两根管子 |
+| 后壁载重铭牌（深色边框 + 亮板） | 2 | 板上那行红字（`text.easyelevator.capacity`，数值取 `passengerNumLimit()`）直接把"能装多少人"写出来 |
+| 门口一侧的第二块顶灯 | 2 | 双灯照明，满载时舱内不暗；与后侧那块同一套做法（灯槽框 + 自发光灯罩） |
+| 门槛内侧的防滑钢踏板 | 1 | 高客流车门口的标配；底面与踢脚线同高、两端嵌进踢脚线 0.002 格，因此端面藏在踢脚线里，看起来是"从左墙铺到右墙"的一条钢板 |
+
+**铭牌上的红字属于文字层**，由 `CabinRenderer.drawCapacityPlate` 在 `drawFloorDisplay` 之后调用
+（两者都是文字层，之间不会发生层切换）；它与面板上的层号共用同一段落笔逻辑 `drawCabinLine`，
+只是**不旋转矩阵**——铭牌正面本来就朝 +Z，而右侧壁面板要转 −90° 才朝厢内。改这句文案时注意铭牌净高只有 0.30 格：
+字号 `CAPACITY_SCALE = 0.014`，英文译文一旦明显长于 `Max 20 people` 就会溢出板面。
+
+物品图标另外用一张只给图标用的红色负载板 `blank_powerful.png`（拉丝红底 + 三个人形图案），
+由 `tools/generate_art.py` 的 `tex_powerful_plate` 生成；**世界里的轿厢不读这张贴图**，它仍然走材质图集。
+把 `blank_powerful` 从脚本里摘掉会触发脚本的"清理过期 blank*.png"逻辑，因此那张图必须由脚本产出。
 
 ### 玻璃在光影下的表现
 
@@ -158,7 +202,7 @@ var state = cabin.phase();
 // rightDoor.x = closedRightX + progress * travel;
 ```
 
-状态包括 OPEN、CLOSING、MOVING、OPENING、BLOCKED。状态及门进度由服务端计算并同步，进入观察范围的玩家也能看到当前进度。两扇滑门使用横向收回动画；换模型后可使用骨骼平移或动画时间轴。渲染动画不能直接触发移动；安全联锁以服务端进度为准。
+状态包括 OPEN、CLOSING、MOVING、OPENING、BLOCKED 与 OVERLOAD（超载：门保持全开、不派发行程）。状态及门进度由服务端计算并同步，进入观察范围的玩家也能看到当前进度。两扇滑门使用横向收回动画；换模型后可使用骨骼平移或动画时间轴。渲染动画不能直接触发移动；安全联锁以服务端进度为准。
 
 楼层门的门扇现在也走同一套连续进度，替换外观时读同一个值即可：
 
@@ -173,7 +217,7 @@ Box right = LandingDoorGeometry.leafBox(facing, progress, true);  // 全开时�
 
 因为门的碰撞形状会随进度变化，方块注册时带上了 `AbstractBlock.Settings.dynamicBounds()`（见 `Easyelevator.LANDING_DOOR`），否则原版会按静态形状缓存碰撞。`LandingDoorBlockEntity` 提供两个重载：**无参** `openProgress()` 每次读取最新进度供碰撞与联锁使用，**带 `tickDelta`** 的 `openProgress(float)` 保留前后刻插值供渲染——避免同刻旧样本使碰撞滞后于画面。
 
-改动画时长、运行速度、开门停留时间：修改 `ElevatorParameters.DOOR_TICKS / SPEED / HIGH_SPEED / DWELL_TICKS`；完整参数见 [PARAMETERS.md](PARAMETERS.md)。其中 `SPEED` 是普通与观光轿厢的步长、`HIGH_SPEED` 是高速轿厢的步长，两者都在实体构造时注入各自的 `ElevatorController` 实例。
+改动画时长、运行速度、开门停留时间：修改 `ElevatorParameters.DOOR_TICKS / SPEED / HIGH_SPEED / DWELL_TICKS`；限载人数改 `PASSENGER_NUM_LIMIT`（0 = 不限载）/ `HIGH_PASSENGER_NUM_LIMIT`，完整参数见 [PARAMETERS.md](PARAMETERS.md)。其中 `SPEED` 是普通／观光／强力轿厢的步长、`HIGH_SPEED` 是高速轿厢的步长，两者都在实体构造时注入各自的 `ElevatorController` 实例；限载人数也在同一处注入，因此改它只需要重新构建（铭牌红字与超载判定同时跟着变）。
 
 `CabinRenderer.render` 在模型矩阵上应用 `CabinMotion.renderY` 的平滑高度偏移。替换模型时**必须保留这一步**，否则轿厢会以服务端 20 TPS 的台阶位置显示。
 

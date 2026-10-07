@@ -25,7 +25,7 @@ public class CabinEntity extends AbstractCabinEntity {
      * @param type 实体类型（由 {@link Easyelevator#CABIN} 注册，ID 为 {@code easyelevator:cabin}）
      * @param world 所在世界
      */
-    public CabinEntity(EntityType<?> type, World world) { super(type, world, ElevatorParameters.SPEED); }
+    public CabinEntity(EntityType<?> type, World world) { super(type, world, ElevatorParameters.SPEED, ElevatorParameters.PASSENGER_NUM_LIMIT); }
 
     /** @return 普通轿厢物品 {@link Easyelevator#CABIN_ITEM}：回收后仍得到普通轿厢 */
     @Override protected Item cabinItem() { return Easyelevator.CABIN_ITEM; }

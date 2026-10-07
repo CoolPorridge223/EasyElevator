@@ -15,6 +15,28 @@ package org.DJB.easyelevator.logic;
 public final class ElevatorParameters {
     /** 工具类，禁止实例化：所有成员都是 static final 常量。 */
     private ElevatorParameters() { }
+
+    /**
+     * 普通 / 高速 / 观光三型轿厢的限载人数：<b>0 = 不限载</b>（加进来多少人就装多少人，即本功能之前的旧行为）。
+     *
+     * <p>为什么用 0 表示"不限"而不是随便填一个大数：这三型的轿厢本来就没有载客上限，
+     * 判超载的条件必须是"限载人数为正"，否则 {@code 人数 > 0} 会在厢内站进第一个人时立刻成立，
+     * 于是普通轿厢一到站就显示"超载"、门再也关不上（见 {@code AbstractCabinEntity.overloaded()}）。
+     * 想给普通轿厢也加个上限，把这里改成正数即可，渲染与状态机读的是同一个值。
+     */
+    public static final int PASSENGER_NUM_LIMIT = 8;
+
+    /**
+     * 强力电梯的限载人数：20 人。厢内玩家数<b>超过</b>它时状态机进入
+     * {@link ElevatorController.Phase#OVERLOAD}——门保持全开、不派发行程，直到有人走出厢门。
+     *
+     * <p>这一型与其它型号的外壳、门、速度完全相同，因此"能拉更多人"是靠更大的轿厢<b>用途</b>定义的：
+     * 载客量写在这里、由内饰里的载重铭牌显示（`CabinRenderer` 把它画成红字），
+     * 因此改这个数字不需要动任何贴图或几何。3x3x3 的净空（内缘 ±1.3 格）实际能站下 20 人上下，
+     * 调大之后玩家会挤在一起但不会掉出轿厢；调小则更容易触发超载。
+     */
+    public static final int HIGH_PASSENGER_NUM_LIMIT = 20;
+
     /** 每游戏秒的刻数：Minecraft 固定 20 刻/秒，用于在“秒”与“刻”之间换算。 */
     public static final int TICKS_PER_SECOND = 20;
     /** 轿厢运行速度：0.20 格/刻 = 4 格/秒，为旧版 0.10 格/刻的两倍；普通轿厢与观光轿厢都用它。 */

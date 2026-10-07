@@ -109,7 +109,8 @@ public abstract class CabinCrosshairMixin {
      * 轿厢门是否处于"完全打开"（可以让人与准星自由穿过门洞）。
      *
      * <p>判据与客户端其它门相关判定同源：门进度到 1，且相位在开门侧（到站开门后的第一刻是
-     * {@code OPENING}，门其实已经全开）。关着门或正在开关时都不算——那时门扇是真实阻挡，射线不该穿出去。
+     * {@code OPENING}，门其实已经全开；超载时相位是 {@code OVERLOAD}，那一阶段门也一直保持全开）。
+     * 关着门或正在开关时都不算——那时门扇是真实阻挡，射线不该穿出去。
      *
      * @param cabin 玩家所处的轿厢
      * @return 门完全打开时为 true
@@ -117,6 +118,7 @@ public abstract class CabinCrosshairMixin {
     private static boolean doorsOpen(AbstractCabinEntity cabin) {
         if (cabin.doorProgress(1f) < .999f) return false;
         var phase = cabin.phase();
-        return phase == ElevatorController.Phase.OPEN || phase == ElevatorController.Phase.OPENING;
+        return phase == ElevatorController.Phase.OPEN || phase == ElevatorController.Phase.OPENING
+                || phase == ElevatorController.Phase.OVERLOAD;
     }
 }

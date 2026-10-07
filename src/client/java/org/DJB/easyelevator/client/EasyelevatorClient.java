@@ -52,12 +52,13 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 也不依赖 PowerShell 弹窗（见 FileDropHandler）。
         // 这里只是第一次尝试；窗口若还没就绪，下面的刻回调会继续重试（挂上后函数自己就变成空操作）。
         FileDropHandler.register(net.minecraft.client.MinecraftClient.getInstance());
-        // 三种轿厢（普通 / 高速 / 观光）共用同一个渲染器：泛型参数取共同的父类，
-        // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙）由实体自身的 glassWalls() 决定，
-        // 而不是按实体类型分支——将来加型号时这里只需要多一行注册。
+        // 四种轿厢（普通 / 高速 / 观光 / 强力）共用同一个渲染器：泛型参数取共同的父类，
+        // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙、强力型号的重载内饰与双灯补光）
+        // 由实体自身的 glassWalls() / heavyDuty() 决定，而不是按实体类型分支——将来加型号时这里只需要多一行注册。
         EntityRendererRegistry.register(Easyelevator.CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.HIGH_SPEED_CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.OBSERVATION_CABIN,CabinRenderer::new);
+        EntityRendererRegistry.register(Easyelevator.POWERFUL_CABIN,CabinRenderer::new);
         // 楼层门门扇是连续滑动的几何，方块模型做不到逐帧插值，因此交给方块实体渲染器绘制（门框仍由方块模型画）。
         BlockEntityRendererRegistry.register(Easyelevator.LANDING_DOOR_BE,LandingDoorRenderer::new);
         // 网络回调不在主线程：所有客户端状态修改都必须回到客户端线程（context.client().execute）执行，避免数据竞争。

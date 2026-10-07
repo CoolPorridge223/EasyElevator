@@ -11,15 +11,16 @@ import java.util.List;
  * 所有世界查询都通过 {@link Environment} 回调注入，因此整个类不引用任何 Minecraft 类，
  * 可以脱离游戏做单元测试，并且行为完全确定（同一输入序列必然得到同一输出）。</p>
  *
- * <p>在整体架构中的位置：服务端权威。AbstractCabinEntity（及其三个子类：普通 / 高速 / 观光）每刻调用 {@link #tick(double, Environment)}，
- * 用匿名 Environment 实现把 valid/canMove/doorwayBlocked/arrived 四个世界查询喂进来；
+ * <p>在整体架构中的位置：服务端权威。AbstractCabinEntity（及其四个子类：普通 / 高速 / 观光 / 强力）每刻调用 {@link #tick(double, Environment)}，
+ * 用匿名 Environment 实现把 valid/canMove/doorwayBlocked/arrived/outOfPassengerNumLimit 这些世界查询喂进来；
  * 状态机产出的 phase/door/target 再由服务端同步给客户端，客户端只做只读渲染与镜头插值。
  * <b>运动形状委托给 {@link MotionProfile}</b>：状态机只决定"什么时候能走、往哪走"，每刻向曲线索取
  * 位移，因此门时序与联锁不受运动形状影响。</p>
  *
  * <p>状态迁移（{@link Phase}）：OPEN -> CLOSING -> MOVING -> OPENING -> OPEN 循环；
  * BLOCKED 表示受阻（断轨、线路朝向不一致、运行区域有方块或实体障碍、区块未加载、目的站门被拆），
- * 它不是失败而是暂停——条件恢复后继续原行程。</p>
+ * 它不是失败而是暂停——条件恢复后继续原行程；OVERLOAD 表示超载（门开着、不派发行程，人走出去就回到 OPEN），
+ * 同样不是失败。</p>
  *
  * <p>两类请求（现实电梯的"集选控制"）：
  * <ul>
@@ -42,9 +43,22 @@ public final class ElevatorController {
     /**
      * 状态机阶段。
      * OPEN = 已开门并停留等待、CLOSING = 正在关门、MOVING = 正在运行、
-     * OPENING = 正在开门、BLOCKED = 受阻暂停（可恢复，不是失败）。
+     * OPENING = 正在开门、BLOCKED = 受阻暂停（可恢复，不是失败）、
+     * OVERLOAD = 超载（门保持全开、不派发行程，人走出去就恢复 OPEN）。
+     *
+     * <p>OVERLOAD 由 {@link Environment#outOfPassengerNumLimit()} 驱动，只可能从 OPEN 进入、也只能回到 OPEN：
+     * 它<b>不是</b>故障（{@code ElevatorStatus.faulted} 只看 BLOCKED），门在整段时间里都是全开 1.0，
+     * 因此它不参与门联锁与开门键可用性的判定——恰恰相反，乘客必须能走出去，门必须一直开着。
+     * 关门途中发现超载会先切回 OPENING 把门重新打开（见 {@link #tick}），
+     * 因此「门正在关、又挤进来把人挤超限」的实机表现就是"门关到一半又开回去"（与防夹同一套反向动作）；
+     * 而在 OVERLOAD 相位按关门键会被直接拒收（{@link #forceClose} 只受理 OPEN/OPENING），
+     * 客户端面板上那个键也本来就是灰的。
+     *
+     * <p>枚举顺序即同步字段的序号（{@code AbstractCabinEntity.PHASE} 存 {@code ordinal()}），
+     * 因此<b>只能往后追加</b>、不能插队或改名；旧存档按名字读回（{@code Phase.valueOf}），
+     * 不认识的阶段一律降级为 BLOCKED。
      */
-    public enum Phase { OPEN, CLOSING, MOVING, OPENING, BLOCKED }
+    public enum Phase { OPEN, CLOSING, MOVING, OPENING, BLOCKED, OVERLOAD }
     /**
      * 当前承诺的服务方向（现实电梯的"集选方向"）。
      * UP/DOWN = 正在按这个方向顺路接人，NONE = 空闲、下一次请求到来时重新决定。
@@ -106,6 +120,19 @@ public final class ElevatorController {
          * @return 可以立刻继续原行程时为 true；仍被故障挡住时为 false
          */
         boolean canResume();
+        /**
+         * 本厢此刻是否超载（厢内人数超过限载人数）。
+         *
+         * <p>只由轿厢型号决定：状态机不认识"限载几人"，它只问这一句。实现方（{@code AbstractCabinEntity}）
+         * 负责把"限载 0 或负数 = 不限载"这条规则落实掉，因此普通 / 高速 / 观光三型恒返回 false，
+         * 只有强力型号会在人数超过 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 时为真。
+         *
+         * <p>调用时机：{@link #tick} 在 OPEN 与 CLOSING 两个阶段各问一次（门开着的时候才需要判超载）。
+         * 本方法必须<b>无副作用</b>，且对同一次 tick 内的重复调用返回同一个值。
+         *
+         * @return 超载时为 true；不限载的型号恒为 false
+         */
+        boolean outOfPassengerNumLimit();
         /**
          * 已精确到站的副作用回调：由实现方负责开启楼层门联锁、播放音效、更新方块状态等。
          *
@@ -341,46 +368,63 @@ public final class ElevatorController {
      * 开门键此刻是否应当可用。<b>服务端与客户端面板共用这一条判据</b>，避免"按钮亮着点了没反应"
      * 或"能开的时候按钮却是灰的"。
      *
-     * <p>两种可用情形：
+     * <p>三种可用情形：
      * <ol>
      *   <li><b>正常停靠</b>：关着门停在某个站点、或停在站点待命（相位不是 MOVING，或 MOVING 但没有目的站）
      *       ——即到达某层之后的正常开门；</li>
      *   <li><b>故障脱困</b>：{@link ElevatorStatus#faulted} 为真，即"目的地还在却走不动"。这时刻意不看
-     *       轿厢是不是正好停在站点上：恰恰是被卡在两层之间时才最需要开门。</li>
+     *       轿厢是不是正好停在站点上：恰恰是被卡在两层之间时才最需要开门；</li>
+     *   <li><b>无站线路脱困</b>（{@code !hasStations}）：这条线路上连一扇完整的楼层门都没有
+     *       （典型情形是"轿厢刚放到轨道上、还没建门"）。此时 {@link #select(double)} 永远选不出目的站，
+     *       这辆车<b>再也不会动</b>，而 {@code hasStations} 为假时 {@code atStation} 必然为假——
+     *       若只看"停在站点上才给开门"，门一关乘客就被永久锁在厢内。所以这种线路一律允许开门。</li>
      * </ol>
      *
-     * <p>运行途中（{@link Phase#MOVING} 且目的站还没到）两种情况都不成立，因此"运行时禁止开门"
+     * <p>运行途中（{@link Phase#MOVING} 且目的站还没到）三种情形都不成立，因此"运行时禁止开门"
      * 这条语义完全保留——电梯运行时开门键会重新变灰。
      *
-     * <p>做成 static 的原因：客户端只有 {@code DataTracker} 同步出来的 phase 与目标高度，
-     * 拿不到状态机实例；把它抽成"只依赖同步数据 + 一个到站标志"的纯函数，客户端面板就能直接复用，
-     * 不必为了按钮可用性给实体再加一个暴露内部状态机的访问器。
+     * <p>做成 static 且<b>只吃入参、绝不查世界</b>的原因：客户端只有 {@code DataTracker} 同步出来的
+     * phase / 目标高度，以及面板自己那份站点列表；它<b>拿不到线路</b>——
+     * {@code AbstractCabinEntity.railX/railZ} 不进 DataTracker（客户端恒 0），
+     * 所以客户端调用 {@code cabin.line()} 会去扫 (0, y, 0) 并（正常情况下）返回 null。
+     * 一旦把世界查询写进这个判据，客户端就会永远落进"没有线路"那一支：开门键常亮、
+     * 点下去却被服务端拒绝（这正是 2.2.1 修掉的那个 bug）。
+     * 因此"有没有线路/站点"必须由<b>调用方</b>算好传进来：服务端自己扫线路，客户端用面板的站点列表。
      *
      * @param phase 当前相位（服务端读状态机，客户端读同步字段）
      * @param targetY 目的站高度（格）；没有目的站时为 {@link Integer#MIN_VALUE} 哨兵值
      * @param atStation 调用方提供的"车体是否精确停在某个完整站点上"（轿厢需要查线路站点，本类查不到）
+     * @param hasStations 调用方提供的"这条线路上至少有一扇完整的楼层门"：
+     *                    服务端 = 扫出来的线路非 null 且 {@code stops()} 非空；
+     *                    客户端 = 选站面板里的站点列表非空（服务端在 {@code OpenPanel} 里下发的就是它）
      * @return 开门键可用时为 true
      */
-    public static boolean canOpenDoor(Phase phase, int targetY, boolean atStation) {
+    public static boolean canOpenDoor(Phase phase, int targetY, boolean atStation, boolean hasStations) {
+        if (!hasStations) return true;                                    // 无站线路：车永远不会动，必须能开门出来
         if (ElevatorStatus.faulted(phase)) return true;                  // 故障脱困：不要求在站点上
         if (phase == Phase.MOVING && targetY != Integer.MIN_VALUE) return false; // 运行途中一律不可开门
         return atStation;
     }
 
     /**
-     * 开门键此刻是否可用，判据见 {@link #canOpenDoor(Phase, int, boolean)} 的静态版本。
+     * 开门键此刻是否可用，判据见 {@link #canOpenDoor(Phase, int, boolean, boolean)} 的静态版本
+     * （本方法只是把状态机里的 {@link #faulted} 与 {@link #target} 换成更准确的说法后转发过去，
+     * 因此两边永远不可能分叉）。
      *
      * <p>这是<b>服务端权威版本</b>：它用 {@link #faulted} 这个准确的故障期记忆，因此在"乘客已经开门脱困、
      * 相位已变成 OPENING/OPEN"时也依然为真（门开着本来就是可开的）。客户端没有这个字段，用同步相位近似，
      * 见静态版本。
      *
+     * <p><b>只允许服务端调用</b>：两个入参都由调用方从世界算出来；客户端的
+     * {@code AbstractCabinEntity.railX/railZ} 不进 DataTracker（恒 0），算不出这两个事实（见静态版本说明）。
+     *
      * @param atStation 车体是否精确停在某个完整站点上；轿厢用线路站点列表算好传进来（本类查不到世界）
+     * @param hasStations 这条线路上是否至少有一扇完整的楼层门；同样由轿厢扫线路后传进来
      * @return 开门键可用时为 true
      */
-    public boolean canOpenDoor(boolean atStation) {
-        if (faulted) return true;                                  // 故障脱困：不要求在站点上
-        if (phase == Phase.MOVING && target != null) return false; // 运行途中一律不可开门
-        return atStation;
+    public boolean canOpenDoor(boolean atStation, boolean hasStations) {
+        if (faulted) return true;                                  // 故障脱困：不要求在站点上（服务端独有的准确记忆）
+        return canOpenDoor(phase, target == null ? Integer.MIN_VALUE : target.y(), atStation, hasStations);
     }
 
     /**
@@ -403,6 +447,7 @@ public final class ElevatorController {
         if (faulted()) recoveryOpen = true; // 故障期间开门 = 脱困门，故障解除后由 tick 关回去
         if (phase == Phase.OPEN) { dwell = DWELL_TICKS; return true; }   // 已开：续满停留时间
         if (phase == Phase.OPENING) return true;                          // 正在开：无需变动
+        if (phase == Phase.OVERLOAD) { dwell = DWELL_TICKS; return true; } // 超载时门本来就全开：只续停留时间（见 Phase#OVERLOAD）
         if (phase == Phase.CLOSING) { phase = Phase.OPENING; return true; } // 正在关：反向打开
         // 门已全关（door == 0）时直接开门：调用方已确认车体就在某一层，因此不会出现半空开门
         if (door <= 0) { phase = Phase.OPENING; return true; }
@@ -495,6 +540,11 @@ public final class ElevatorController {
 
         switch (phase) {
             case OPEN -> {
+                // 存在超载情况：门保持全开、不派发行程（也不走停留倒计时），等有人走出去再回来
+                if (env.outOfPassengerNumLimit()) {
+                    phase = Phase.OVERLOAD;
+                    break;
+                }
                 // 开门停留倒计时；归零就关门——无论还有没有请求。
                 if (dwell > 0) dwell--;
                 // 注意：这里**不**把 travel 复位为空闲。停车待命（门开着等乘客）时要保留"刚才是上行还是下行"的
@@ -516,6 +566,9 @@ public final class ElevatorController {
                 }
             }
             case CLOSING -> {
+                // 超载：把正在关的门重新打开（先切 OPENING，门开到 1 之后由 OPEN 分支转入 OVERLOAD）。
+                // 与防夹同一套做法——都是在"关门"这个过程里发现不该关，于是反向。
+                if (env.outOfPassengerNumLimit()) { phase = Phase.OPENING; break; }
                 // 防夹：关门过程中门口出现活体则立即反向开门；target 保留，重开后由 OPENING 归队。
                 if (env.doorwayBlocked()) { phase = Phase.OPENING; break; }
                 door = Math.max(0, door - 1f / DOOR_TICKS);
@@ -581,6 +634,13 @@ public final class ElevatorController {
                     // 防夹重开：被中断的目的站放回队首而不是丢弃，开门停留结束后它会最先被重新派发。
                     if (target != null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; stopMotion(); }
                 }
+            }
+            case OVERLOAD -> {
+                // 不再超载就回到 OPEN：门本来就是全开的（1.0），因此不需要任何开门动画，
+                // 停留计时也从头开始（乘客走回去两个人再进来就要重新算时间）。
+                // 这一步刻意不派发行程：即使队列里已经排好了目的站，也要等回到 OPEN 之后
+                // 由 OPEN 分支的停留倒计时决定何时关门出发——"门没关就走"永远不成立。
+                if (!env.outOfPassengerNumLimit()) { phase = Phase.OPEN; dwell = DWELL_TICKS; }
             }
         }
         return y;
