@@ -23,6 +23,15 @@ package org.DJB.easyelevator.logic;
  * 以左扇为例：门板自身纹理坐标 t∈[0,1]，t=0 在门框端、t=1 在先导端；进度 p 时门板平移了整宽，
  * 于是 t&lt;p 的那一段已经滑进门框后面，<b>可见区间是 [p,1]</b>；右扇镜像，为 [0,1-p]。
  * 再按"u0 落在先导端（左扇）/ 门框端（右扇）"的事实排成 UV 矩形顺序即可。
+ *
+ * <h2>两套区间函数，别混用</h2>
+ * <ul>
+ *   <li>{@link #leafRange}：<b>楼层门叶</b>专用。它依赖上面那条"朝向镜像互相抵消"的前提。</li>
+ *   <li>{@link #cabinPanelRange}：<b>轿厢门扇</b>专用。轿厢门扇的盒子由 {@code SlidingDoor.panelX}
+ *       直接搭出、没有朝向镜像，两扇的 maxX 一头一尾，所以 u0/u1 的排法各一套。</li>
+ * </ul>
+ * 把 {@code leafRange} 用在轿厢门上，实机表现是"从厢内往外看，左侧那扇的折边线跑到门框端去了"
+ * （两扇不再镜像对称）——这正是 2.2.0 收到的那条反馈。
  */
 public final class LeafUv {
     private LeafUv() { }
@@ -43,6 +52,37 @@ public final class LeafUv {
     public static float[] leafRange(float progress,boolean right) {
         float p=sanitize(progress);
         return right?new float[]{1-p,0}:new float[]{1,p};
+    }
+
+    /**
+     * <b>轿厢</b>门板此刻可见的那一段贴图，按 UV 矩形顺序给出（第 0 个数是 u0、第 1 个数是 u1）。
+     *
+     * <h2>为什么不能直接用 {@link #leafRange}</h2>
+     * {@link #leafRange} 的前提取自<b>楼层门叶</b>：那边 {@code LandingDoorGeometry.doorBox}
+     * 会按朝向把门宽轴镜像一次，正巧抵消掉 {@code BoxMesh} 的"第一个顶点"约定，于是
+     * "左扇 u0 落在先导端、右扇落在门框端"两句话才成立。轿厢门扇的盒子是
+     * {@code CabinRenderer.leafBox} 直接由 {@code SlidingDoor.panelX} 的两个 X 端点搭出来的，
+     * <b>没有那层朝向镜像</b>（朝向由渲染矩阵负责）。而厢内乘客看到的是门扇的 <b>-Z 面</b>，
+     * 该面第一个顶点固定在 <b>maxX</b>：
+     * <ul>
+     *   <li>{@code right=true}（+X 扇）：区间 {@code [inner, OUTER_EDGE]}，maxX 是<b>门框端</b>；</li>
+     *   <li>{@code right=false}（-X 扇）：区间 {@code [-OUTER_EDGE, -inner]}，maxX 是<b>中缝端</b>。</li>
+     * </ul>
+     * 两扇的 maxX 一头一尾，因此 u0/u1 的排法必须<b>各用一套</b>；照抄 {@link #leafRange}
+     * 会让其中一扇整块左右翻转、并且取到的是 [0,1-p] 而不是 [p,1] 那一段。实机表现是
+     * "关门时两扇的折边线不在中缝两侧对称，从厢内往外看有一侧是反的"。
+     *
+     * <p>本函数把两扇都统一成：<b>中缝端（先导端）= 纹理 t=1</b>（{@code DOOR} 格的折边线在
+     * 高 u 一侧，正好落在中缝旁）、<b>门框端 = 纹理 t=p</b>。于是 p 增大时贴图从门框端一侧被逐段
+     * 盖住，折边线始终可见并跟着先导端外移，与楼层门读起来一致。
+     *
+     * @param progress 门进度 0..1（0 = 全关，1 = 全收进门框）；超范围夹取，非有限值当 0
+     * @param right true 取 +X 扇（{@link SlidingDoor#panelX} 的 {@code right=true}）
+     * @return {u0纹理坐标, u1纹理坐标}；两扇在 p 相同时互为镜像
+     */
+    public static float[] cabinPanelRange(float progress,boolean right) {
+        float p=sanitize(progress);
+        return right?new float[]{p,1f}:new float[]{1f,p};
     }
 
     /**

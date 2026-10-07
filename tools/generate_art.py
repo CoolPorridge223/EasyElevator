@@ -46,6 +46,13 @@ BLOCK_SIZE = 32
 TILE = 32
 ATLAS = TILE * 4
 
+#: Outer radius of the round call-button disc drawn by :func:`tile_button`, in tile pixels.
+#: ``CabinRenderer.buttonFaceUv`` maps the disc onto one face only and the *plain* left margin of
+#: the same cell onto the other five, so the disc has to stay clear of that margin -- otherwise the
+#: button sides grow half a circle again (the 2.2.0 report was "a circle on every face").
+#: :func:`check_button_face` asserts the pair still agrees; the margin itself lives in Java.
+BUTTON_DISC_PX = 9.2
+
 
 # --------------------------------------------------------------------------------------
 # pixel buffer
@@ -480,7 +487,7 @@ def tile_button(v, rnd):
             d = math.hypot(x - cx, y - cy)
             if d < 9:
                 v.set(x, y, shade(base, 6))
-            if 8.2 <= d <= 9.2:
+            if 8.2 <= d <= BUTTON_DISC_PX:
                 v.set(x, y, shade(base, -30))
             if d < 3.4:
                 v.set(x, y, shade(base, 22))
@@ -1108,6 +1115,36 @@ def check_cabin_parts():
     return tables
 
 
+def parse_button_plain_u():
+    """Read ``CabinRenderer.BUTTON_PLAIN_U`` -- the plain margin of the BUTTON cell, in cell widths.
+
+    Read out of the Java source for the same reason the part tables are (see
+    :func:`parse_cabin_parts`): the renderer owns the number, and a silent divergence between it
+    and the disc drawn here is exactly the bug :func:`check_button_face` guards against.
+    """
+    text = CABIN_RENDERER.read_text(encoding='utf-8')
+    match = re.search(r'BUTTON_PLAIN_U\s*=\s*([0-9.]+)f', text)
+    assert match, 'CabinRenderer.BUTTON_PLAIN_U not found (did it get renamed?)'
+    return float(match.group(1))
+
+
+def check_button_face():
+    """The button's five side faces take a *plain* strip of the BUTTON cell, so keep it plain.
+
+    ``CabinRenderer.buttonFaceUv`` maps the cell's left ``BUTTON_PLAIN_U`` onto those faces.  The
+    disc is centred, so its leftmost pixel sits at ``TILE/2 - 0.5 - BUTTON_DISC_PX``; if the disc
+    ever grew past that -- or the margin grew -- the sides would show part of the ring, which is
+    the "a circle on every face" report all over again.
+    """
+    plain_u = parse_button_plain_u()
+    margin_px = plain_u * TILE
+    disc_left_px = TILE / 2 - 0.5 - BUTTON_DISC_PX
+    assert 0 < margin_px < disc_left_px, (
+        f'BUTTON_PLAIN_U={plain_u} reaches x={margin_px:.1f}px of a {TILE}px cell, but the disc '
+        f'starts at x={disc_left_px:.1f}px: the button sides would show part of the ring. '
+        'Narrow BUTTON_PLAIN_U or shrink BUTTON_DISC_PX.')
+
+
 # --------------------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------------------
@@ -1138,6 +1175,7 @@ def main():
     doors = door_models()
     check_door_models(doors)
     check_cabin_parts()
+    check_button_face()
     blocks = {'elevator_rail': rail_model(), 'call_button': door_item_model(), **doors}
     icons = cabin_icon_models()
     check_item_models({'call_button': blocks['call_button'], **icons})

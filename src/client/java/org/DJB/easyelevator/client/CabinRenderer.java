@@ -309,7 +309,16 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     // 外壳与内饰
     // ----------------------------------------------------------------------------------
 
+    /** 按钮格贴图里"没有圆点图案"的那一段宽度占比：`tile_button` 的圆点居中（约占格子的 56%），
+     * 左缘约 15% 是纯拉丝底板，正好拿来当按钮五个侧面的金属侧壁。 */
+    private static final float BUTTON_PLAIN_U=.15f;
+
     /** 按内饰清单逐块绘制：材质格号与自发光标志都来自表；顶点色一律白色，颜色由贴图决定。
+     *
+     * <p>呼梯按钮（{@link Mat#BUTTON}）是唯一"图案只在一个面上成立"的件：它的贴图是一个居中的
+     * 圆点按钮面，若像其余件那样六面共用同一个 UV 矩形，六个面都会画上圆点——实机反馈
+     * "面板下面这几个模拟的按钮，怎么每个面画了个圆圈"就是这个。按钮因此改走 {@link #buttonFaceUv}。
+     * 其余件的贴图（墙板、饰条、灯罩、显示屏…）都是均匀或方向无关的，六面共用一张格反而是对的。
      *
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param out 不透明顶点缓冲
@@ -318,8 +327,32 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     private static void drawParts(MatrixStack matrices,VertexConsumer out,float[][] parts,int light) {
         for(float[] p:parts) {
-            BoxMesh.cuboid(matrices,out,p[0],p[1],p[2],p[3],p[4],p[5],light,0xFFFFFFFF,MATERIAL_UV[(int)p[6]],p[7]!=0?CabinLighting::lamp:CabinLighting::surface);
+            BoxMesh.FaceLighting lighting=p[7]!=0?CabinLighting::lamp:CabinLighting::surface;
+            int mat=(int)p[6];
+            if(mat==Mat.BUTTON.ordinal())
+                BoxMesh.cuboid(matrices,out,p[0],p[1],p[2],p[3],p[4],p[5],light,0xFFFFFFFF,buttonFaceUv(MATERIAL_UV[mat],p),lighting);
+            else
+                BoxMesh.cuboid(matrices,out,p[0],p[1],p[2],p[3],p[4],p[5],light,0xFFFFFFFF,MATERIAL_UV[mat],lighting);
         }
+    }
+
+    /**
+     * 呼梯按钮的逐面 UV：圆点徽标只贴<b>朝向乘客</b>的那一面，其余五面取格子左缘那条没有图案的
+     * 窄条（{@link #BUTTON_PLAIN_U}），于是侧面读起来就是按钮的金属侧壁。
+     *
+     * <p>"哪一面朝乘客"由数据表推导而不是写死：面板挂在 +X 侧壁上、按钮向舱内突出，
+     * 所以 +X 侧壁上的按钮朝乘客的是 <b>-X 面</b>；将来若把面板挪到 -X 侧壁，这里会自动取 +X 面。
+     *
+     * @param cell 按钮格的图集 UV 矩形 {u0,v0,u1,v1}
+     * @param part 该按钮的几何行 {x,y,z,X,Y,Z,…}，用于判断它挂在哪一面侧壁上
+     * @return 六个面的 UV，顺序与 {@code BoxMesh.cuboid} 提交面的顺序一致：{-Z,+Z,-X,+X,+Y,-Y}
+     */
+    private static float[][] buttonFaceUv(float[] cell,float[] part) {
+        float plainU=cell[0]+(cell[2]-cell[0])*BUTTON_PLAIN_U;
+        float[] plain={cell[0],cell[1],plainU,cell[3]};
+        float[][] uv={plain,plain,plain,plain,plain,plain};
+        uv[(part[0]+part[3])*.5f>0?2:3]=cell; // +X 侧壁 → -X 面（下标 2）；-X 侧壁 → +X 面（下标 3）
+        return uv;
     }
 
     /**
@@ -422,10 +455,13 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * 门扇外缘固定在侧壁内侧（{@link SlidingDoor#OUTER_EDGE}），内缘（先导端）随进度向外移动，
      * 全开时宽度归零、完全收进侧壁，门洞全通。
      *
-     * <p>贴图与楼层门完全同一套：大面只取"还露在外面"的那一段（{@link LeafUv#leafRange}：
-     * 左扇 u0=1 在先导端、右扇 u0=1-进度），断面另取一小段（{@link LeafUv#edgeRange}），
-     * 折边那条亮线因此跟着先导端一起往外走，看起来就是"门在往两侧滑"。
-     * 这里**不能**改成"整格贴图铺满"：门扇是"盒子越收越窄"画出来的，铺满就会被横向压扁
+     * <p>贴图的做法与楼层门同源、但<b>不能共用同一个区间函数</b>：大面只取"还露在外面"的那一段
+     * （{@link LeafUv#cabinPanelRange}——两扇都让中缝端落在纹理 t=1、门框端落在 t=进度；
+     * 断面另取一小段（{@link LeafUv#edgeRange}），折边那条亮线因此跟着先导端一起往外走，
+     * 看起来就是"门在往两侧滑"。
+     * 楼层门用 {@link LeafUv#leafRange}，它依赖 {@code LandingDoorGeometry.doorBox} 的朝向镜像；
+     * 轿厢门扇没有那层镜像，混用会让 +X 那扇整块左右翻转（厢内往外看左侧折边跑到门框端）。
+     * 这里也**不能**改成"整格贴图铺满"：门扇是"盒子越收越窄"画出来的，铺满就会被横向压扁
      * （1.5.6 实机反馈过的那条）。
      *
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
@@ -446,7 +482,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
                 continue;
             }
             BoxMesh.cuboid(matrices,out,leaf,light,0xFFFFFFFF,LeafUv.slabUv(
-                    LeafUv.toUv(LeafUv.leafRange(open,right),cell),
+                    // 轿厢门扇没有"按朝向镜像门宽轴"这一层，必须用 cabinPanelRange：
+                    // 用 leafRange 会让 +X 那扇整块左右翻转（厢内往外看左侧折边跑到门框端）。
+                    LeafUv.toUv(LeafUv.cabinPanelRange(open,right),cell),
                     LeafUv.toUv(LeafUv.edgeRange(right,LeafUv.EDGE_WIDTH),cell),true),CabinLighting::surface);
         }
     }
