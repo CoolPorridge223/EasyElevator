@@ -268,8 +268,10 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      *
      * <p>依次要求：整扇门 9 格完整；站点对应的那段轨道仍属于本线路（朝向一致）；
      * 该轨道前方 2 格处恰好有一辆朝向与轨道相同的轿厢，且车体中心与站点高度、中心位置的误差
-     * 都不超过给定容差；轿厢不处于 MOVING/BLOCKED（断轨、障碍、目的站被拆时门一律关闭，
-     * 绝不在半空开门）。
+     * 都不超过给定容差。这里<b>刻意不按相位排除</b>运行中或受阻（BLOCKED）的轿厢：
+     * 正常运行时轿厢门必然全关，"现在到底能不能开门"由调用方按<b>轿厢门进度</b>把关
+     * （见 {@link #mayOpen} 与 {@link #leafProgress}），而卡在楼层之间时上面那套高度过滤已经返回 null，
+     * 因此不会半空开门。
      *
      * <p>为什么按车体世界坐标匹配、而不是 {@link AbstractCabinEntity#railX()} / {@code railZ()}：
      * 那两个字段只是普通成员、没有进 DataTracker，客户端上恒为 0；用它匹配会让客户端永远找不到

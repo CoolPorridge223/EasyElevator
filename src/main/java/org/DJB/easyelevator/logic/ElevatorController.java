@@ -170,7 +170,7 @@ public final class ElevatorController {
     private float door = 1;
     /** 开门后的剩余停留刻数；归零就关门（没有请求时也一样，关上门停在本层待命）。 */
     private int dwell = DWELL_TICKS;
-    /** 当前承诺的服务方向：由 {@link #select(double)} 维护，空闲（没有任何请求）时复位为 {@link Travel#NONE}。 */
+    /** 当前承诺的服务方向：由 {@link #select(double)} 与 {@link #retarget(double)} 维护。空闲（没有任何请求）时<b>刻意保留</b>上一次的方向——那是停车待命期间的"上/下"记忆；只有 {@link #restore} 读档或从未收到过请求时才是 {@link Travel#NONE}。 */
     private Travel travel = Travel.NONE;
     /**
      * 当前目的站是"哪一条厅外呼叫"带来的（{@link Travel#NONE} = 目的站来自轿厢内选站）。
@@ -284,7 +284,9 @@ public final class ElevatorController {
      * {@link #pending()}（面板的"停靠计划"、异常时的排查）读到的就是真实停站顺序。
      *
      * @param stop 待插入的站点
-     * 副作用：修改 queue。方向为空闲（{@link Travel#NONE}）时按高度升序，行为与旧版按到达顺序排队一致。
+     * 副作用：修改 queue。方向为空闲（{@link Travel#NONE}）时直接追加到队尾（保持插入顺序，
+     * 让"最早的请求"去决定起始方向），行为与旧版按到达顺序排队一致；方向已确定时才按该方向的
+     * 停站顺序重排。
      */
     private void insertOrdered(Stop stop) {
         // 方向还没定（空闲、门开着等第一个请求）：保持插入顺序，让"最早的请求"决定起始方向
@@ -636,7 +638,8 @@ public final class ElevatorController {
     }
 
     /**
-     * 到站清扫：门开着，本站的等待者都能上，因此本站的厅外呼叫（两个方向）与同层选站都视为已完成。
+     * 到站清扫：门开着，本站本次服务方向上的等待者都能上，因此该方向的厅外呼叫与同层选站都视为已完成。
+     * 另一方向的呼叫保持点亮（留给轿厢回头再来），具体判据见方法内说明。
      *
      * <p>为什么连"同层选站"也一起清：目标站被选中时已经出队，但队列里可能还留着同层的重复请求
      * （先按了轿厢按钮、之后又按下厅外按钮），不清掉就会出现"到站开门 → 又选中同一层 → 再开一次门"的空转。
@@ -666,7 +669,8 @@ public final class ElevatorController {
      * 选出下一个目的站并"消费"轿厢内选站（厅外呼叫保留在表里，直到 {@link #serveStation} 清理）。
      *
      * @param y 轿厢当前高度（格）
-     * @return 下一个目的站；没有任何请求时返回 null（并把服务方向复位为空闲）
+     * @return 下一个目的站；没有任何请求时返回 null。<b>注意不会复位服务方向</b>：
+     *         停车待命期间的"上/下"记忆要留到下一次请求（真实电梯的厅外指示灯同理）。
      */
     private Stop select(double y) {
         // 没有任何请求：保持当前服务方向。停车待命期间的"上/下"记忆要留到下一次请求
@@ -737,7 +741,9 @@ public final class ElevatorController {
      * 在候选集里挑距离 {@code y} 最近的请求。
      *
      * @param y 轿厢当前高度（格）
-     * @param direction 只考虑该方向的厅外呼叫；为 null（或 {@code sameFloorOnly}）时不做方向过滤
+     * @param direction 只考虑该方向的厅外呼叫；为 null 时不做方向过滤。注意方向过滤在
+     *                  {@code sameFloorOnly} 分支里<b>同样生效</b>（反方向那条呼叫必须留给它自己的行程，
+     *                  否则停在本层时会把它就地"服务"掉，等于到站清错了灯）
      * @param aheadOnly true = 只考虑该方向上"前方"的楼层（上行含当前层，下行含当前层）
      * @param sameFloorOnly true = 只考虑与当前层同高的请求（用于"就地开门"分支）
      * @return 最近的请求；没有符合条件的返回 null
@@ -766,14 +772,18 @@ public final class ElevatorController {
     }
 
     /**
-     * 当前方向上"前方"的任意请求（<b>含反方向的厅外呼叫</b>），取距离最近的一条。
+     * 当前方向上"前方"的任意请求（<b>含反方向的厅外呼叫</b>），取<b>最早登记</b>的那一条。
      *
      * <p>只回答一个问题：这条方向还有没有活干（决定"继续往前"还是"掉头"）。真正顺路可服务的请求由
      * {@link #nearest} 挑（它会把反方向厅外呼叫过滤掉），因此顺序永远是"先服务顺路的，再谈掉头"。
      *
+     * <p>取最早登记而不是最近的一条：同时挂着"1 层上行（先按）"与"2 层上行（后按）"时，
+     * 车应当先下到它被派去的那一层，再顺路上来接人；取最近会让后按的那层抢走目的地。
+     *
      * @param y 轿厢当前高度（格）
      * @param direction 当前服务方向
-     * @return 前方最近的请求；该方向前方什么都没有时返回 null
+     * @param includeHere false = 跳过与轿厢同高的呼叫（本层的反方向呼叫留给"就地开门"那一步处理）
+     * @return 该方向前方最早登记的请求；前方什么都没有时返回 null
      */
     private Pick oldestAheadHallCall(double y,Travel direction,boolean includeHere) {
         // hallCalls 本身就是登记顺序（新呼叫追加在尾部、到站时按下标删除），因此第一条命中即最早的那条。
@@ -803,9 +813,9 @@ public final class ElevatorController {
      * 空闲时由最早的请求决定起始服务方向。
      *
      * @param y 轿厢当前高度（格）
-     * @return 起始方向：有轿厢内选站时看第一个选站与轿厢的相对位置（同层时沿用上行），
-     *         否则看<b>最早登记的那条厅外呼叫</b>在轿厢的哪一侧（注意不是按钮自身的方向：底层按"上行"
-     *         而轿厢在楼上时，车必须向下开过去）
+     * @return 起始方向：有轿厢内选站时看第一个选站与轿厢的相对位置（与轿厢同层时这一条判不出方向，
+     *         继续往下看厅外呼叫）；否则看<b>最早登记的那条厅外呼叫</b>在轿厢的哪一侧（注意不是按钮
+     *         自身的方向：底层按"上行"而轿厢在楼上时，车必须向下开过去）；两者都判不出时按上行。
      */
     private Travel initialTravel(double y) {
         if (!queue.isEmpty()) {

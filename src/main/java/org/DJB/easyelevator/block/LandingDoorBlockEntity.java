@@ -70,8 +70,10 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * 大堂那扇门到站时想响一声铃、设备层想安静。方块实体随区块存档，拆掉门设置自然失效，
      * 也不会在别的线路上串味。</p>
      *
-     * <p>默认是 {@link DoorArrivalSound#DEFAULT}（静音），因此这个功能不会让任何已有存档的门
-     * 突然开始发声。轿厢精确到站时由 {@code AbstractCabinEntity} 读取本设置决定播什么。</p>
+     * <p>默认是 {@link DoorArrivalSound#DEFAULT}（<b>发声</b> + 默认音效），等于模组原有的
+     * "到站必响一次"，因此新放置的门到站就会响。旧存档里没有这两个字段，{@link DoorArrivalSound#readNbt}
+     * 对缺失的开关回退到出厂默认（发声），所以已经存在的门升级后照旧会响、不需要逐扇重设。
+     * 轿厢精确到站时由 {@code AbstractCabinEntity} 读取本设置决定播什么。</p>
      */
     private DoorArrivalSound arrivalSound = DoorArrivalSound.DEFAULT;
 
@@ -259,6 +261,6 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     @Override protected void readNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
         super.readNbt(nbt,registries);
         baseFloor=nbt.getBoolean("BaseFloor");
-        arrivalSound=DoorArrivalSound.readNbt(nbt); // 字段全缺失时读回出厂默认（静音 + 默认到站音效）
+        arrivalSound=DoorArrivalSound.readNbt(nbt); // 开关字段缺失 = 出厂默认（发声）：旧存档的门升级后照旧会响；只有玩家真的关掉才写 false
     }
 }

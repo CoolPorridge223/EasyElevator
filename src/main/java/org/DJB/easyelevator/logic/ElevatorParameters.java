@@ -4,10 +4,10 @@ package org.DJB.easyelevator.logic;
  * Compile-time tuning values. Units and coupled geometry are documented in docs/PARAMETERS.md.
  *
  * <p>职责：整个模组的编译期调参常量集中处——运行速度、门时序、请求队列上限、轿厢正面几何内收量，
- * 以及客户端运动时间线的插值与重置阈值都在这里定义，便于在脱离游戏的前提下单测与统一调参。</p>
+ * 以及客户端样本的时效与瞬移阈值都在这里定义，便于在脱离游戏的前提下单测与统一调参。</p>
  *
  * <p>在整体架构中的位置：logic 包的最底层，不引用任何 Minecraft 类；ElevatorController、
- * ElevatorLine/AbstractCabinEntity、client/MotionTimeline 都从这里取值，保证服务端状态机与客户端插值口径一致。</p>
+ * ElevatorLine/AbstractCabinEntity、client/CabinMotion 都从这里取值，保证服务端状态机与客户端运动口径一致。</p>
  *
  * <p>单位约定：格 = 方块（block），刻 = tick，1 秒 = {@link #TICKS_PER_SECOND} 刻；
  * 速度单位为格/刻。几何常量以轿厢本地坐标系（正面朝 +Z）给出，长度单位均为格。</p>
@@ -113,19 +113,8 @@ public final class ElevatorParameters {
      */
     public static final double CABIN_FRONT_Z = 1.3;
     /** 轿厢门区的背面 Z 坐标 = 正面内收 0.2 格；门区占据 [CABIN_DOOR_BACK_Z, CABIN_FRONT_Z]，
-     * 伸缩门板在里面分两层（每层厚 0.095 格），见 {@link SlidingDoor}。 */
+     * 两扇对开滑门整层占满这 0.2 格厚，见 {@link SlidingDoor}。 */
     public static final double CABIN_DOOR_BACK_Z = CABIN_FRONT_Z - .2;
-    /**
-     * 旧 MotionTimeline 工具的插值延迟。2.1.2 CabinMotion 不再使用独立延迟时间线。
-     */
-    public static final int INTERPOLATION_DELAY_TICKS = 2;
-    /** 运动时间线保留的样本上限：只保留最近 32 个服务端位置样本，使内存占用有界。 */
-    public static final int MOTION_HISTORY_SIZE = 32;
-    /**
-     * 样本间隔超过 20 刻即判定时间线不连续（换次行程、区块重载、长时间丢包），
-     * 整体清空并从当前值重新起算，避免把两段彼此无关的运动插值连成一条假轨迹。
-     */
-    public static final int MOTION_RESET_GAP_TICKS = 20;
     /** 连续超过 10 刻收不到新样本时停止本地乘客绑定；平台保持最后收到的位置，不外推。 */
     public static final int MOTION_STALE_TICKS = 10;
     /**

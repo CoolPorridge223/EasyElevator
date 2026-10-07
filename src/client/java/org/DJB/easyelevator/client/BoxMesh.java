@@ -81,14 +81,47 @@ public final class BoxMesh {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,faceUv,AMBIENT);
     }
 
+    /**
+     * 同上，但六个面共用一块贴图，并允许逐面改写光照。
+     *
+     * @param uv UV 矩形 {u0,v0,u1,v1}，归一化 0..1
+     * @param lighting 逐面光照采样器；轿厢内饰传 {@code CabinLighting} 的补光实现，不需要补光的几何传 {@link #AMBIENT}
+     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
+     */
     public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv,FaceLighting lighting) {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,new float[][]{uv,uv,uv,uv,uv,uv},lighting);
     }
 
+    /**
+     * 以 {@link Box}（单位：格）绘制长方体，逐面指定贴图并逐面改写光照。
+     *
+     * @param box 长方体，坐标单位格
+     * @param uv 六个面的 UV 矩形，顺序为 {-Z, +Z, -X, +X, +Y, -Y}
+     * @param lighting 逐面光照采样器；不需要补光的几何传 {@link #AMBIENT}
+     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
+     */
     public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color,float[][] uv,FaceLighting lighting) {
         cuboid(m,v,(float)box.minX,(float)box.minY,(float)box.minZ,(float)box.maxX,(float)box.maxY,(float)box.maxZ,light,color,uv,lighting);
     }
 
+    /**
+     * 所有 {@code cuboid} 重载的最终落点：把长方体拆成六个四边形提交，并逐面按 {@code lighting} 采样光照。
+     *
+     * <p>面的提交顺序固定为 {-Z, +Z, -X, +X, +Y, -Y}，与 {@code faceUv}（以及 {@code LeafUv.slabUv} 的
+     * 返回值）的下标约定一一对应；改成别的顺序会让滑门的"大面 / 断面"贴图错位。
+     *
+     * <p>光照在矩阵变换之前、用各面中心点在该面所在平面上的局部坐标采样，因此轿厢内饰可以按
+     * "这一面朝不朝向灯具"逐面补光（见 {@code logic/CabinLighting}），而不是整块几何共用一个亮度。
+     *
+     * @param x 最小 X（格）
+     * @param y 最小 Y（格）
+     * @param z 最小 Z（格）
+     * @param X 最大 X（格）
+     * @param Y 最大 Y（格）
+     * @param Z 最大 Z（格）
+     * @param faceUv 六个面的 UV 矩形，顺序为 {-Z, +Z, -X, +X, +Y, -Y}
+     * @param lighting 逐面光照采样器；不需要补光的几何传 {@link #AMBIENT}
+     */
     public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv,FaceLighting lighting) {
         float cx=(x+X)/2,cy=(y+Y)/2,cz=(z+Z)/2;
         quad(m,v,lighting.sample(light,cx,cy,z,0,0,-1),color,0,0,-1,new float[]{X,y,z,x,y,z,x,Y,z,X,Y,z},faceUv[0]);

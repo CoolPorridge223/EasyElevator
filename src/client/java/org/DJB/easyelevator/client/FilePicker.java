@@ -240,7 +240,7 @@ public final class FilePicker {
                 + "  $dlg = New-Object System.Windows.Forms.OpenFileDialog\r\n"
                 + "  $dlg.Filter = 'OGG (*.ogg)|*.ogg|All files (*.*)|*.*'\r\n"
                 + "  $dlg.Title = '" + singleQuoted(title) + "'\r\n"
-                // 显式置顶：游戏窗口常常是全屏且抢占焦点，普通对话框可能被压在后面，玩家看不到就等于"没弹"。
+                // 关掉"帮助"按钮：这个对话框只有一个用途（挑一个 .ogg），多一个按钮只会让人点错。
                 + "  $dlg.ShowHelp = $false\r\n"
                 + "  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $out = $dlg.FileName }\r\n"
                 // 弹不出对话框时也把空结果写回去：父进程据此判定"取消"，不会把异常当成路径。

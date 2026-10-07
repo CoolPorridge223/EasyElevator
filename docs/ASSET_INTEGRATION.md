@@ -1,8 +1,12 @@
 # 模型、音效与门动画接口
 
-适用模组版本 **2.1.1**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
+适用模组版本 **2.2.0**；运行环境与安装步骤见 [构建与打包](BUILD_AND_PACKAGING.md)。
 
-> **模型与贴图由脚本生成，不要手改单个数不出来源的文件。**
+> 面向**素材替换**：模型 / 贴图 / 音效的接口、门动画与几何的取值来源、以及"改了必须同步改哪里"。
+> 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
+> [人工验收清单](TESTING.md)（进游戏验收）、[构建与打包](BUILD_AND_PACKAGING.md)、[README](../README.md)（玩家向）。
+
+> **模型与贴图由脚本生成，不要手改单个成品文件（改了下次跑脚本就被覆盖，也说不出来源）。**
 > `python tools/generate_art.py` 写全部方块/物品模型与贴图，`python tools/generate_data.py`
 > 写方块状态、本地化、配方、掉落表与音效钩子。两个脚本都是纯 Python 3、无第三方依赖、
 > 可重复运行且输出逐字节一致，并且在写文件前会做几何自检（见各自文件头与
@@ -148,11 +152,15 @@ Box left  = LandingDoorGeometry.leafBox(facing, progress, false); // 相对根�
 Box right = LandingDoorGeometry.leafBox(facing, progress, true);  // 全开时返回 null（已收进门框）
 ```
 
-进度是"已同步的轿厢门进度 + 已同步的 `open` 方块状态"的纯函数，客户端与服务端各自就地算出，因此不需要额外的同步包。方块状态 `open` 只表示联锁是否解除（能否交出真实碰撞），不表示门扇位置；门扇位置一律取 `LandingDoorBlockEntity.openProgress`。2.1.1 起楼层门使用 `dynamicBounds()`：无参数重载每次读取最新进度供碰撞使用，带 `tickDelta` 的重载保留渲染插值，避免同刻旧样本使碰撞滞后。
+进度是"已同步的轿厢门进度 + 已同步的 `open` 方块状态"的纯函数，客户端与服务端各自就地算出，因此不需要额外的同步包。方块状态 `open` 只表示联锁是否解除（能否交出真实碰撞），不表示门扇位置；门扇位置一律取 `LandingDoorBlockEntity.openProgress`。
+
+因为门的碰撞形状会随进度变化，方块注册时带上了 `AbstractBlock.Settings.dynamicBounds()`（见 `Easyelevator.LANDING_DOOR`），否则原版会按静态形状缓存碰撞。`LandingDoorBlockEntity` 提供两个重载：**无参** `openProgress()` 每次读取最新进度供碰撞与联锁使用，**带 `tickDelta`** 的 `openProgress(float)` 保留前后刻插值供渲染——避免同刻旧样本使碰撞滞后于画面。
 
 改动画时长、运行速度、开门停留时间：修改 `ElevatorParameters.DOOR_TICKS / SPEED / HIGH_SPEED / DWELL_TICKS`；完整参数见 [PARAMETERS.md](PARAMETERS.md)。其中 `SPEED` 是普通与观光轿厢的步长、`HIGH_SPEED` 是高速轿厢的步长，两者都在实体构造时注入各自的 `ElevatorController` 实例。
 
-1.1.0 的 `CabinRenderer.render` 在模型矩阵上应用 `CabinMotion.renderY` 的平滑高度偏移。替换模型时保留这一步，保证轿厢与本地乘客镜头沿同一轨迹显示。
+`CabinRenderer.render` 在模型矩阵上应用 `CabinMotion.renderY` 的平滑高度偏移。替换模型时**必须保留这一步**，否则轿厢会以服务端 20 TPS 的台阶位置显示。
+
+2.2.0 起**不再单独锁定镜头**：客户端在本地玩家物理更新之前推进轿厢与乘客（`CabinMotion.beginPlayerTick` / `sendMovement`），渲染、碰撞与玩家共用同一组位置样本，因此不需要再按实体补偿相机高度，也没有旧的 `CameraMixin`。
 
 服务端事件可注册其他行为：
 

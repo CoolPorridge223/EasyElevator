@@ -155,11 +155,37 @@ public abstract class AbstractCabinEntity extends Entity {
     private final RiderMotionHistory motionHistory = new RiderMotionHistory();
     private boolean clientMotionControlled;
 
+    /**
+     * 取"客户端生成那个移动包时看到的轿厢高度"（服务端权威，用于随厢移动的坐标系补偿）。
+     *
+     * <p>客户端的移动包携带"它是按哪个高度样本算出来的"（见 {@code network/RiderMove}），服务端据此回查
+     * 当时的高度，再把玩家的 Y 换算到当前帧；否则这段单程延迟会被当成玩家自己在往上飞
+     * （表现为拉回、悬浮判定或速度校验误报）。
+     *
+     * @param tick 样本编号，即客户端生成移动包时的世界时间（单位：刻）
+     * @return 该刻的轿厢绝对 Y（单位：格）；样本尚未产生、已超过
+     *         {@link RiderMotionHistory#MAX_AGE} 刻或从未记录过时返回 {@link Double#NaN}，
+     *         调用方必须据此退回原版处理，绝不能拿 NaN 或猜测值继续换算
+     */
     public double motionHeight(long tick) { return motionHistory.height(tick, getWorld().getTime()); }
 
     /** Once custom double-precision frames arrive, vanilla tracking must not move the floor separately. */
     public void useClientMotion() { clientMotionControlled = true; }
 
+    /**
+     * 接管原版位置包对本厢的定位：收到过自定义绝对高度样本之后再让原版追踪包单独搬动轿厢，
+     * 两套坐标就会互相打架（地板与乘客各走各的、来回抖动）。
+     *
+     * <p>只在客户端、且已经收到过样本时拦截；服务端与"还没收到过样本"的客户端仍走父类实现，
+     * 因此实体刚载入的那几刻不会失去定位。
+     *
+     * @param x 原版追踪包给出的 X（单位：格）
+     * @param y 原版追踪包给出的 Y（单位：格）
+     * @param z 原版追踪包给出的 Z（单位：格）
+     * @param yaw 原版追踪包给出的偏航角（单位：度）
+     * @param pitch 原版追踪包给出的俯仰角（单位：度）
+     * @param steps 原版要求的插值步数（单位：刻）
+     */
     @Override
     public void updateTrackedPositionAndAngles(double x, double y, double z, float yaw, float pitch, int steps) {
         if (!getWorld().isClient || !clientMotionControlled)
@@ -404,6 +430,17 @@ public abstract class AbstractCabinEntity extends Entity {
                 && e.getY() >= getY()+.14 && e.getY() < getY()+2.7;
     }
 
+    /**
+     * 判定实体此刻是否<b>被厢内地板托着</b>：{@link #containsPassenger} 再要求脚底贴在地板面上。
+     *
+     * <p>为什么光有 {@link #containsPassenger} 不够：那个判定覆盖整段净高（脚部 0.14 格以上都算），
+     * 于是"站在厢内跳起来"的玩家也算乘客。原版"长时间不落地"的踢出判定需要区分这两种情形
+     * （见 {@code mixin/ServerPlayNetworkHandlerMixin}）：只有真的踩在地板上才豁免，
+     * 腾空的玩家照旧按原版规则处理，跳跃因此不会被随厢移动抹平。
+     *
+     * @param e 待判定实体
+     * @return 是本厢乘客、且脚部落在离地板面 0.2 格 ±0.025 格（2.5 厘米，容差覆盖浮点与同步误差）内时 true
+     */
     public boolean supportsPassenger(Entity e) {
         return containsPassenger(e) && Math.abs(e.getY() - getY() - .2) < .025;
     }
@@ -623,7 +660,11 @@ public abstract class AbstractCabinEntity extends Entity {
      * <p>副作用（均在服务端）：非创造模式掉落本型号的轿厢物品（{@link #cabinItem()}）、移除本实体，
      * 或通过 {@link ElevatorNetworking#open} 下发选站面板站点列表。
      *
-     * <p>回收条件：潜行、空手、厢内无其它乘客
+     * <p>回收条件：潜行、主手空、厢内没有其它实体算作乘客（见 {@link #containsPassenger}，
+     * 生物同样计入；玩家自己站在厢内时也算一名乘客，因此这也等于要求人在轿厢外）。
+     * <b>刻意不看相位与门进度</b>：运行中、门正在开或正在关、故障暂停且有未完成行程时都能回收——
+     * 判据只有上面那三条，没有"正在去某层就收不走"这类守卫（文档早期版本曾如此描述，那是错的）。
+     * 另一条硬性约束是<b>只能由服务端判定</b>：客户端一律返回 PASS，否则单机/联机会出现两处各自 discard。
      *
      * <p><b>为什么其余情况要返回 PASS 而不是 SUCCESS</b>：轿厢是 3 格大的空心壳，实心包围盒会把整个
      * 门洞也不算进去，玩家站在厢内朝门外点方块时，射线往往先命中轿厢的外壳/门板，于是这次点击被轿厢
@@ -642,7 +683,8 @@ public abstract class AbstractCabinEntity extends Entity {
         if (hand != Hand.MAIN_HAND) return ActionResult.PASS;
         if (getWorld().isClient) return ActionResult.PASS; // 客户端不判定，一律放行：真正是否消费由服务端回包决定
 
-        // 潜行+手里无物品+内部无乘客即可回收电梯
+        // 回收：潜行 + 主手空 + 厢内没有任何乘客。这里不看相位、不看门进度（运行中同样允许），
+        // 也不要在这里加"正在运行就拒绝"之类的守卫——见方法注释里的说明。
         if (player.isSneaking() && player.getStackInHand(hand).isEmpty()
                 && getWorld().getOtherEntities(this, getBoundingBox(), this::containsPassenger).isEmpty()) {
             if (!player.isCreative()) dropItem(cabinItem()); // 掉回本型号物品：高速车回收成高速车，观光车回收成观光车
@@ -857,8 +899,9 @@ public abstract class AbstractCabinEntity extends Entity {
      * 找不到门（线路被拆、区块未加载、故障脱困停在半层）时安静返回，不做任何兜底发声——
      * 那种情况下本来也没有"哪扇门的设置"可以遵循。</p>
      *
-     * <p>出厂默认是"开启 + 默认音效"（{@link DoorArrivalSound#DEFAULT}），因此升级后一切照旧、
-     * 到站仍然会响；玩家可以在每扇门的面板里把它关掉或换成别的声音。</p>
+     * <p>出厂默认是"开启 + 默认音效"（{@link DoorArrivalSound#DEFAULT}），因此新放置的门到站会响；
+     * 本功能之前放置的门存档里没有这两个字段，{@link DoorArrivalSound#readNbt} 对缺失的开关回退到
+     * 出厂默认（发声），所以那些门升级后照旧会响。玩家可以随时把每扇门的提示音关掉或换成别的声音。</p>
      *
      * <p>纯服务端：声音由 {@code World.playSound} 广播给附近客户端；客户端只按音效 ID 播放。
      *
@@ -1004,7 +1047,8 @@ public abstract class AbstractCabinEntity extends Entity {
     }
 
     /**
-     * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue / Riders。
+     * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue / HallCalls /
+     * Travel / Riders。
      * 世界坐标由原版实体保存流程另行写出，这里只存状态机、线路绑定与乘客名册所需的最小信息。
      *
      * @param nbt 待写入的实体 NBT
