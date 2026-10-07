@@ -415,7 +415,7 @@ public abstract class AbstractCabinEntity extends Entity {
      *         目标不是本线路站点，或呼叫表已满时 false
      *
      * <p>与 {@link #requestStop(BlockPos)} 的区别：厅外呼叫<b>带方向</b>，只由正在按该方向运行的轿厢顺路接走
-     * （调度规则见 {@link ElevatorController}）；它不会被"到站"以外的任何操作清除，因此门上的按钮会一直点亮。
+     * （调度规则见 {@link ElevatorController}）；单向到站完成，双向停靠按下一程方向认领，残留按钮保持点亮。
      */
     public boolean requestHallCall(BlockPos station, boolean up) {
         ElevatorLine line = line();
@@ -438,7 +438,7 @@ public abstract class AbstractCabinEntity extends Entity {
     /**
      * 把"哪些站点的哪个方向还有呼叫"推给附近客户端，让楼层门面板上的按钮点亮 / 熄灭。
      *
-     * <p>只在集合真的变化时发包（登记、到站清扫、门被拆）：与停靠计划 {@link #lastPlan} 同一套"变化才推"思路，
+     * <p>只在集合真的变化时发包（登记、到站或离站认领、门被拆）：与停靠计划 {@link #lastPlan} 同一套"变化才推"思路，
      * 因此静止时没有额外流量。
      *
      * <p>副作用：向站点附近玩家发送 {@link ElevatorNetworking#syncHallState}；不发包时什么都不做。
@@ -1151,7 +1151,7 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /**
      * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue / HallCalls /
-     * Travel / Riders。
+     * Travel / StopService / Riders。
      * 世界坐标由原版实体保存流程另行写出，这里只存状态机、线路绑定与乘客名册所需的最小信息。
      *
      * @param nbt 待写入的实体 NBT
@@ -1172,6 +1172,13 @@ public abstract class AbstractCabinEntity extends Entity {
         for (var call : controller.hallCalls()) { NbtCompound c = new NbtCompound(); c.putLong("Button",call.id()); c.putBoolean("Up",call.up()); calls.add(c); }
         nbt.put("HallCalls",calls);
         nbt.putString("Travel",controller.travel().name());
+        var service = controller.stopService();
+        if (service != null) {
+            NbtCompound savedService = new NbtCompound();
+            savedService.putLong("Station", service.station().id());
+            savedService.putString("Served", service.served().name());
+            nbt.put("StopService", savedService);
+        }
         // 乘客名册：读档后必须先等这些人回到世界才能继续行程，否则轿厢会先开走、乘客落到井道里（见 tickPassengers）。
         // 只存 UUID 与相对轿厢的偏移：玩家各自的世界坐标由原版玩家存档负责，offsets 与轿厢之后走到哪里无关，
         // 因此即使是"运行时存档、再次进入时轿厢停在别处"也仍然有效。
@@ -1215,7 +1222,17 @@ public abstract class AbstractCabinEntity extends Entity {
         }
         ElevatorController.Travel travel;
         try { travel=ElevatorController.Travel.valueOf(nbt.getString("Travel")); } catch (IllegalArgumentException e) { travel=ElevatorController.Travel.NONE; }
-        controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,queue,calls,travel);
+        ElevatorController.StopService service = null;
+        if (nbt.contains("StopService", 10)) {
+            NbtCompound savedService = nbt.getCompound("StopService");
+            if (savedService.contains("Station", 4)) {
+                ElevatorController.Travel served;
+                try { served = ElevatorController.Travel.valueOf(savedService.getString("Served")); }
+                catch (IllegalArgumentException e) { served = ElevatorController.Travel.NONE; }
+                service = new ElevatorController.StopService(stop(savedService.getLong("Station")), served);
+            }
+        }
+        controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,queue,calls,travel,service);
         dataTracker.set(PHASE,controller.phase().ordinal()); dataTracker.set(DOOR,controller.door()); previousDoor=controller.door(); // 连 previousDoor 一起对齐，首帧门动画不插值
         dataTracker.set(TARGET_Y,controller.target()==null?Integer.MIN_VALUE:controller.target().y());
         recoveringPassengers.clear();

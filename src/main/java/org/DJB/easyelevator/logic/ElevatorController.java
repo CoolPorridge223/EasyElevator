@@ -29,14 +29,15 @@ import java.util.List;
  *       轿厢顺路接走，下行呼叫同理。呼叫会一直保留（门上的按钮保持点亮）直到轿厢真的到站开门。</li>
  * </ul>
  * 调度规则（{@link #select(double)}，确定性、无饥饿、无空转）：
- * ① 当前层有请求就地开门；② 起始方向由最早的请求决定（选站看相对位置、厅外呼叫看按钮方向）；
- * ③ 先在本侧前方找"顺路可服务"的最近请求（选站总是可服务，厅外呼叫必须方向一致），找不到就掉头再找；
- * ④ 两侧都没有顺路请求时（例如只有反方向的厅外呼叫）按距离选最近的请求，并让服务方向跟随它，
- * 保证任何请求最终都会被服务。到站开门时清掉本站的厅外呼叫与同层选站，按钮随之熄灭。</p>
+ * ① 本次停靠的厅外请求单独认领；② 起始方向看最早请求与轿厢的相对位置；
+ * ③ 先找当前方向前方可服务的最近请求，再找前方最早登记的反向厅呼；
+ * ④ 前方没有任务后才换向，再按登记顺序与距离选择另一侧请求，
+ * 保证任何请求最终都会被服务。同层双向呼叫到站时暂留两灯，关门前按下一程方向认领一条，
+ * 另一条留待返回；没有外层任务时才允许分两次停留原地换向服务。</p>
  *
  * <p>关键不变量：门未完全关闭（door == 0）不得移动；楼层门只在轿厢精确到站
  * （误差 &lt;= {@link ElevatorParameters#POSITION_EPSILON}）且轿厢门正在打开时才开启联锁；
- * 轿厢选站队列与厅外呼叫列表都不出现重复站点；同一时刻最多只有一个 target；
+ * 轿厢选站不重复，厅外呼叫按站点和方向去重；同一时刻最多只有一个 target；
  * 单刻位移恒 ≤ 本型号巡航速度（S 形曲线的速度上限），因此"到站不跨格"的前提继续成立。</p>
  */
 public final class ElevatorController {
@@ -79,6 +80,14 @@ public final class ElevatorController {
      * @param up true = 上行按钮，false = 下行按钮；同一站点两个方向是两条独立呼叫
      */
     public record HallCall(long id, int y, boolean up) { }
+
+    /** 本次停靠的厅外服务状态；served 为 NONE 时等待下一程方向，否则本方向已经认领。 */
+    public record StopService(Stop station, Travel served) {
+        public StopService {
+            java.util.Objects.requireNonNull(station);
+            java.util.Objects.requireNonNull(served);
+        }
+    }
     /**
      * 世界查询回调：让纯 Java 状态机在不引用 Minecraft 类的前提下感知世界。
      * 实现方是 AbstractCabinEntity 中的匿名类，在每次 tick() 内同步调用，返回结果只对本次调用有效。
@@ -202,11 +211,14 @@ public final class ElevatorController {
     /**
      * 当前目的站是"哪一条厅外呼叫"带来的（{@link Travel#NONE} = 目的站来自轿厢内选站）。
      *
-     * <p>到站清扫时据此决定熄灭哪个方向的呼叫灯：空车跨越方向去接人（例如上行去接"下行"呼叫）时，
+     * <p>单向呼叫到站时据此决定熄灭哪个方向的呼叫灯：空车跨越方向去接人（例如上行去接"下行"呼叫）时，
      * 按钮方向与行驶方向相反，只看 {@link #travel} 会清错那一盏灯。读档恢复出的行程没有这个信息，
-     * 退回按行驶方向清扫（最多多开关一次门，不会留下死呼叫）。
+     * 退回按行驶方向清扫；方向未知时不清除。双向呼叫由 StopService 等待下一程决定。
      */
     private Travel targetHallDirection = Travel.NONE;
+    private StopService stopService;
+    /** 旧存档第一次 tick 时，根据真实位置恢复停靠状态，不能猜测已完成了哪个方向。 */
+    private boolean recoverStopService;
     /**
      * 是否正处于故障（受阻暂停）之中，见 {@link #faulted()} 与 {@link Environment#canResume()}。
      *
@@ -279,7 +291,9 @@ public final class ElevatorController {
     public List<Stop> pending() { return List.copyOf(queue); }
     /** @return 待服务的厅外呼叫的不可变快照（按登记顺序），供服务端同步（按钮点亮）与存档使用。 */
     public List<HallCall> hallCalls() { return List.copyOf(hallCalls); }
-    /** @return 当前承诺的服务方向；空闲时为 {@link Travel#NONE}。 */
+    /** @return 可空的停靠服务快照；存档必须与 HallCalls 一起保存。 */
+    public StopService stopService() { return stopService; }
+    /** @return 当前运行方向记忆；从未派车时为 {@link Travel#NONE}。 */
     public Travel travel() { return travel; }
     /** @return 是否还有任何未完成的请求（轿厢内选站或厅外呼叫）。 */
     public boolean hasRequests() { return !queue.isEmpty() || !hallCalls.isEmpty(); }
@@ -333,11 +347,10 @@ public final class ElevatorController {
      * 登记一条厅外呼叫（楼层门上的上行 / 下行按钮）。
      *
      * <p>与轿厢内选站的区别：呼叫<b>带方向</b>，只有正在按该方向运行的轿厢才会顺路接走它
-     * （见 {@link #select(double)}）；它会一直留在列表里，直到轿厢到站开门（{@link #tick} 的到站分支清理），
+     * （见 {@link #select(double)}）；它留在列表里直到到站服务，或双向停靠时按下一程方向认领，
      * 期间门上的按钮保持点亮。
      *
-     * <p>轿厢正停在本层且门已经打开 / 正在打开时，视为呼叫立即被服务：不入表、只续满停留时间
-     * （等价于"按住按钮"），因此不会出现"车就在眼前，按钮却一直红着"。
+     * <p>本层开门时，只有本次已认领方向的呼叫可以直接续满停留；另一方向必须登记。
      *
      * @param call 呼叫（站点 id / 高度 / 方向）
      * @param y 轿厢当前 Y（单位：格）
@@ -345,8 +358,14 @@ public final class ElevatorController {
      */
     public boolean callHall(HallCall call, double y) {
         if (hallCalls.contains(call)) return true;
-        // 车就在这一层且门开着/正在开：呼叫当场完成，不入表（否则按钮会先红一下再灭）
-        if (Math.abs(y - call.y()) <= ElevatorParameters.POSITION_EPSILON && (phase == Phase.OPEN || phase == Phase.OPENING)) { dwell = DWELL_TICKS; return true; }
+        if (Math.abs(y - call.y()) <= ElevatorParameters.POSITION_EPSILON
+                && (phase == Phase.OPEN || phase == Phase.OPENING)) {
+            if (stopService == null) stopService = new StopService(new Stop(call.id(), call.y()), Travel.NONE);
+            if (stopService.station().id() == call.id() && stopService.served() == callDirection(call)) {
+                dwell = DWELL_TICKS;
+                return true;
+            }
+        }
         if (hallCalls.size() >= MAX_REQUESTS) return false;
         hallCalls.add(call);
         return true;
@@ -478,9 +497,19 @@ public final class ElevatorController {
      * @return 本刻结束时的 Y（单位：格）；未发生移动时原样返回
      * 副作用：修改 phase/door/dwell/target/queue/hallCalls/travel；可能经 env.arrived 开门、播放音效、改方块状态。
      * 说明：到站时先把位置精确吸附到 target.y() 再回调 arrived，保证门联锁的 1e-7 到站判定一定成立；
-     * 到站时清掉本站"本次服务方向"的厅外呼叫与同层选站（门开着，等这个方向的人都上得来，该方向的按钮随之熄灭；另一方向的呼叫保持点亮，等轿厢回头再来）。
+     * 同层选站到站即完成；双向厅外呼叫延后到关门前按下一程方向认领，残留方向必须保留。
      */
     public double tick(double y, Environment env) {
+        if (recoverStopService) {
+            recoverStopService = false;
+            if (stopService == null && (door > 0 || phase == Phase.CLOSING)) {
+                final double restoredY = y;
+                hallCalls.stream().filter(c -> Math.abs(c.y() - restoredY) <= ElevatorParameters.POSITION_EPSILON)
+                        .findFirst().ifPresent(c -> stopService = new StopService(new Stop(c.id(), c.y()), Travel.NONE));
+            }
+        }
+        if (stopService != null && (!atServiceStation(y) || !env.valid(stopService.station())
+                || (phase == Phase.MOVING && door == 0 && target == null))) stopService = null;
         // 先剔除已失效的请求（门被拆、区块卸载）：避免把行程派发给已经不存在的站。
         queue.removeIf(s -> !env.valid(s));
         hallCalls.removeIf(c -> !env.valid(new Stop(c.id(), c.y())));
@@ -554,15 +583,7 @@ public final class ElevatorController {
                     // 一个请求都没有时 select() 返回 null，于是门关到全闭后停在 MOVING 且无目的站
                     // ——即"关着门停在本层待命"，与手动按关门键的结果完全一致（见 forceClose）。
                     // 以前这里是"无请求就保持开门"，于是空闲的轿厢会一直敞着门；现在改成关门。
-                    target = select(y);
-                    if (target != null && Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON) {
-                        // 目的站就是本层（例如门开着时另一方向有人按，第 ④ 步掉头后选中它）：
-                        // 车已经在这一层、门也开着，就地把它认领掉并续满停留时间，不必先关一次门再重开。
-                        // 清扫仍然只清这一条呼叫（见 serveStation），另一方向的呼叫各自独立。
-                        serveStation(target.y()); target = null; dwell = DWELL_TICKS;
-                    } else {
-                        phase = Phase.CLOSING;
-                    }
+                    if (prepareDeparture(y)) phase = Phase.CLOSING;
                 }
             }
             case CLOSING -> {
@@ -571,9 +592,15 @@ public final class ElevatorController {
                 if (env.outOfPassengerNumLimit()) { phase = Phase.OPENING; break; }
                 // 防夹：关门过程中门口出现活体则立即反向开门；target 保留，重开后由 OPENING 归队。
                 if (env.doorwayBlocked()) { phase = Phase.OPENING; break; }
+                // 手动关门与自动关门采用同一次方向认领；重开后不能再消费另一方向。
+                if (atServiceStation(y) && (target == null || stopService.served() == Travel.NONE)
+                        && !prepareDeparture(y)) break;
                 door = Math.max(0, door - 1f / DOOR_TICKS);
                 // 用 .0001f 而非 0 判定到位：浮点逐刻累减永远取不到精确 0，阈值避免卡在关门状态。
-                if (door < .0001f) { door = 0; phase = Phase.MOVING; }
+                if (door < .0001f) {
+                    door = 0; phase = Phase.MOVING;
+                    if (target == null) stopService = null; // 本次停靠结束；后来的同层呼叫必须能重新开门。
+                }
             }
             case MOVING, BLOCKED -> {
                 // MOVING 与 BLOCKED 共用运行逻辑：BLOCKED 只是暂停，条件恢复后继续原行程。
@@ -621,7 +648,7 @@ public final class ElevatorController {
                 // 会把浮点残差一并抹平，因此这里能精确成立；其余情况由双精度精确比较即可。
                 if (y == target.y()) {
                     // 先对齐再回调：保证 arrived 里做门联锁判定时位置已精确落在站点上。
-                    y = target.y(); env.arrived(target); serveStation(target.y()); target = null; phase = Phase.OPENING;
+                    y = target.y(); env.arrived(target); arriveAtStation(target); target = null; phase = Phase.OPENING;
                     stopMotion(); // 到站：曲线使命结束，下一次移动重新规划
                 }
             }
@@ -631,8 +658,8 @@ public final class ElevatorController {
                 if (door > .9999f) {
                     door = 1; phase = Phase.OPEN; dwell = DWELL_TICKS;
                     // Anti-crush reopening preserves the interrupted request.
-                    // 防夹重开：被中断的目的站放回队首而不是丢弃，开门停留结束后它会最先被重新派发。
-                    if (target != null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; stopMotion(); }
+                    // 已认领的停靠保留目的站，防止重开改变出发方向；途中脱困仍按原规则归队。
+                    if (target != null && stopService == null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; stopMotion(); }
                 }
             }
             case OVERLOAD -> {
@@ -643,6 +670,7 @@ public final class ElevatorController {
                 if (!env.outOfPassengerNumLimit()) { phase = Phase.OPEN; dwell = DWELL_TICKS; }
             }
         }
+        if (stopService != null && !atServiceStation(y)) stopService = null;
         return y;
     }
 
@@ -697,24 +725,72 @@ public final class ElevatorController {
         target = take(ahead);    // 新目标（选站会出队；厅外呼叫保留在呼叫表里直到到站）
     }
 
-    /**
-     * 到站清扫：门开着，本站本次服务方向上的等待者都能上，因此该方向的厅外呼叫与同层选站都视为已完成。
-     * 另一方向的呼叫保持点亮（留给轿厢回头再来），具体判据见方法内说明。
-     *
-     * <p>为什么连"同层选站"也一起清：目标站被选中时已经出队，但队列里可能还留着同层的重复请求
-     * （先按了轿厢按钮、之后又按下厅外按钮），不清掉就会出现"到站开门 → 又选中同一层 → 再开一次门"的空转。
-     *
-     * @param stationY 刚刚到站的站点高度（格）
-     */
-    private void serveStation(int stationY) {
-        // 只清"本次服务方向"上的厅外呼叫：同一层可以同时挂着上行与下行两条呼叫，上行到达只应熄灭上行
-        // 那盏灯，下行的乘客还要等轿厢回头来接（真实电梯的上/下呼叫灯各自独立）。方向来自目的站本身——
-        // 空车跨越方向去接人时按钮方向与行驶方向相反，按行驶方向会清错。
-        Travel served = targetHallDirection != Travel.NONE ? targetHallDirection : travel;
-        if (served == Travel.NONE) hallCalls.removeIf(c -> c.y() == stationY); // 方向未知（读档恢复的行程）：退回全清，避免留下死呼叫
-        else hallCalls.removeIf(c -> c.y() == stationY && c.up() == (served == Travel.UP));
-        queue.removeIf(s -> s.y() == stationY);
+    /** 双向到站先保留两灯，等待下一程；单向到站保持原来的服务时机。 */
+    private void arriveAtStation(Stop station) {
+        boolean up = hasHallAt(station, Travel.UP), down = hasHallAt(station, Travel.DOWN);
+        Travel served = up && down ? Travel.NONE : targetHallDirection != Travel.NONE ? targetHallDirection : travel;
+        // 轿厢选站到达换向层时，唯一的反向厅呼尚未服务；允许随下一程认领，保留原有端站换向行为。
+        if ((up || down) && served != Travel.NONE && !hasHallAt(station, served)) served = Travel.NONE;
+        stopService = new StopService(station, served);
+        if (served != Travel.NONE) clearHallDirection(station, served);
+        queue.removeIf(s -> s.y() == station.y());
         targetHallDirection = Travel.NONE;
+    }
+
+    private static Travel callDirection(HallCall call) { return call.up() ? Travel.UP : Travel.DOWN; }
+
+    private boolean hasHallAt(Stop station, Travel direction) {
+        return hallCalls.stream().anyMatch(c -> c.id() == station.id() && callDirection(c) == direction);
+    }
+
+    private void clearHallDirection(Stop station, Travel direction) {
+        hallCalls.removeIf(c -> c.id() == station.id() && callDirection(c) == direction);
+    }
+
+    private boolean atServiceStation(double y) {
+        return stopService != null && Math.abs(stopService.station().y() - y) <= ElevatorParameters.POSITION_EPSILON;
+    }
+
+    /** 本次停靠的厅外呼叫由 prepareDeparture 结算，不能被普通最近站选择当成零距离任务。 */
+    private boolean deferredHere(HallCall call, double y) {
+        return atServiceStation(y) && call.id() == stopService.station().id();
+    }
+
+    /** 返回 true 才能关门出发；false 表示原地认领了一个方向，需要完整等待一次。 */
+    private boolean prepareDeparture(double y) {
+        // 防夹/超载重开保留已承诺的目标；后续同向的沿途插单仍由 retarget 处理。
+        if (target == null) target = select(y);
+        if (target != null) {
+            if (Math.abs(target.y() - y) <= ElevatorParameters.POSITION_EPSILON) {
+                arriveAtStation(target);
+                target = null;
+                dwell = DWELL_TICKS;
+                phase = door >= .9999f ? Phase.OPEN : Phase.OPENING;
+                return false;
+            }
+            if (atServiceStation(y) && stopService.served() == Travel.NONE) {
+                Travel departure = directionTowards(y, target.y());
+                clearHallDirection(stopService.station(), departure);
+                stopService = new StopService(stopService.station(), departure);
+                travel = departure;
+            }
+            return true;
+        }
+        if (atServiceStation(y)) {
+            // 没有外层任务才允许原地服务，每次最多清一条，并重置完整停留时间。
+            Stop station = stopService.station();
+            Travel direction = travel == Travel.NONE ? Travel.UP : travel;
+            if (!hasHallAt(station, direction)) direction = opposite(direction);
+            if (hasHallAt(station, direction)) {
+                clearHallDirection(station, direction);
+                stopService = new StopService(station, direction);
+                travel = direction;
+                dwell = DWELL_TICKS;
+                phase = door >= .9999f ? Phase.OPEN : Phase.OPENING;
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -726,7 +802,7 @@ public final class ElevatorController {
     private record Pick(Stop stop, HallCall hall) { }
 
     /**
-     * 选出下一个目的站并"消费"轿厢内选站（厅外呼叫保留在表里，直到 {@link #serveStation} 清理）。
+     * 选出下一个目的站并消费轿厢内选站；本次停靠的厅外呼叫由 prepareDeparture 单独结算。
      *
      * @param y 轿厢当前高度（格）
      * @return 下一个目的站；没有任何请求时返回 null。<b>注意不会复位服务方向</b>：
@@ -820,6 +896,7 @@ public final class ElevatorController {
             if (distance < bestDistance) { bestDistance = distance; best = new Pick(s, null); }
         }
         for (HallCall c : hallCalls) {
+            if (deferredHere(c, y)) continue;
             double distance = Math.abs(c.y() - y);
             // 方向过滤对"同层"分支同样生效：厅外呼叫是带方向的，反方向那条必须留给它自己的行程
             //（否则停在本层时会把反方向呼叫就地"服务"掉，等于到站清错了灯）。
@@ -848,6 +925,7 @@ public final class ElevatorController {
     private Pick oldestAheadHallCall(double y,Travel direction,boolean includeHere) {
         // hallCalls 本身就是登记顺序（新呼叫追加在尾部、到站时按下标删除），因此第一条命中即最早的那条。
         for (HallCall c : hallCalls) {
+            if (deferredHere(c, y)) continue;
             if (!includeHere && Math.abs(c.y() - y) <= ElevatorParameters.POSITION_EPSILON) continue;
             if (along(c.y(), y, direction, true)) return new Pick(new Stop(c.id(), c.y()), c);
         }
@@ -883,7 +961,7 @@ public final class ElevatorController {
             if (delta > ElevatorParameters.POSITION_EPSILON) return Travel.UP;
             if (delta < -ElevatorParameters.POSITION_EPSILON) return Travel.DOWN;
         }
-        if (!hallCalls.isEmpty()) return directionTowards(y, hallCalls.get(0).y());
+        for (HallCall call : hallCalls) if (!deferredHere(call, y)) return directionTowards(y, call.y());
         return Travel.UP; // 只剩同层请求：调用点已先行处理，这里给一个确定值
     }
 
@@ -916,16 +994,25 @@ public final class ElevatorController {
      * @param pending 存档中保存的选站队列，会去重并截断到 {@link #MAX_REQUESTS}
      * @param calls 存档中保存的厅外呼叫，会去重并截断到 {@link #MAX_REQUESTS}
      * @param travel 存档中保存的服务方向；null 视为 {@link Travel#NONE}
-     * 副作用：覆盖 phase/door/target/queue/hallCalls/travel/dwell；MOVING 一律降级为 BLOCKED 且门置 0。
+     * 副作用：覆盖 phase/door/target/queue/hallCalls/travel/dwell，旧入口保守重建停靠状态；MOVING 降级为 BLOCKED 且门置 0。
      * 为什么：载入时不存在“正在运动”的合法状态（既没有上一刻位置也无从继续插值），
      * 降级为 BLOCKED 后由 tick() 先校验线路有效性再恢复运行，避免恢复出一条穿墙的行程。
      */
     public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls, Travel travel) {
+        restore(phase, door, target, pending, calls, travel, null);
+    }
+
+    /** 含停靠服务快照的恢复入口；旧存档传 null，第一次 tick 按真实位置保守恢复。 */
+    public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls,
+                        Travel travel, StopService service) {
         this.phase = phase; this.door = Math.max(0, Math.min(1, door)); this.target = target;
         // distinct() 去重、limit() 截断：防止被手工篡改或旧版本写坏的存档撑爆队列。
         queue.clear(); pending.stream().distinct().limit(MAX_REQUESTS).forEach(queue::addLast);
         hallCalls.clear(); calls.stream().distinct().limit(MAX_REQUESTS).forEach(hallCalls::add);
         this.travel = travel == null ? Travel.NONE : travel;
+        this.stopService = service;
+        this.recoverStopService = service == null;
+        this.targetHallDirection = Travel.NONE;
         dwell = DWELL_TICKS;
         // S 形曲线不从存档恢复：载入时不存在"正在运动"的合法状态（既没有上一刻位置也无从继续求值），
         // 因此曲线一律作废、速度归零，由 tick() 在重新校验线路后从静止重新规划。
