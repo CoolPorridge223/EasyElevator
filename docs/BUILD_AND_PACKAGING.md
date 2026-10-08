@@ -1,6 +1,6 @@
 # EasyElevator 工程构建与打包说明书
 
-适用版本：模组 **2.2.1**，Minecraft **1.21.1**，Fabric Loader **0.19.2**，Java **21**。
+适用版本：模组 **2.3.0**，Minecraft **1.21.1**，Fabric Loader **0.19.2**，Java **21**。
 
 > 面向**构建与发布**：环境固定项、命令速查、两种交付包、IDEA 设置与常见故障。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
@@ -20,7 +20,7 @@
 | Yarn 映射 | 1.21.1+build.3               | yarn_mappings |
 | Fabric Loader | 0.19.2                       | loader_version |
 | Fabric API | 0.116.17+1.21.1              | fabric_version |
-| 模组版本 | 2.2.1                        | mod_version |
+| 模组版本 | 2.3.0                        | mod_version |
 | 文件名前缀 | easyelevator                 | archives_base_name |
 | 构建内存/并行度 | 最大堆 2 GB，最多 4 个工作线程          | org.gradle.jvmargs / org.gradle.workers.max |
 | 缓存 | 启用 Gradle 构建缓存               | org.gradle.caching |
@@ -57,13 +57,15 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 
 `--version` 中检查 Gradle=8.14.3，Launcher JVM/Daemon JVM 使用 Java 21。`build` 会编译客户端与服务端、处理资源，再生成重映射的正式 JAR。
 
-**关于测试**：java 插件自动创建的 `test` / `testClasses` 任务已在 `build.gradle` 里关闭（工程内没有 `src/test`），所以 `build` 只做编译与打包。另有一套**可选开启**的乘客回归测试（`src/gametest`：27 个 `@GameTest`（12 个乘客、15 个厅呼调度）+ 1 个客户端冒烟测试），只有显式加 `-PriderTests` 才会被 Loom 创建成 `easyelevator-test` 测试模组，**永远不会进发行包**：
+**关于测试**：java 插件自动创建的 `test` / `testClasses` 任务已在 `build.gradle` 里关闭（工程内没有 `src/test`），所以 `build` 只做编译与打包。另有一套**可选开启**的服务端回归测试（`src/gametest`：37 个 `@GameTest`——12 个乘客、15 个厅呼调度、10 个货舱——外加 2 个客户端冒烟测试），只有显式加 `-PriderTests` 才会被 Loom 创建成 `easyelevator-test` 测试模组，**永远不会进发行包**：
 
 ```powershell
-# 服务端 GameTest（12 项乘客回归）
+# 服务端 GameTest（37 项，全部通过时日志打印 "All 37 required tests passed :)"）
 .\tools\build.ps1 -Jdk '<JDK21>' -Task runGameTest
 # 真实客户端里自动跑一遍乘坐流程
 .\tools\build.ps1 -Jdk '<JDK21>' -Task runRiderClient
+# 真实客户端里自动跑一遍装卸货流程（隔离的 CargoSmoke 世界 + 截图）
+.\tools\build.ps1 -Jdk '<JDK21>' -Task runCargoClient
 ```
 
 `tools/build.ps1` 会对这两个任务自动补上 `-PriderTests`。不加 `-PriderTests` 时构建行为与产物完全不变。日常验收仍以 [人工验收清单](TESTING.md) 为准。
@@ -74,10 +76,14 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 | 发布压缩包 | `-Task packageRelease` | `packageRelease` |
 | 可编辑工程压缩包 | `-Task packageProject` | `packageProject` |
 | 开发游戏客户端 | `-Task runClient` | `runClient` |
-| 乘客回归测试（自动带 `-PriderTests`） | `-Task runGameTest` / `-Task runRiderClient` | `runGameTest` / `runRiderClient` |
+| 服务端回归测试：乘客 + 厅外呼叫 + 货舱（37 项，自动带 `-PriderTests`） | `-Task runGameTest` | `runGameTest` |
+| 乘客随厢移动的客户端冒烟测试 | `-Task runRiderClient` | `runRiderClient` |
+| 货舱客户端冒烟测试（隔离的 CargoSmoke 世界，截图见 `build/run/cargoClient/screenshots/`） | `-Task runCargoClient` | `runCargoClient` |
 | 清理旧构建输出 | `-Task clean` | `clean` |
 
-2.2.1 发布新增强力轿厢（限载 20 人 + 重载内饰）与超载相位，保留 2.2.0 的乘客自主移动与网络延迟补偿。正式 JAR 的 `fabric.mod.json` 版本应为 `2.2.1`；发布包与工程包也必须包含本版文档。
+2.3.0 给重载轿厢加上 **27 格货舱**：动态载客上限（空舱 20 人 → 满载 6 人）、随货量长出的最多 6 个可碰撞货箱，
+以及一个原版容器菜单；重载轿厢的速度同时改为普通梯的 2/3。正式 JAR 的 `fabric.mod.json` 版本应为 `2.3.0`；
+发布包与工程包也必须包含本版文档。
 
 改完代码后的验收方式见 [人工验收清单](TESTING.md)：需要真人进游戏逐项确认，没有可替代的离线检查。
 
@@ -87,15 +93,15 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk '<JDK21>' -Task packageRelease
 ```
 
-输出 `build/distributions/easyelevator-2.2.1-release.zip`，内容：
+输出 `build/distributions/easyelevator-2.3.0-release.zip`，内容：
 
-- `mods/easyelevator-2.2.1.jar`：玩家安装的模组。
-- `sources/easyelevator-2.2.1-sources.jar`：阅读用源码，不是安装文件。
+- `mods/easyelevator-2.3.0.jar`：玩家安装的模组。
+- `sources/easyelevator-2.3.0-sources.jar`：阅读用源码，不是安装文件。
 - `docs/`、README.md、LICENSE.txt：搭建、参数、替换素材、验收说明。
 
-也可以直接取 `build/libs/easyelevator-2.2.1.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
+也可以直接取 `build/libs/easyelevator-2.3.0.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
 
-在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。**2.2.0 改变了乘客移动协议（`rider_move`），服务端与所有客户端必须一起升级，不能混用 2.1.x 或更早版本的客户端。** 2.2.1 只新增物品、相位与渲染，与其它 2.2.x 混用不会崩：旧客户端看不到强力轿厢的重载内饰，也会把 `OVERLOAD` 相位当作未知阶段显示成"暂停"。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
+在 Minecraft **1.21.1 + Fabric Loader 0.19.2** 的实例中，将正式 JAR 和匹配 1.21.1 的 Fabric API 放入 `mods`。**2.2.0 改变了乘客移动协议（`rider_move`），服务端与所有客户端必须一起升级，不能混用 2.1.x 或更早版本的客户端。** **2.3.0 又新增了货舱菜单类型（`easyelevator:cargo`）与重载轿厢的同步字段，同样要求服务端与所有客户端一起升级**：旧客户端既看不到货箱、算不出动态限载，也无法同步货舱槽位。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
 
 ## 5. 给开发者的完整工程包
 
@@ -103,7 +109,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\tools\build.ps1 -Jdk '<JDK21>' -Task packageProject
 ```
 
-输出 `build/distributions/easyelevator-2.2.1-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
+输出 `build/distributions/easyelevator-2.3.0-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本、Gradle Wrapper 及其 JAR。
 
 打包采用白名单（`build.gradle` 的 `packageProject`），不包含 `.idea`、`.gradle`、`.gradle-user-home`、`.tools`、`build`、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
 

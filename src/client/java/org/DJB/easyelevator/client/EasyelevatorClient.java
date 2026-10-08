@@ -43,9 +43,14 @@ public class EasyelevatorClient implements ClientModInitializer {
      */
     private boolean doorSoundReloadPending;
 
-    /** 客户端初始化。副作用：注册实体渲染器与两个 S2C 包处理器，并挂载客户端刻与断线事件回调；不改世界状态。 */
+    /**
+     * 客户端初始化。副作用：注册四个轿厢渲染器、楼层门方块实体渲染器与货舱界面，
+     * 挂载客户端刻、断线等事件回调，并注册 S2C 包处理器；不改世界状态。
+     */
     @Override
     public void onInitializeClient() {
+        // 货舱菜单的界面绑定：菜单类型（服务端）在 Easyelevator.CARGO_SCREEN 注册，
+        // "用哪个 Screen 画它"只能在客户端注册（专用服务器不加载任何 Screen 类）。
         HandledScreens.register(Easyelevator.CARGO_SCREEN, CargoScreen::new);
         // 启动时把"这个进程能不能弹 AWT 窗口"记一行：headless 时门设置面板的"选择文件"会改走系统原生对话框，
         // 出问题时这一行能直接说明走的是哪条路（免去再猜一轮）。
@@ -54,8 +59,8 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 也不依赖 PowerShell 弹窗（见 FileDropHandler）。
         // 这里只是第一次尝试；窗口若还没就绪，下面的刻回调会继续重试（挂上后函数自己就变成空操作）。
         FileDropHandler.register(net.minecraft.client.MinecraftClient.getInstance());
-        // 四种轿厢（普通 / 高速 / 观光 / 强力）共用同一个渲染器：泛型参数取共同的父类，
-        // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙、强力型号的重载内饰与双灯补光）
+        // 四种轿厢（普通 / 高速 / 观光 / 重载）共用同一个渲染器：泛型参数取共同的父类，
+        // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙、重载型号的重载内饰与双灯补光）
         // 由实体自身的 glassWalls() / heavyDuty() 决定，而不是按实体类型分支——将来加型号时这里只需要多一行注册。
         EntityRendererRegistry.register(Easyelevator.CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.HIGH_SPEED_CABIN,CabinRenderer::new);

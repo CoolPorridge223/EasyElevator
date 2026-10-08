@@ -10,7 +10,7 @@ package org.DJB.easyelevator.logic;
  *
  * <p>在整体架构中的位置：logic 包中最纯粹的几何/表现计算之一（与 {@code ElevatorParameters} 一样不引用
  * 任何 Minecraft 类）；唯一调用方是 {@link org.DJB.easyelevator.client.CabinRenderer}，它把 {@link #surface}
- * （普通 / 高速 / 观光，以及强力舱的门外构件）或 {@link #surfaceTwoLamps}（强力舱的舱内与外壳内面）
+ * （普通 / 高速 / 观光，以及重载舱的门外构件）或 {@link #surfaceTwoLamps}（重载舱的舱内与外壳内面）
  * 与 {@link #lamp} 作为 {@code BoxMesh.FaceLighting} 逐面传下去（见 {@code BoxMesh.cuboid} 的 lighting 参数）。
  *
  * <p>关键不变量/约束：
@@ -29,7 +29,7 @@ public final class CabinLighting {
     /** 灯具在轿厢本地坐标中的位置（格）：舱顶正中偏后一点（顶板内表面在 Y≈2.8，故灯位取 2.78）。 */
     private static final double LAMP_X = 0, LAMP_Y = 2.78, LAMP_Z = -.25;
     /**
-     * 强力轿厢<b>第二盏</b>顶灯的位置（格）：与 {@code CabinRenderer.POWERFUL_PARTS} 里门口那块灯罩的
+     * 重载轿厢<b>第二盏</b>顶灯的位置（格）：与 {@code CabinRenderer.POWERFUL_PARTS} 里门口那块灯罩的
      * 几何中心一致（灯罩 Z=0.62..0.92、Y 顶面 2.804），因此只有双灯型号会用到它。
      *
      * <p>为什么灯位要写死在这里而不是由渲染器传进来：灯位是"这套内饰的灯装在哪"这个纯几何事实，
@@ -65,11 +65,11 @@ public final class CabinLighting {
     }
 
     /**
-     * <b>双灯</b>舱内表面补光：取两盏顶灯里更亮的那一盏（强力型号专用，见 {@link #SECOND_LAMP_X}）。
+     * <b>双灯</b>舱内表面补光：取两盏顶灯里更亮的那一盏（重载型号专用，见 {@link #SECOND_LAMP_X}）。
      *
      * <p>为什么需要单独一个方法而不是"再多加一盏灯就完事"：普通 / 高速 / 观光三型的舱内只按舱顶后侧那
      * 一盏灯补光，这是它们从 2.1.0 起就定下的观感；如果直接把第二盏灯并进 {@link #surface}，
-     * 三种老型号的舱内前部也会一起变亮，等于顺手改了它们的外观。因此"第二盏灯"只由强力型号显式选择。
+     * 三种老型号的舱内前部也会一起变亮，等于顺手改了它们的外观。因此"第二盏灯"只由重载型号显式选择。
      *
      * <p>取<b>最大值</b>而不是相加：补光的语义是"这个面被哪盏灯照到了、照得多亮"，两盏灯同时照到一个面
      * 不该把亮度叠加到上限之上（那会让舱内中央一片死白、层次全丢）；取较亮的那盏与本模组

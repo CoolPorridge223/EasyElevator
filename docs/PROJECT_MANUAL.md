@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.2.1** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
+> 适用模组版本 **2.3.0** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -33,9 +33,9 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 维度 | 事实                                                                      |
 | --- |-------------------------------------------------------------------------|
 | 模组 ID / 命名空间 | `easyelevator`                                                          |
-| 版本 | 2.2.1（见 [gradle.properties](../gradle.properties)）                      |
+| 版本 | 2.3.0（见 [gradle.properties](../gradle.properties)）                      |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威）                                                  |
-| 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×4 型号（普通 / 高速 / 观光 / 强力）                                   |
+| 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×4 型号（普通 / 高速 / 观光 / 重载）                                   |
 | 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
 | 线路约束 | 同一 X/Z、垂直连续、朝向一致；每条线路最多一台轿厢（四型号合计）                                      |
 | 状态保存 | 轿厢实体 NBT + 楼层门方块实体 NBT                                                  |
@@ -69,19 +69,22 @@ EasyElevator/
 ├─ docs/                        文档（见 1.5）
 │   ├─ PROJECT_MANUAL.md        ← 本文（开发手册）
 │   ├─ PARAMETERS.md            参数手册（数值口径）
+│   ├─ CARGO.md                 重载轿厢货舱（玩法与实现要点）
 │   ├─ TESTING.md               人工验收清单（需要真人进游戏的检查项）
 │   ├─ ASSET_INTEGRATION.md     模型/音效/门动画接口
 │   └─ BUILD_AND_PACKAGING.md   构建与打包说明书
 ├─ tools/
 │   ├─ build.ps1                本机 Gradle 快捷构建（校验 JDK 21）
-│   ├─ generate_art.py          模型与贴图生成 + 几何自检（纯 Python 3）
+│   ├─ generate_art.py          模型与贴图生成 + 几何自检（纯 Python 3；不含 icon.png，见 1.3 说明）
 │   └─ generate_data.py         方块状态/语言/配方/掉落表/音效钩子生成（纯 Python 3）
 ├─ src/
 │   ├─ main/java/org/DJB/easyelevator/     服务端与公共逻辑（权威侧）
+│   │   ├─ screen/                         容器菜单（目前只有货舱：CargoScreenHandler）
+│   │   └─ …（block / entity / item / logic / network / mixin / api）
 │   ├─ main/resources/                     方块状态、模型、贴图、语言、配方、战利品表、音效、mixin 配置
 │   ├─ client/java/org/DJB/easyelevator/   客户端源集（渲染、界面、运动、音效）
 │   ├─ client/resources/                   客户端 mixin 配置
-│   └─ gametest/                           可选的乘客回归测试源集（加 -PriderTests 才构建，永不进发行包）
+│   └─ gametest/                           可选的回归测试源集（加 -PriderTests 才构建，永不进发行包）
 └─ run/                        开发运行目录（世界、日志）
 ```
 
@@ -94,10 +97,11 @@ EasyElevator/
 | 电梯轨道 | `easyelevator:elevator_rail` | Block + BlockItem | 朝向 = 轿厢所在方向 = 轿厢门朝向 |
 | 楼层电梯门 | `easyelevator:call_button` | Block + BlockItem | **沿用旧 ID 兼容旧存档**；显示名为「电梯门」，实际为 3×3 整门 |
 | 楼层门方块实体 | `easyelevator:landing_door` | BlockEntityType | 只有根方块创建 |
-| 普通轿厢 | `easyelevator:cabin` | EntityType + Item | 4 格/秒，不限载，拉丝不锈钢内舱 |
-| 高速轿厢 | `easyelevator:high_speed_cabin` | EntityType + Item | 10 格/秒，外观与普通逐面相同 |
-| 观光轿厢 | `easyelevator:observation_cabin` | EntityType + Item | 4 格/秒，玻璃墙 |
-| 强力轿厢 | `easyelevator:powerful_cabin` | EntityType + Item | 4 格/秒，**限载 20 人**（超过即 `OVERLOAD`），外壳同普通、内饰加重载件 |
+| 普通轿厢 | `easyelevator:cabin` | EntityType + Item | 4 格/秒，限载 8 人，拉丝不锈钢内舱 |
+| 高速轿厢 | `easyelevator:high_speed_cabin` | EntityType + Item | 10 格/秒，限载 8 人，外观与普通逐面相同 |
+| 观光轿厢 | `easyelevator:observation_cabin` | EntityType + Item | 4 格/秒，限载 8 人，玻璃墙 |
+| 重载轿厢 | `easyelevator:powerful_cabin` | EntityType + Item | **2.67 格/秒**（2/3），**限载随货量 1..20 人**（超过即 `OVERLOAD`），外壳同普通、内饰加重载件、后部有货箱 |
+| 货舱容器菜单 | `easyelevator:cargo` | ScreenHandlerType | 全模组唯一的容器：服务端由 `PowerfulCabinEntity.interact` 直接 new，客户端由 `EasyelevatorClient` 注册 `CargoScreen` 作为界面 |
 | 物品栏分组 | `easyelevator:main` | ItemGroup | 图标 = 普通轿厢 |
 | 音效 | `easyelevator:elevator_running` / `elevator_arrival` / `elevator_arrival_custom` | SoundEvent | `elevator_arrival` 是每扇门"默认音效"那一项的来源；`elevator_arrival_custom` 只是供上传音频复用的字幕占位。**开关门不再发声**（`door_open`/`door_close` 已移除） |
 | 到站音效设置 | 存在门的方块实体 NBT（每扇独立） | DoorArrivalSound | 默认"开 + 默认音效"（等于原有行为）；选项表见 `logic/DoorSounds`。旧存档的门因字段缺失**按出厂默认读回发声**，因此升级后照旧会响（见 8.2） |
@@ -114,6 +118,7 @@ EasyElevator/
 | --- | --- |
 | 架构、调用关系、类职责、对外接口、扩展入口 | **本文** |
 | 某个常量的确切数值、单位、联动关系 | [PARAMETERS.md](PARAMETERS.md) |
+| 重载轿厢怎么装卸货、货量与限载的换算、货箱与联机 | [CARGO.md](CARGO.md) |
 | 怎么在游戏里验收 | [TESTING.md](TESTING.md) |
 | 换模型/贴图/音效、门动画接口 | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
 | 怎么构建、打包发布版/工程包、IDEA 设置 | [BUILD_AND_PACKAGING.md](BUILD_AND_PACKAGING.md) |
@@ -227,7 +232,8 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | 4 | 轿厢`isCollidable()=false`，空心外壳由 **EntityViewMixin** 注入 | 3×3×3 必须可走进；实心包围盒会把乘客挡在外面 | Mixin 是必装项，注入失败模组启动失败 |
 | 5 | **乘客名册**（UUID + 相对偏移）随实体 NBT 存档，读档先等人 | 区块实体先于玩家实体载入；不等人会出现「开走 → 玩家掉出井道」 | 需要 `RIDER_WAIT_TICKS` 上限与「车上有别人就走」的放行规则 |
 | 6 | 四型号轿厢共用父类，只差速度 / 限载人数 / 回收物品 / `glassWalls()` / `heavyDuty()` | 只有一份运动、乘客、门联锁、存档代码；换型号不改井道 | 型号不写进存档，由实体类型唯一决定；外观差异只允许是"客户端提示 + 内饰表"（不能改碰撞） |
-| 7 | 载客量用**限载人数 + `OVERLOAD` 相位**表达，而不是改轿厢尺寸 | 强力型号与普通型号的外壳、井道、门与碰撞完全相同，换型号零改建；超载只让"门开着、不派发行程"，不引入第二套运动或碰撞逻辑 | 状态机多一个相位、`Environment` 多一个回调；判据必须写成"限载为正且人数超过它"，否则 0（不限载）会被误判成超载 |
+| 7 | 载客量用**限载人数 + `OVERLOAD` 相位**表达，而不是改轿厢尺寸 | 重载型号与普通型号的外壳、井道与门完全相同，换型号零改建；超载只让"门开着、不派发行程"，不引入第二套运动逻辑。**货舱也不改轿厢尺寸**：货箱全部落在原有的 3×3×3 净空里，只是往碰撞集合里追加几块可站可撞的箱子 | 状态机多一个相位、`Environment` 多一个回调；判据必须写成"限载为正且人数超过它"，否则 0（不限载）会被误判成超载；动态限载必须保底 1 人 |
+| 8 | 容器交给**原版槽位事务**，只自己加"动态单格上限" | 货舱的拖放、Shift 搬运、双人同时取放、光标物品回收全部由原版 `ScreenHandler` 负责（这些边界已经过原版验证），本模组只额外保证"新货箱不会长在生物身上" | 需要一个 `ScreenHandlerType` 与客户端 `Screen`；单格上限必须在**服务端**算（客户端空壳按 64 放行，真正的把关在服务端） |
 
 ### 2.5 关键不变量（改代码前必读）
 
@@ -238,8 +244,9 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 5. **不预测**：`CabinMotion` 只认服务端样本、绝不外推，包停止就停在最后一个样本（`Track` 只在两次已提交位置之间插值）。
 6. **方块状态属性一旦发布不可改名**：`FACING`、`COLUMN`、`LEVEL`、`OPEN`；注册 ID 同理（`call_button` 的复用是刻意的兼容性 hack）。
 7. **只有根方块**（`COLUMN=1, LEVEL=0`）是站点与控制器；其余 8 格只是部件。
-8. **单一数据源**：楼层号只在服务端算好写入 `FLOOR`；运行状态由 `Phase + TARGET_Y + Y` 推导；门进度只有一份（轿厢的门进度）；限载人数只有一份（构造注入的 `passengerNumLimit`，状态机的超载判定与铭牌红字读同一个值）。
-9. **限载语义**：`passengerNumLimit <= 0` = **不限载**（普通 / 高速 / 观光），只有正数才可能超载；超载（`OVERLOAD`）**不是故障**（`ElevatorStatus.faulted` 只看 `BLOCKED`），它的行为是"门保持全开 + 不派发行程"，绝不能顺手把门关上或把乘客推出去。
+8. **单一数据源**：楼层号只在服务端算好写入 `FLOOR`；运行状态由 `Phase + TARGET_Y + Y` 推导；门进度只有一份（轿厢的门进度）；限载人数只有一份（可覆写的 `passengerNumLimit()`——普通三型返回构造注入的固定值，重载按货量现算，状态机的超载判定、后壁铭牌与货舱面板读的都是它）；货量只有一份（`cargo` 库存，`CARGO_ITEMS` 只是它的派生同步值）；货箱几何只有一份（`CargoLoad.box(i)`，渲染与碰撞共用）。
+9. **限载语义**：`passengerNumLimit() <= 0` = **不限载**（判超载前必须先看正负），只有正数才可能超载；超载（`OVERLOAD`）**不是故障**（`ElevatorStatus.faulted` 只看 `BLOCKED`），它的行为是"门保持全开 + 不派发行程"，绝不能顺手把门关上或把乘客推出去。**动态限载绝不允许返回 0**——那会被解释成"不限载"，等于货越多越能塞人。
+10. **货舱门联锁**：只要有人开着货舱，服务端每刻续满开门停留并拒绝关门指令；所有人关闭后才恢复正常的倒计时与行程。反过来，"能不能装卸"只看交互者是不是厢内乘客，与门、相位无关。
 
 
 ---
@@ -307,7 +314,8 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [logic/ElevatorStatus.java](../src/main/java/org/DJB/easyelevator/logic/ElevatorStatus.java) | 显示状态 UP/DOWN/IDLE 推导 | ElevatorController, ElevatorParameters |
 | [logic/FloorIndicator.java](../src/main/java/org/DJB/easyelevator/logic/FloorIndicator.java) | 楼层编号（基准层 / 地下层）与文本格式化 | ElevatorParameters |
 | [logic/PanelLayout.java](../src/main/java/org/DJB/easyelevator/logic/PanelLayout.java) | 选站面板网格与分页的纯算术 | 无 |
-| [logic/CabinLighting.java](../src/main/java/org/DJB/easyelevator/logic/CabinLighting.java) | 舱内补光的纯函数：按面中心到灯位的距离抬方块光分量（只抬不降），灯罩朝下面用 15 级；`surface` 单灯（普通/高速/观光）、`surfaceTwoLamps` 双灯取较亮者（强力舱） | 无（纯算术） |
+| [logic/CabinLighting.java](../src/main/java/org/DJB/easyelevator/logic/CabinLighting.java) | 舱内补光的纯函数：按面中心到灯位的距离抬方块光分量（只抬不降），灯罩朝下面用 15 级；`surface` 单灯（普通/高速/观光）、`surfaceTwoLamps` 双灯取较亮者（重载舱） | 无（纯算术） |
+| [logic/CargoLoad.java](../src/main/java/org/DJB/easyelevator/logic/CargoLoad.java) | 货舱的纯算术：件数 ↔ 限载人数 / 货箱数量（`passengers` / `crates`），以及最多 6 个货箱的局部几何 `box(i)`（渲染与碰撞共用） | 无（只引用 MC 的 `Box`） |
 | [logic/DoorSounds.java](../src/main/java/org/DJB/easyelevator/logic/DoorSounds.java) | 每扇门到站音的选项目录，以及"序号 → 音效事件 / 音频文件名"的换算；门槽由门坐标推导 | 无（项目内）；引用 MC 的 `SoundEvent`/`Identifier` |
 | [logic/DoorArrivalSound.java](../src/main/java/org/DJB/easyelevator/logic/DoorArrivalSound.java) | record `(enabled, choice)`：单扇门的到站音设置，序号越界在构造器与 `readNbt` 里消毒 | DoorSounds；引用 MC 的 `NbtCompound` |
 | [logic/DoorSoundPersistence.java](../src/main/java/org/DJB/easyelevator/logic/DoorSoundPersistence.java) | 上传音频的权威副本存储：`store/read/fileName/listStems`，写入先落 `.tmp` 再原子替换 | 无（只依赖 Fabric 的 `FabricLoader`） |
@@ -316,15 +324,16 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [logic/RiderMotionHistory.java](../src/main/java/org/DJB/easyelevator/logic/RiderMotionHistory.java) | 服务端权威的轿厢绝对高度样本历史：`record/height/rebase`，为 `RiderMove` 提供换算基准 | 无 |
 | [logic/SlidingDoor.java](../src/main/java/org/DJB/easyelevator/logic/SlidingDoor.java) | 轿厢两扇对开滑门的纯算术布局：外缘固定、先导端随进度外移、门区 Z 与净开度 | 无 |
 | [entity/AbstractCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/AbstractCabinEntity.java) | 四型号共同父类：位移（按状态机给出的位移应用）、乘客、**厢内玩家计数与超载判定**、碰撞盒、障碍检测、存档、同步、门命令、两项纯渲染提示（`glassWalls`/`heavyDuty`） | Easyelevator, api.ElevatorEvents, block.LandingDoorBlock, logic.*, network |
-| [entity/CabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/CabinEntity.java) | 普通型号：巡航速度 = SPEED，限载 = PASSENGER_NUM_LIMIT（0 = 不限），回收 CABIN_ITEM | AbstractCabinEntity, ElevatorParameters |
-| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：巡航速度 = HIGH_SPEED（同样 1.6 秒过渡 ⇒ 加/减速段 8.0 格、比普通型更长），限载同普通型 | AbstractCabinEntity, ElevatorParameters |
+| [entity/CabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/CabinEntity.java) | 普通型号：巡航速度 = SPEED，限载 = PASSENGER_NUM_LIMIT（8 人；改成 0 = 不限），回收 CABIN_ITEM | AbstractCabinEntity, ElevatorParameters |
+| [entity/HighSpeedCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/HighSpeedCabinEntity.java) | 高速型号：巡航速度 = HIGH_SPEED（同样 1.5×T = 48 刻过渡 ⇒ 加/减速段 12.0 格、比普通型更长），限载同普通型 | AbstractCabinEntity, ElevatorParameters |
 | [entity/ObservationCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/ObservationCabinEntity.java) | 观光型号：巡航速度 = SPEED，限载同普通型，`glassWalls()=true` | AbstractCabinEntity, ElevatorParameters |
-| [entity/PowerfulCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/PowerfulCabinEntity.java) | 强力型号：巡航速度 = SPEED，限载 = HIGH_PASSENGER_NUM_LIMIT（20 人），`heavyDuty()=true`（渲染重载内饰） | AbstractCabinEntity, ElevatorParameters |
+| [entity/PowerfulCabinEntity.java](../src/main/java/org/DJB/easyelevator/entity/PowerfulCabinEntity.java) | 重载型号：巡航速度 = **LOW_SPEED**（2/3），`heavyDuty()=true`；持有 27 格货舱（`Cargo.Items`）与同步字段 `CARGO_ITEMS`，**覆写 `passengerNumLimit()` 按货量动态限载**、`collisionBoxesStatic()` 追加货箱、`supportsPassenger()` 支持站在箱顶、`doorCommand()` 在装卸期间拒绝关门、`interact()` 潜行开货舱、`remove()` 按原因掉货 | AbstractCabinEntity, ElevatorParameters, logic.CargoLoad, screen.CargoScreenHandler |
 | [block/LandingDoorBlock.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlock.java) | 3×3 门方块：放置、自检、联锁、厅外面板、基准层、拆门 | Easyelevator, entity, logic, network |
 | [block/LandingDoorBlockEntity.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorBlockEntity.java) | 根方块实体：门扇进度采样、基准层标记、门框显示缓存 | Easyelevator, entity, logic |
 | [block/LandingDoorGeometry.java](../src/main/java/org/DJB/easyelevator/block/LandingDoorGeometry.java) | 门框/门扇纯几何 + 体素形状缓存 | 无（纯算术） |
 | [block/ElevatorRailBlock.java](../src/main/java/org/DJB/easyelevator/block/ElevatorRailBlock.java) | 轨道方块：朝向继承、轮廓形状 | 无 |
-| [item/CabinItem.java](../src/main/java/org/DJB/easyelevator/item/CabinItem.java) | 轿厢生成物品：线路校验、生成、扣物品、提示 | Easyelevator, entity, logic |
+| [item/CabinItem.java](../src/main/java/org/DJB/easyelevator/item/CabinItem.java) | 轿厢生成物品：线路校验、生成、扣物品、提示；重载物品多一条货舱提示（`item.easyelevator.cargo_hint`） | Easyelevator, entity, logic |
+| [screen/CargoScreenHandler.java](../src/main/java/org/DJB/easyelevator/screen/CargoScreenHandler.java) | 货舱容器菜单（27 + 36 槽）：两个构造器分别服务服务端（绑定轿厢）与客户端（空壳，靠原版容器同步填内容），`canUse` 每次重新问乘客判定，槽位按 `cargoSlotLimit` **动态**限制单格上限，Shift 搬运在"背包 → 货舱"方向逐格刷新货量 | Easyelevator, entity(PowerfulCabinEntity), logic(CargoLoad) |
 | [network/ElevatorNetworking.java](../src/main/java/org/DJB/easyelevator/network/ElevatorNetworking.java) | 14 个 payload（7 S2C + 7 C2S）、编解码、收发、服务端处理器、右键打开面板；另有 `RiderMove` 的 1 个 C2S，全模组合计 15 个 payload | Easyelevator, block, entity, logic |
 | [network/RiderMove.java](../src/main/java/org/DJB/easyelevator/network/RiderMove.java) | C2S 乘客移动包（`easyelevator:rider_move`）：把原版移动包换成"携带轿厢 id + 样本编号"的包，服务端换算 Y 后还原成原版包投递；自带 `register()` | Easyelevator, entity, logic(RiderMotionHistory) |
 | [network/PlatformMovement.java](../src/main/java/org/DJB/easyelevator/network/PlatformMovement.java) | "随厢移动"适配接口：把原版移动基准（`lastTickY`/`updatedY`）平移而不是发传送包 | 无（实现方是 `mixin/ServerPlayNetworkHandlerMixin`） |
@@ -336,8 +345,9 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 
 | 文件 | 职责 | 直接依赖（项目内） |
 | --- | --- | --- |
-| [client/EasyelevatorClient.java](../src/client/java/org/DJB/easyelevator/client/EasyelevatorClient.java) | 客户端入口：注册渲染器、S2C 处理器、刻回调、断线清理 | Easyelevator, entity, logic, network |
-| [client/CabinRenderer.java](../src/client/java/org/DJB/easyelevator/client/CabinRenderer.java) | 轿厢外壳 + 三张内饰数据表（普通 / 强力 / 观光）+ 观光分格玻璃 + 材质图集分格、轿内面板文字与强力舱载重铭牌红字 | Easyelevator, entity, logic, CabinMotion, BoxMesh, CabinLighting, GlassLayers, StatusArrow |
+| [client/EasyelevatorClient.java](../src/client/java/org/DJB/easyelevator/client/EasyelevatorClient.java) | 客户端入口：注册渲染器、**货舱界面**（`HandledScreens.register`）、S2C 处理器、刻回调、断线清理 | Easyelevator, entity, logic, network, screen |
+| [client/CabinRenderer.java](../src/client/java/org/DJB/easyelevator/client/CabinRenderer.java) | 轿厢外壳 + 三张内饰数据表（普通 / 重载 / 观光）+ 观光分格玻璃 + 材质图集分格、轿内面板文字、重载舱载重铭牌红字与**货箱**（`drawCargo`，按 `CargoLoad.box` 画木箱/钢带/标牌，与碰撞同源） | Easyelevator, entity, logic, CabinMotion, BoxMesh, CabinLighting, GlassLayers, StatusArrow, logic(CargoLoad) |
+| [client/CargoScreen.java](../src/client/java/org/DJB/easyelevator/client/CargoScreen.java) | 货舱界面：深色面板 + 槽位凹槽 + 表头三行（标题/件数/当前限载）+ 载重进度条 + 悬停规则提示；**覆写 `renderBackground` 以去掉原版模糊**（必须顺手调 `drawBackground`） | screen(CargoScreenHandler), logic(CargoLoad) |
 | [client/LandingDoorRenderer.java](../src/client/java/org/DJB/easyelevator/client/LandingDoorRenderer.java) | 楼层门门扇 + 门框顶部层号/箭头 | Easyelevator, block, logic, BoxMesh, StatusArrow |
 | [client/ElevatorScreen.java](../src/client/java/org/DJB/easyelevator/client/ElevatorScreen.java) | 轿厢内选站面板（网格/翻页/开关门） | entity, logic, network |
 | [client/LandingDoorScreen.java](../src/client/java/org/DJB/easyelevator/client/LandingDoorScreen.java) | 厅外呼叫面板（▲/▼/×） | network |
@@ -363,15 +373,21 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | 文件 | 内容 |
 | --- | --- |
 | `java/org/DJB/easyelevator/RiderMovementTests.java` | **12 个** `@GameTest`：乘客移动与历史补偿（延时/速度组合、过期样本）这类可自动化的回归 |
-| `java/org/DJB/easyelevator/RiderClientSmoke.java` | 客户端冒烟测试（`loom.runs.riderClient`：vmArg `-Deasyelevator.riderSmoke=true`、`--quickPlaySingleplayer RiderSmoke`） |
-| `resources/fabric.mod.json` | 测试模组声明：`id = easyelevator-test`（`fabric-gametest` + `client` 入口点）；**永不进发行包** |
+| `java/org/DJB/easyelevator/HallCallTests.java` | **15 个** `@GameTest`：同层双向呼叫的用户场景矩阵（8 组参数 × 36 种时序/门阶段/保存时机组合）、反向接客顺路扫描、车内选站优先级，以及真实实体 + NBT 往返的整线路回归 |
+| `java/org/DJB/easyelevator/HallCallRegression.java` | 上面那些用例的纯 Java 断言体（不依赖 MC，可 `java HallCallRegression` 直接跑，末尾打印覆盖组合数） |
+| `java/org/DJB/easyelevator/CargoTests.java` | **10 个** `@GameTest`：货量档位边界、单格上限、拖放/双人取放、Shift 搬运不丢货、货箱碰撞几何（四种朝向）、装卸保持开门、超载随卸货恢复、满载双向运行 |
+| `java/org/DJB/easyelevator/RiderClientSmoke.java` | 乘客客户端冒烟测试（`loom.runs.riderClient`：vmArg `-Deasyelevator.riderSmoke=true`、`--quickPlaySingleplayer RiderSmoke`） |
+| `java/org/DJB/easyelevator/CargoClientSmoke.java` | 货舱客户端冒烟测试（`loom.runs.cargoClient`：vmArg `-Deasyelevator.cargoSmoke=true`、`--quickPlaySingleplayer CargoSmoke`）：真实开容器、点击同步、网络搬运、卸空恢复与四张模型截图 |
+| `resources/fabric.mod.json` | 测试模组声明：`id = easyelevator-test`（`fabric-gametest` + `client` 入口点，入口点列出上面两个冒烟测试类）；**永不进发行包** |
 
-`build.gradle` 侧：`fabricApi { if (project.hasProperty('riderTests')) { configureTests { createSourceSet = true; modId = 'easyelevator-test'; enableGameTests = true; eula = true } } }`，另有 `loom.runs.riderClient`。
+`build.gradle` 侧：`fabricApi { if (project.hasProperty('riderTests')) { configureTests { createSourceSet = true; modId = 'easyelevator-test'; enableGameTests = true; eula = true } } }`，另有 `loom.runs.riderClient` 与 `loom.runs.cargoClient`。
 
 运行方式：
 
-- `.\tools\build.ps1 -Jdk <JDK21> -Task runGameTest`（或 `-Task runRiderClient`）——脚本会自动补上 `-PriderTests`；
-- 或直接 `.\gradlew.bat -PriderTests runGameTest`（同族任务：`runGameTest`、`runClientGameTest`、`runRiderClient`）。
+- `.\tools\build.ps1 -Jdk <JDK21> -Task runGameTest`（或 `-Task runRiderClient` / `-Task runCargoClient`）——脚本会自动补上 `-PriderTests`；
+- 或直接 `.\gradlew.bat -PriderTests runGameTest`（同族任务：`runGameTest`、`runClientGameTest`、`runRiderClient`、`runCargoClient`）。
+
+当前 `runGameTest` 是 **37 项**（12 乘客 + 15 厅呼 + 10 货舱），全部通过时日志里会出现 `All 37 required tests passed :)`。
 
 日常验收仍以 [TESTING.md](TESTING.md) 的人工清单为准；GameTest 覆盖乘客移动、历史补偿和厅呼调度等可自动化的回归。
 
@@ -383,9 +399,10 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 
 其中 **`DoorSoundPersistence` 只依赖 Fabric（`FabricLoader` 取游戏目录）而不依赖 Minecraft**，因此服务端与客户端都能安全使用（详见 5.10）。
 
-反过来，`logic/` 里引用 Minecraft 的只有三个：`DoorSounds`（`SoundEvent`/`Identifier`）、`DoorArrivalSound`（`NbtCompound`）、`ElevatorLine`（`World`/`BlockPos`/`Box`/`Direction`）。
+反过来，`logic/` 里引用 Minecraft 的只有**四个**：`DoorSounds`（`SoundEvent`/`Identifier`）、`DoorArrivalSound`（`NbtCompound`）、`ElevatorLine`（`World`/`BlockPos`/`Box`/`Direction`）、`CargoLoad`（只用 `Box` 表达货箱几何）。
 `ElevatorLine` 虽是 record，但 `scan/matches/cabins` 需要 `World`、`BlockPos`，因此**不属于**叶子类。
-`LandingDoorGeometry` 只用 `Box`/`VoxelShape`/`Direction`，属于「需要 MC 类路径但不需要世界」的中间类。
+`LandingDoorGeometry` 只用 `Box`/`VoxelShape`/`Direction`，属于「需要 MC 类路径但不需要世界」的中间类；`CargoLoad` 同理
+（`passengers`/`crates` 两个换算是纯算术，只有 `box(i)` 需要 `Box`）。
 
 ### 3.4 资源文件引用关系
 
@@ -399,11 +416,11 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [assets/easyelevator/models/block/landing_door_frame_*.json](../src/main/resources/assets/easyelevator/models/block/) | 9 个门框模型：底行立柱底座+门槛、中行立柱/门洞、顶行立柱+门楣（门楣中间是凹进去的显示屏 `blank_screen`） | 方块模型系统 |
 | [assets/easyelevator/models/block/elevator_rail.json](../src/main/resources/assets/easyelevator/models/block/elevator_rail.json) | 轨道模型：底座法兰 + 四颗螺栓 + 双导轨 + 中间齿条 + 抱箍（X/Z 限制在 3..13，与 `ElevatorRailBlock.getOutlineShape` 一致） | 方块模型系统 |
 | [assets/easyelevator/models/item/*.json](../src/main/resources/assets/easyelevator/models/item/) | 6 个物品图标：轨道/门复用方块模型，四个轿厢共用 `cabin_body.json`（1/3 比例迷你轿厢） | 物品模型系统 |
-| [assets/easyelevator/textures/block/blank*.png](../src/main/resources/assets/easyelevator/textures/block/) | 方块贴图：`blank`（门框/轨道亮钢）、`blank_door`（门扇深色阳极氧化）、`blank_plate`（机加工深色板）、`blank_screen`（门楣显示屏）、`blank_speed`（高速图标金板）、`blank_powerful`（强力图标红色负载板，带三个人形）、`blank_glass`（观光图标玻璃板） | 模型与渲染器 |
+| [assets/easyelevator/textures/block/blank*.png](../src/main/resources/assets/easyelevator/textures/block/) | 方块贴图：`blank`（门框/轨道亮钢）、`blank_door`（门扇深色阳极氧化）、`blank_plate`（机加工深色板）、`blank_screen`（门楣显示屏）、`blank_speed`（高速图标金板）、`blank_powerful`（重载图标红色负载板，带三个人形）、`blank_glass`（观光图标玻璃板） | 模型与渲染器 |
 | [assets/easyelevator/textures/entity/cabin.png](../src/main/resources/assets/easyelevator/textures/entity/cabin.png) | 轿厢 4×4 材质图集（格号 = `CabinRenderer.Mat` 的枚举顺序；玻璃已独立使用原版贴图，旧玻璃格保留） | `CabinRenderer.TEXTURE`、`MATERIAL_UV` |
 | [assets/easyelevator/sounds.json](../src/main/resources/assets/easyelevator/sounds.json) | **3 个**音效 ID：`elevator_running`（`sounds: []`，静音占位）、`elevator_arrival`（`sounds: ["easyelevator:man"]`，**有音频**，是每扇门"默认音效"的来源）、`elevator_arrival_custom`（`sounds: []`，供上传音频复用的字幕占位） | `Easyelevator.sound()` |
 | [assets/easyelevator/lang/*.json](../src/main/resources/assets/easyelevator/lang/) | 翻译键（en_us / zh_cn） | 所有界面与消息 |
-| [data/easyelevator/recipe/*.json](../src/main/resources/data/easyelevator/recipe/) | 6 个配方：轨道、楼层门、普通轿厢、高速轿厢（8 个红石块围着 1 个普通轿厢现场升级）、观光轿厢、强力轿厢（5 铁锭 + 2 铁块 + 1 红石块 + 1 活塞） | 原版合成 |
+| [data/easyelevator/recipe/*.json](../src/main/resources/data/easyelevator/recipe/) | 6 个配方：轨道、楼层门、普通轿厢、高速轿厢（8 个红石块围着 1 个普通轿厢现场升级）、观光轿厢、重载轿厢（5 铁锭 + 2 铁块 + 1 红石块 + 1 活塞） | 原版合成 |
 | [data/easyelevator/loot_table/blocks/*.json](../src/main/resources/data/easyelevator/loot_table/blocks/) | 轨道与门掉落 | 原版掉落 |
 | [data/minecraft/tags/block/mineable/pickaxe.json](../src/main/resources/data/minecraft/tags/block/mineable/pickaxe.json) | 镐可挖 | 原版工具标签 |
 
@@ -477,7 +494,7 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 顺序**不可调换**，每一步都依赖前一步的结果：
 
 ```
-tick()
+tick()                                     ← 重载子类会先在 super.tick() 之前插一步（见下）
  ├─1  previousDoor = dataTracker.get(DOOR)          渲染插值起点
  ├─2  super.tick()
  ├─3  if isClient → return                          客户端到此为止
@@ -500,6 +517,12 @@ tick()
  ├─18 dy!=0 || settle>0 → ElevatorNetworking.syncMotion；静止样本递减
  └─19 phase 变化 → ElevatorEvents.PHASE_CHANGED（开关门不再发声；到站音效在 arrived 回调里，见 4.7）
 ```
+
+**重载子类在 `super.tick()` 之前多一步**（`PowerfulCabinEntity.tick`）：若有人正开着本厢货舱
+（`cargoInUse()`：某玩家的当前菜单是本厢的 `CargoScreenHandler` 且他仍可操作），先调一次
+`super.doorCommand(true)` 续满开门停留——等价于"装卸期间一直按住开门键"，因此门不会自己关上；
+同一刻的 `doorCommand(false)` 也被拒绝（见 2.5 第 10 条）。顺序（先顶门、再 tick）是刻意的：
+本刻先续满停留，父类随后推进门动画与相位，同一刻内不会出现"倒计时先归零、门开始关"的窗口。
 
 ### 4.3 `ElevatorController.tick(y, env)` 内部分支与调用
 
@@ -681,16 +704,16 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
     │     （`MOTION_STALE_TICKS` 已不参与渲染：它现在在 `beginPlayerTick` 里判定样本是否够新，不够新就不再托举乘客）
     ├─ multiply(绕 Y 旋转到 FACING)
     ├─ 不透明层：drawStandardShell 或 drawObservationShell
-    │     + drawParts（内饰表按型号选：普通/高速 STANDARD_PARTS、强力 POWERFUL_PARTS、观光 OBSERVATION_PARTS；
-    │                 三张表末尾 6 行是同一个面板，强力的前 12 行与普通逐字相同）
-    │     + drawDoorway（门槛与门楣）+ drawLeaves（两扇滑门，仅普通/高速/强力）
+    │     + drawParts（内饰表按型号选：普通/高速 STANDARD_PARTS、重载 POWERFUL_PARTS、观光 OBSERVATION_PARTS；
+    │                 三张表末尾 6 行是同一个面板，重载的前 12 行与普通逐字相同）
+    │     + drawDoorway（门槛与门楣）+ drawLeaves（两扇滑门，仅普通/高速/重载）
     ├─ 文字层：drawFloorDisplay（StatusArrow.glyph + FloorIndicator.format，超载时第二行换"超载"）
     │     两行按"行心"定位：yOffset = -(行心 + fontHeight*scale/2)/scale
-    │     + 强力舱：drawCapacityPlate（后壁铭牌上的限载人数，同一文字层，不切缓冲）
+    │     + 重载舱：drawCapacityPlate（后壁铭牌上的限载人数，同一文字层，不切缓冲）
     └─ 玻璃 cutout 层（仅观光）：drawObservationGlass（压条/中梃由 OBSERVATION_PARTS 提供）
 
   光照：CabinLighting 按面中心与法线区分内外；外表面保留环境光，朝灯的舱内面衰减补光（上限 13）；
-        灯位/采样器按型号选：普通·高速·观光用 surface（舱顶后侧一盏灯），强力舱用 surfaceTwoLamps
+        灯位/采样器按型号选：普通·高速·观光用 surface（舱顶后侧一盏灯），重载舱用 surfaceTwoLamps
         （再加上门口那盏，取较亮者）——外壳内面与内饰必须传同一个采样器；
         顶灯灯罩（内饰表自发光标志 = 1）仅向下使用 15 级方块光，背面与侧边保持环境光
 
@@ -770,19 +793,19 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 方法 | 参数 | 返回 | 副作用 / 说明 |
 | --- | --- | --- | --- |
-| `ElevatorController()` | — | 实例 | 用 `SPEED` 构造（普通/观光/强力） |
-| `ElevatorController(double speed)` | 巡航速度 | 实例 | 高速用 `HIGH_SPEED`；加速度与 jerk 上限由 `MotionProfile.forCruiseSpeed` 按巡航速度与 `CRUISE_RAMP_TICKS` 解出 |
+| `ElevatorController()` | — | 实例 | 用 `SPEED` 构造（普通 / 观光） |
+| `ElevatorController(double speed)` | 巡航速度 | 实例 | 重载用 `LOW_SPEED`、高速用 `HIGH_SPEED`；加速度与 jerk 上限由 `MotionProfile.forCruiseSpeed` 按巡航速度与 `CRUISE_RAMP_TICKS` 解出 |
 | `ElevatorController(double speed, double rampTicks)` | 巡航速度、加/减速过渡刻数 | 实例 | 显式指定加/减速段长度（调参用）；非法时退化为 `CRUISE_RAMP_TICKS` |
 | `speed()` / `phase()` / `door()` / `target()` | — | 对应值 | 只读快照；`phase/door` 会被写入 DataTracker |
 | `currentSpeed()` / `profileTime()` / `profileTick()` | — | 格/刻、刻、刻 | 曲线诊断读数，不参与调度 |
 | `pending()` / `hallCalls()` | — | 不可变 List | 供同步与存档 |
-| `travel()` / `hasRequests()` | — | `Travel` / `boolean` | 只读 |
+| `travel()` / `targetHallDirection()` / `stopService()` / `hasRequests()` | — | `Travel` / `StopService` / `boolean` | 只读；后两个（`targetHallDirection`、`stopService`）随存档保存，见 8.1 |
 | `request(Stop, double y)` | 站点、当前 Y | boolean | 已在 target/queue → true；本层且 OPEN/OPENING → 续满 dwell；满 → false；否则 `insertOrdered` |
 | `callHall(HallCall, double y)` | 呼叫、当前 Y | boolean | 重复 → true；本层且门开/正开 → 续满 dwell（不入表）；满 → false |
 | `forceOpen()` | — | boolean | OPEN→续 dwell；OPENING→true；**OVERLOAD→续 dwell**（门本来就全开）；CLOSING→改 OPENING；door≤0→OPENING；**不动 queue/target** |
 | `forceClose()` | — | boolean | OPEN→dwell=0,CLOSING；OPENING→CLOSING；其余 false。只是提前触发自动关门，落点相同 |
 | `tick(double y, Environment env)` | 当前 Y、世界回调 | 本刻结束 Y | **主入口**；见 4.3 分支图 |
-| `restore(...)` ×2 | phase/door/target/pending[/calls/travel] | — | 覆盖状态；去重截断；**MOVING 降级 BLOCKED 且 door=0** |
+| `restore(...)` ×3 | phase/door/target/pending[/calls/travel[/service[/targetHallDirection]]] | — | 覆盖状态；去重截断；**MOVING 降级 BLOCKED 且 door=0**；`service == null`（旧存档）时置 `recoverStopService`，第一次 tick 按真实位置保守重建停靠会话；`targetHallDirection` 只在目标仍存在且该方向仍有呼叫时才采用 |
 | `faulted()` | — | boolean | 是否处于"现在走不了"的故障/受阻期（由 `canResume` 的失败/恢复驱动，不看相位） |
 | `canOpenDoor(Phase, int targetY, boolean atStation, boolean hasStations)` | 相位、目标 Y、是否停在完整站点、线路是否至少有一扇完整的门 | boolean | **static 纯函数**：`!hasStations`（无站线路，车永远不会动）→ 可用；处于故障 → 可用；`MOVING` 且有目标 → 不可用；否则 `atStation`。**绝不查世界**：四个入参全部来自同步数据与调用方算好的事实，客户端面板直接复用 |
 | `canOpenDoor(boolean atStation, boolean hasStations)` | 同上两个事实 | boolean | 服务端权威版：先用 `faulted` 这个准确记忆（乘客开门脱困后相位已变，它仍为真），其余转发给上面的纯函数。**只允许服务端调用**（客户端的 `railX/railZ` 恒 0，算不出这两个事实） |
@@ -796,7 +819,9 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `insertOrdered(Stop)` | 方向 NONE → 追加（保留先来先服务）；否则按服务方向位置重排 |
 | `select(double y)` | 四步派车：本层就地 → 顺路最近 → 前方反向呼叫最远端 → 掉头后同规则派车 |
 | `retarget(double y)` | 运行中插停更近的顺路请求；纯反向接客可延长到最远端；仅车内目的层放回选站队列 |
-| `arriveAtStation(Stop station)` | 记录停靠服务状态，只清已认领方向的厅呼及同层选站 |
+| `arriveAtStation(Stop station)` | 登记停靠会话 `StopService(站点, served)`：单向 → 当场认领并熄灯；双向 → `served=NONE` 留着两盏灯，等 `prepareDeparture` 在出发方向明确时认领 |
+| `prepareDeparture(double y)` | 关门前的结算：目标就在本层 → 到站开门；本层会话还没认领方向 → 按实际行驶方向认领一条并清灯；没有任何外层任务且本层有呼叫 → 就地服务一条并重置完整停留 |
+| `furthestReverseHallCall(y, direction, includeHere)` | 当前方向上只剩反向厅呼时选**最远端**作为回程起点（不是按登记先后），因此"2 层与 1 层都按上行"永远先下到 1 层再接 2 层 |
 | `nearest(y, direction, aheadOnly, sameFloorOnly)` | 先选站（FIFO）后厅外（登记序），严格更近才替换 → 结果确定 |
 | `furthestReverseHallCall(y, direction, includeHere)` | 前方最远的反向呼叫，确保回程按楼层顺路接客 |
 | `directionTowards(y, stationY)` | 实际行驶方向；同层沿用当前 travel |
@@ -820,7 +845,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | 字段 | 作用 |
 | --- | --- |
 | `controller` / `speed` | 状态机实例与只读巡航速度上限（S 形曲线的形状由状态机内按 `CRUISE_RAMP_TICKS` 解出的加速度/jerk 上限决定） |
-| `passengerNumLimit` | 本型轿厢的限载人数（构造注入、final）：**0 或负数 = 不限载**；只被 `overloaded()` 与渲染铭牌读取 |
+| `passengerNumLimit` | 本型轿厢的**默认**限载人数（构造注入、final）：**0 或负数 = 不限载**；被 `overloaded()` 与渲染铭牌读取，但**通过可覆写的 `passengerNumLimit()` 读**，因此重载子类能按货量动态下调（构造值对它只是空舱基准） |
 | `passengerNum` | 厢内玩家数，服务端每刻重数一次（不写存档、不同步），只服务超载判定 |
 | `railX / railZ` | 线路水平坐标（**不进 DataTracker**，客户端恒 0，必须按世界坐标匹配）。**推论：客户端绝不能调用 `line()`**——它会去扫 (0, y, 0) 并（正常情况下）返回 null；开门键可用性这类客户端判据一律用同步相位 + 面板站点列表（见 `canOpenDoor` 的纯函数版） |
 | `previousDoor` | 上一刻门进度，供渲染插值 |
@@ -833,12 +858,12 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 方法 | 参数 | 返回 | 说明 / 副作用 |
 | --- | --- | --- | --- |
-| `AbstractCabinEntity(type, world, speed, passengerNumLimit)` | 类型/世界/巡航速度/限载人数 | — | `setNoGravity(true)`；注入速度构造 controller（加速度/jerk 上限由 `MotionProfile.forCruiseSpeed` 解出）；限载人数 final，**0/负数 = 不限载** |
-| `speed()` / `passengerNumLimit()` | — | double / int | final，供渲染/面板/状态机读取 |
+| `AbstractCabinEntity(type, world, speed, passengerNumLimit)` | 类型/世界/巡航速度/限载人数 | — | `setNoGravity(true)`；注入速度构造 controller（加速度/jerk 上限由 `MotionProfile.forCruiseSpeed` 解出）；限载人数 final，**0/负数 = 不限载**；子类可覆写 `passengerNumLimit()` 覆盖它（重载按货量） |
+| `speed()` / `passengerNumLimit()` | — | double / int | `speed()` 是 final；`passengerNumLimit()` **可覆写**（重载型号返回 `CargoLoad.passengers(cargoItems())`），供渲染/面板/状态机读取 |
 | `overloaded()` | — | boolean | **超载的唯一定义**：`passengerNumLimit > 0 && passengerNum > passengerNumLimit`；只数玩家 |
 | `cabinItem()` | — | Item | **abstract**，子类给回收物品 |
 | `glassWalls()` | — | boolean | 默认 false；观光覆写 true（纯客户端提示） |
-| `heavyDuty()` | — | boolean | 默认 false；强力覆写 true（纯客户端提示：内饰换成重载件 + 画载重铭牌红字） |
+| `heavyDuty()` | — | boolean | 默认 false；重载覆写 true（纯客户端提示：内饰换成重载件 + 画载重铭牌红字） |
 | `initDataTracker(b)` | builder | — | 写入 5 个字段默认值 |
 | `initialize(rail, facing)` | 轨道、朝向 | — | 设 railX/Z、FACING、`setPosition(中心)`；清名册 |
 | `railX() / railZ() / facing() / phase() / doorProgress(t) / targetY() / hasTarget() / floorNumber() / status()` | — | 对应值 | 只读访问器；`doorProgress` 在两刻之间插值 |
@@ -969,7 +994,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `FramedLeaf` | 铁框玻璃门扇的纯几何：`FRAME = 2/16`、`FRAME_MAX_RATIO = .34`、`RAIL_MAX_RATIO = .2`；`frameWidth(width)` 让边框随门扇变窄按比例缩（玻璃宽度不会变成负数）；`layout(w0,w1,y0,y1)` → 四条边框 + 中间玻璃矩形；`glassVisible(layout)`；`centredSlice / stileUv / railUv / paneUv` 为 UV 助手 |
 | `LeafUv` | 滑门"随门滑动"的 UV（纯算术），**两套区间函数不能混用**：`leafRange(progress, right)` 给**楼层门叶**（左扇 `{1, p}`、右扇 `{1-p, 0}`；依赖 `LandingDoorGeometry.doorBox` 的朝向镜像）；`cabinPanelRange(progress, right)` 给**轿厢门扇**（`+X` 扇 `{p, 1}`、`-X` 扇 `{1, p}`；轿厢门扇无朝向镜像，两扇 maxX 一头一尾）。另有 `EDGE_WIDTH = .06f`、`sanitize`、`edgeRange(right, width)`、`centredThinSlice`、`toUv(range, cell)` 映射进整张图或图集一格、`slabUv(panelUv, edgeUv, normalAlongZ)` 供长方体分面使用（大面随门滑动、断面固定一小段）。两者都让中缝端落在纹理 `t=1`、门框端落在 `t=进度`（见 2.2.0 修的那条"厢内往外看左侧反了"） |
 | `SlidingDoor` | 轿厢两扇对开滑门的纯算术布局：`DOORWAY_HALF = 1.3`、`OUTER_INSET = .001`、`OUTER_EDGE`、`SEAM = .005`、`DOOR_Z_BACK = 1.1`、`DOOR_Z_FRONT = 1.3`（与楼层门后缘 1.3125 留 0.0125 格）；`panelX(right, progress)` 外缘固定、内缘（先导端）随进度外移、全开时宽度归零；`doorZ()`、`clearHalfWidth(progress)`、`visible(progress)`、`sanitize` |
-| `CabinLighting` | 舱内补光的纯函数：`LAMP_LEVEL = 15`；`surface(worldLight, x,y,z, nx,ny,nz)` 按面中心到灯位（本地 `0, 2.78, -.25`）的距离衰减抬高方块光分量，只抬不降、超出舱内范围原样返回世界光照；`surfaceTwoLamps(...)` 是强力舱的双灯版本——灯位再加门口那盏（本地 `0, 2.78, .77`），取两盏里**更亮的一盏**（不相加，上限仍 13 级），单灯路径与 2.2.0 逐位相同；`lamp(...)` 供顶灯灯罩朝下面使用 15 级。入参是**轿厢本地坐标**（施加旋转之前采样），无状态、可并发调用 |
+| `CabinLighting` | 舱内补光的纯函数：`LAMP_LEVEL = 15`；`surface(worldLight, x,y,z, nx,ny,nz)` 按面中心到灯位（本地 `0, 2.78, -.25`）的距离衰减抬高方块光分量，只抬不降、超出舱内范围原样返回世界光照；`surfaceTwoLamps(...)` 是重载舱的双灯版本——灯位再加门口那盏（本地 `0, 2.78, .77`），取两盏里**更亮的一盏**（不相加，上限仍 13 级），单灯路径与 2.2.0 逐位相同；`lamp(...)` 供顶灯灯罩朝下面使用 15 级。入参是**轿厢本地坐标**（施加旋转之前采样），无状态、可并发调用 |
 | `RiderMotionHistory` | 服务端权威的"轿厢绝对高度样本历史"（纯 Java）：`MAX_AGE = 60` 刻；`record(tick, y)` 只接受**严格递增**且有限的世界时间，超龄样本从队首淘汰；`height(tick, now)` 按客户端移动包携带的样本编号取回当时高度（过期 / 未知返回 `NaN`，调用方必须据此退回原版行为）；`rebase(playerY, seenCabinY, currentCabinY)` 把玩家 Y 从"客户端所见帧"换算到"服务端当前帧"（纯函数，跳跃高度原样保留） |
 | `DoorSounds` | 每扇门"到站提示音"的选项目录与换算：`DEFAULT = 0`、`CUSTOM = 1`、`PRESET_BASE = 2`、`CHOICE_COUNT`、`MAX_SLOTS = 64`；`slotFor(x, y, z)` 由门坐标混合推导门槽（纯函数，拆了再放回仍是同一槽）；`soundId / slotEvent / fileStem / isStem / slotOfStem` 打通"槽位 ↔ 音频文件名 ↔ 音效事件 ID"；`arrivalEvent(choice, slot)` 把序号翻成 `SoundEvent`（越界退回默认）；`clamp / isDefault / isCustom / isPreset / presetId`。**序号本身就是协议**，服务端与客户端不必交换音效 ID |
 | `DoorArrivalSound` | record `(enabled, choice)`：单扇门的到站音设置（不可变值对象，随方块实体 NBT 存）。`DEFAULT = (true, DoorSounds.DEFAULT)`（默认开 + 默认音效 = 模组原有行为）；紧凑构造器与 `readNbt` 都用 `DoorSounds.clamp` 消毒；`withEnabled / withChoice` 返回新值；`writeNbt / readNbt`（键 `ArrivalSound` / `ArrivalSoundChoice`，读不到即默认） |
@@ -1008,8 +1033,8 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 
 | 类 | 关键成员 | 要点 |
 | --- | --- | --- |
-| `EasyelevatorClient` | `sounds: Map<int, CabinRunningSound>` | 注册 4 个轿厢渲染器（同一 `CabinRenderer::new`）与 1 个方块实体渲染器；7 个 S2C 处理器都走 `context.client().execute`；END_CLIENT_TICK 清理+补充运行声；DISCONNECT 停止音效并 `CabinMotion.clear()` |
-| `CabinRenderer<T>` | `TEXTURE`、`GlassLayers`、`CabinLighting`、`Mat/MATERIAL_UV`、`STANDARD_PARTS/POWERFUL_PARTS/OBSERVATION_PARTS`、`CAPACITY_SCALE/CAPACITY_PLATE_CENTRE_Y/CAPACITY_PLATE_FRONT_Z`、门底偏移与文字排版 | 普通、高速与强力共用同一套外壳，内饰表按 `heavyDuty()` 选（强力的前 12 行与普通逐字相同）；按“不透明件 → 文字 → 玻璃”分组；外壳保留环境光，舱内面补光，灯罩仅向下发亮；玻璃为原版无色 cutout；强力舱后壁铭牌的红字用 `drawCabinLine` 在同一文字层里画（不切缓冲，见类注释的层约束） |
+| `EasyelevatorClient` | `sounds: Map<int, CabinRunningSound>` | `onInitializeClient` 第一件事是 `HandledScreens.register(Easyelevator.CARGO_SCREEN, CargoScreen::new)`（"菜单类型 ↔ 界面"只能在客户端注册，专用服务器不加载任何 `Screen` 类）；再注册 4 个轿厢渲染器（同一 `CabinRenderer::new`）与 1 个方块实体渲染器；7 个 S2C 处理器都走 `context.client().execute`；END_CLIENT_TICK 清理+补充运行声；DISCONNECT 停止音效并 `CabinMotion.clear()` |
+| `CabinRenderer<T>` | `TEXTURE`、`GlassLayers`、`CabinLighting`、`Mat/MATERIAL_UV`、`STANDARD_PARTS/POWERFUL_PARTS/OBSERVATION_PARTS`、`CAPACITY_SCALE/CAPACITY_PLATE_CENTRE_Y/CAPACITY_PLATE_FRONT_Z`、门底偏移与文字排版 | 普通、高速与重载共用同一套外壳，内饰表按 `heavyDuty()` 选（重载的前 12 行与普通逐字相同）；按“不透明件 → 文字 → 玻璃”分组；外壳保留环境光，舱内面补光，灯罩仅向下发亮；玻璃为原版无色 cutout；重载舱后壁铭牌的红字用 `drawCabinLine` 在同一文字层里画（不切缓冲，见类注释的层约束） |
 | `BoxMesh` | `FULL_UV = {0,0,1,1}`、`float[] uv`（六面同一分格）与 `float[][] faceUv`（**逐面**分格，顺序 -Z,+Z,-X,+X,+Y,-Y） | `cuboid`×**9**（裸坐标 / `Box` × 有无 UV 矩形 × 有无 `FaceLighting`）、`planeX/Y/Z` 各两个重载、私有 `quad`；长方体网格 / 零厚度单面；UV 矩形默认铺满整张图，传分格即取图集一格，按"第 0 顶点 (u0,v1)、第 2 顶点 (u1,v0)"落到四个角，因此默认值时就是原版 (0,1)(1,1)(1,0)(0,0)；**逐面分格用于滑门与呼梯按钮**（滑门：大面随门滑动、断面固定一小段；按钮：圆点只贴朝乘客那一面，其余五面取无图案窄条，见 `CabinRenderer.buttonFaceUv`）；平面单面的 UV 方向与顶点顺序绑定（`planeZ` 从 +X 侧起步，u 才沿 X 增长） |
 | `LandingDoorRenderer` | `TEXTURE=blank_door`、`FLOOR_SCALE=.016f`、`SCREEN_CENTRE_Y=2.90625`、`SCREEN_INSET=.75/16`、`TEXT_STANDOFF=.008`、`STATUS_GAP=6f` | 先画层号再画门扇（全开无门扇直接返回）；文字按行心定位（`draw` 的 y 是顶边）；门扇 UV 只取"还露在外面"的一段（贴图随门板滑而不是被压扁）；`rendersOutsideBoundingBox=true`（门扇会滑出根方块那格，默认剔除会让它提前消失） |
 | `ElevatorScreen` | `BUTTON=20,GAP=4`、`MAX_COLUMNS/ROWS=8`、`PADDING=16,HEADER=64,FOOTER=40`、配色常量 | 站点自行按 Y→X→Z 排序；`init()` 算网格与面板矩形并铺控件；`tick()` 用宽松 `staysInside` 自动关闭；`render` 每帧刷新区按钮可用性；`renderBackground` 只做淡黑叠加（不用模糊） |
@@ -1021,7 +1046,17 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `DoorSoundPack` | `PACK_DIR_NAME="easyelevator_custom"`、`FINGERPRINT_FILE="sound_pack.sha1"`、`SLOT_DIR="arrival"`、`PACK_FORMAT=34` | 把权威副本投影成运行时资源包 `resourcepacks/easyelevator_custom/`（`pack.mcmeta` + `assets/easyelevator/sounds.json` + `assets/easyelevator/sounds/arrival/*.ogg`）。**先构建到临时目录再算内容指纹**，与上次一致就什么都不做（根治"每次进存档闪红屏"）；`enable` 负责写进已启用包列表 |
 | `GlassLayers` | `CABIN_TEXTURE = Identifier.ofVanilla("textures/block/glass.png")`、`CABIN = getEntityCutout(...)`、`DOOR = CABIN` | 轿厢与楼层门共用**原版无色玻璃**贴图（资源包可直接替换）。透明像素丢弃、其余正常写深度并用环境光；正反两面法线相反、按朝向剔除，因此不会重复混合也不会挡住后绘制的楼层门；顶点色恒为白色 |
 | `FramedGlassDoor` | `frame(...)` 两个重载（含 `FaceLighting`）、`glass(...)` | 画"周围铁框 + 中间玻璃"的门扇：铁框在不透明层、玻璃在 `GlassLayers.DOOR` 层；布局与各构件 UV 取自纯算术类 `logic/FramedLeaf`（`stileUv/railUv/paneUv`），避免整张贴图铺到 2/16 格竖框上被压成"条形码" |
+| `CargoScreen` | `backgroundWidth=176, backgroundHeight=210, playerInventoryTitleY=116`、六个配色常量 | 只画不算：件数与限载都问 `CargoScreenHandler`；`drawBackground` 画面板底/表头条/每个槽位的凹槽/载重进度条，`drawForeground` 画表头三行与背包标题；`render` 末段在鼠标悬停表头文字时弹规则提示（按 220 像素自动折行）。**`renderBackground` 覆写里必须自己调 `drawBackground`**（原版链路 `Screen.render → renderBackground → drawBackground`），否则面板底不会出现 |
 | `EasyelevatorDataGenerator` | 实现 `DataGeneratorEntrypoint` | 数据生成入口（`fabric-datagen`）。`onInitializeDataGenerator` 只 `createPack()`，**当前不注册任何 provider，因此跑数据生成不产出任何文件**；入口保留以便后续新增 provider。不参与游戏运行时，打包后的模组也不会执行它 |
+
+### 5.15 货舱（重载轿厢的容器）
+
+| 类 | 关键成员 | 要点 |
+| --- | --- | --- |
+| `logic/CargoLoad` | `SLOTS=27`、`MAX_ITEMS=1728`、`ITEMS_PER_PASSENGER=128`、`ITEMS_PER_CRATE=288`、`MAX_CRATES=6`、`passengers(items)`、`crates(items)`、`box(i)` | 全模组唯一的"件数 ↔ 载重 / 货箱"换算表；`passengers` 用向上取整并**保底 1 人**（0 会被 `overloaded()` 当成"不限载"）；`box(i)` 是渲染与碰撞共用的局部几何，越界直接抛异常（调用方必须先问 `crates`） |
+| `entity/PowerfulCabinEntity` | `CARGO_ITEMS`（DataTracker）、`cargo`（`SimpleInventory` + 变更监听）、`passengerNumLimit`、`cargoItems/cargoCrates`、`canUseCargo`、`cargoInUse`、`tick/doorCommand/interact`、`cargoBox/cargoSlotLimit/cargoSpaceLimit/cargoSpaceBlocked`、`collisionBoxesStatic/supportsPassenger`、`writeCustomDataToNbt/readCustomDataFromNbt/remove` | 货舱的**唯一权威**：库存、动态限载、货箱碰撞与"不许长在生物身上"都在这里；`syncCargo()` 只在服务端写同步字段；装卸期间每刻顶门并拒绝关门；`interact` 只吃掉"主手 + 潜行 + 乘客"这一种手势 |
+| `screen/CargoScreenHandler` | 两个公开构造器、`cabin()/cargoItems()/passengerLimit()`、`canUse`、`onSlotClick`、`quickMove`、槽位匿名子类 | 服务端实例绑定轿厢（可开性每刻重问、单格上限实时算），客户端是空壳（`cabin == null` → 放行 + 固定 64）；`onSlotClick` 在"点了但件数没变且后部被占"时给一条 actionbar 提示；"背包 → 货舱"的 Shift 搬运逐格刷新货量 |
+| `client/CargoScreen` | 见 5.14 | 界面 |
 
 
 ---
@@ -1121,10 +1156,10 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 轨道模型 | `assets/easyelevator/models/block/elevator_rail.json` + `ElevatorRailBlock.getOutlineShape`（轮廓必须覆盖模型可见范围，右键才点得到） | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
 | 楼层门**门框**（常驻） | `assets/easyelevator/models/block/landing_door_frame_*.json`（底行 `*_bottom`）+ `blockstates/call_button.json` + `tools/generate_data.py` 的 `FRAME_MODELS` | 同上 |
 | 楼层门**门扇**（可动） | `LandingDoorRenderer` + `LandingDoorGeometry`（几何与碰撞同源） | 同上 |
-| 轿厢模型（三种外观） | `CabinRenderer`：`drawStandardShell`（普通/高速/强力共用外壳） / `drawObservationShell` / `drawDoorway` / `drawLeaves` / `drawObservationGlass` + 内饰表 `STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS` + 强力舱铭牌红字 `drawCapacityPlate` | 同上 |
+| 轿厢模型（三种外观） | `CabinRenderer`：`drawStandardShell`（普通/高速/重载共用外壳） / `drawObservationShell` / `drawDoorway` / `drawLeaves` / `drawObservationGlass` + 内饰表 `STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS` + 重载舱铭牌红字 `drawCapacityPlate` | 同上 |
 | 轿厢材质 | `textures/entity/cabin.png`（4×4 图集）+ `CabinRenderer.Mat` / `MATERIAL_UV`；方块贴图见 `textures/block/` | 同上 |
 | 观光玻璃颜色/通透度 | `GlassLayers` 绑定原版玻璃贴图，顶点色白色；透明像素丢弃，无整面染色 | 同上 |
-| 厢内照明 | `CabinLighting.surface` / `surfaceTwoLamps` / `lamp` 逐面计算：舱内补光上限 13、灯罩仅向下 15，外壳与玻璃保留环境光；强力舱用双灯采样（取较亮者），另外三型走单灯 | 同上 |
+| 厢内照明 | `CabinLighting.surface` / `surfaceTwoLamps` / `lamp` 逐面计算：舱内补光上限 13、灯罩仅向下 15，外壳与玻璃保留环境光；重载舱用双灯采样（取较亮者），另外三型走单灯 | 同上 |
 | 音效音频 | `assets/easyelevator/sounds.json` 的 `sounds` 数组 + ogg 文件 | 同上 |
 | 门动画取值 | 轿厢 `doorProgress(tickDelta)`；楼层门 `openProgress(tickDelta)`，0 关 1 开 | 同上 |
 
@@ -1134,7 +1169,11 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 **轨道方块状态**：`facing`。
 
-**实体同步字段**：见 5.3 表格（`PHASE/DOOR/FACING/TARGET_Y/FLOOR`）。这些是客户端唯一可依赖的服务端状态；`railX`/`railZ` **不在其中**（客户端恒 0，所以服务端与客户端都改按世界坐标匹配轿厢）。
+**实体同步字段**：见 5.3 表格（`PHASE/DOOR/FACING/TARGET_Y/FLOOR`）。这些是客户端唯一可依赖的服务端状态；`railX`/`railZ` **不在其中**（客户端恒 0，所以服务端与客户端都改按世界坐标匹配轿厢）。重载轿厢另有一个 `CARGO_ITEMS`（int，货物**件数**）：客户端据此画出货箱、算出动态限载并填写货舱面板的两行数字，因此不打开容器也能正确显示——**同步的是件数，不是 27 个槽位**（槽位只走原版容器菜单）。
+
+**容器菜单**：全模组只有一个 `ScreenHandlerType`——`easyelevator:cargo`（`CargoScreenHandler`）。服务端在 `PowerfulCabinEntity.interact` 里用三参构造器直接 new 出实例（绑定轿厢），客户端由 `ScreenHandlerType` 的两参工厂造空壳，槽位内容与 `CARGO_ITEMS` 属性由原版 `ScreenHandler` 同步包填写。**没有为货舱新增任何自定义数据包**：物品搬运全部走原版 `ClickSlotC2SPacket` / `ScreenHandlerSlotUpdateS2CPacket`。
+
+**实体 NBT**：见 8.1（含重载轿厢的 `Cargo`）。
 
 ---
 
@@ -1147,14 +1186,15 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 常量 | 值 | 单位 | 作用与耦合 |
 | --- | --- | --- | --- |
 | `TICKS_PER_SECOND` | 20 | 刻/秒 | 仅换算用 |
-| `SPEED` | 0.20 | 格/刻 | 4 格/秒**巡航上限**；普通、观光与强力 |
+| `SPEED` | 0.20 | 格/刻 | 4 格/秒**巡航上限**；普通与观光 |
+| `LOW_SPEED` | `SPEED*2/3` = 0.1333 | 格/刻 | 2.67 格/秒巡航上限；重载（"装得多"的代价） |
 | `HIGH_SPEED` | `SPEED*2.5` = 0.50 | 格/刻 | 10 格/秒巡航上限；高速。约束：`speed + POSITION_EPSILON ≤ 1` |
-| `CRUISE_RAMP_TICKS` | 32 | 刻 | 从静止加到本型号巡航速度的时间；加速度上限 = `速度/它`、jerk 上限 = `2·加速度/它`（`MotionProfile.forCruiseSpeed`） |
+| `CRUISE_RAMP_TICKS` | 32 | 刻 | 从静止加到本型号巡航速度的时间；加速度上限 = `速度/它`、jerk 上限 = `2·加速度/它`（`MotionProfile.forCruiseSpeed`）；加/减速段实际时长 = **1.5×它 = 48 刻**（斜坡 T/2 + 峰值平台 T/2 + 回落 T/2） |
 | `MAX_ACCELERATION` | 0.15 | 格/刻² | 加速度**硬上限**（60 格/秒²），只在 `CRUISE_RAMP_TICKS` 被调得极小时起作用 |
 | `POSITION_EPSILON` | 1e-7 | 格 | 服务端到站/请求判定容限 |
 | `SYNC_POSITION_EPSILON` | 0.01 | 格 | **仅**客户端门扇进度与显示判定 |
-| `PASSENGER_NUM_LIMIT` | 0 | 人 | 普通／高速／观光三型的限载人数，**0 = 不限载**（判超载时必须先看"限载为正"，见 `overloaded()`） |
-| `HIGH_PASSENGER_NUM_LIMIT` | 20 | 人 | 强力型号限载人数；超过即 `OVERLOAD`（门保持全开、不派发行程）。同时是后壁载重铭牌红字的数值来源 |
+| `PASSENGER_NUM_LIMIT` | 8 | 人 | 普通／高速／观光三型的限载人数；**改成 0 或负数 = 不限载**（判超载时必须先看"限载为正"，见 `overloaded()`） |
+| `HIGH_PASSENGER_NUM_LIMIT` | 20 | 人 | 重载型号的**空舱基准**限载；实际上限由 `CargoLoad.passengers(件数)` 动态给出（1..20），超过即 `OVERLOAD`（门保持全开、不派发行程）。铭牌与货舱面板上的数字都取自 `passengerNumLimit()` |
 | `DOOR_TICKS` | 20 | 刻 | 开关门各 1 秒；不随速度变 |
 | `DWELL_TICKS` | 40 | 刻 | 最短开门停留 2 秒；到点自动关门（无请求也关）；不随速度变 |
 | `MAX_REQUESTS` | 128 | 条 | **选站队列与厅外呼叫表各自独立**的上限 |
@@ -1170,12 +1210,14 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 量 | 公式 |
 | --- | --- |
-| 速度上限（格/秒） | `SPEED × TICKS_PER_SECOND`，例如 0.20 × 20 = 4 |
-| 加速度上限（格/秒²） | 工作点 `(速度 / CRUISE_RAMP_TICKS) × TICKS_PER_SECOND²`：普通／观光／强力 0.00625 × 400 = 2.5、高速 0.015625 × 400 = 6.25；`MAX_ACCELERATION × TICKS_PER_SECOND²` = 0.15 × 400 = 60 只是**硬上限** |
-| 加/减速段时长（刻） | `CRUISE_RAMP_TICKS`（本型号从静止加到巡航速度的时间；实际行程到不了巡航速度时按比例缩短） |
-| 加/减速段距离（格） | 满速段为 `速度 × CRUISE_RAMP_TICKS / 2`：普通／观光／强力 3.2 格、高速 8.0 格 |
+| 速度上限（格/秒） | `速度 × TICKS_PER_SECOND`，例如 0.20 × 20 = 4（重载 0.1333 × 20 ≈ 2.67） |
+| 加速度峰值（格/秒²） | 工作点 `(速度 / CRUISE_RAMP_TICKS) × TICKS_PER_SECOND²`：重载 0.0041667 × 400 = 1.67、普通／观光 0.00625 × 400 = 2.5、高速 0.015625 × 400 = 6.25；`MAX_ACCELERATION × TICKS_PER_SECOND²` = 0.15 × 400 = 60 只是**硬上限** |
+| 加/减速段时长（刻） | 满速时 `1.5 × CRUISE_RAMP_TICKS` = **48 刻**（斜坡 16 + 峰值平台 16 + 回落 16）；行程到不了巡航速度时改用更短的收尾斜坡 |
+| 加/减速段距离（格） | 满速段为 `0.75 × 速度 × CRUISE_RAMP_TICKS`：重载 3.2 格、普通／观光 4.8 格、高速 12.0 格 |
+| 动态限载（重载） | `max(1, HIGH_PASSENGER_NUM_LIMIT − ceil(件数 / CargoLoad.ITEMS_PER_PASSENGER))`，件数取 27 格内物品数量的总和 |
+| 货箱数量（重载） | `min(CargoLoad.MAX_CRATES, ceil(件数 / CargoLoad.ITEMS_PER_CRATE))`；单格插入上限 = `min(64, 允许件数上界 − 当前件数 + 本格现有件数)` |
 | 门单程 | `DOOR_TICKS / 20` 秒 |
-| 最短停站总时长 | S 形运行段 + 关门 + `DWELL_TICKS/20` + 开门 |
+| 最短停站总时长 | S 形运行段 + 关门 + `DWELL_TICKS/20` + 开门（装卸期间停留时间会被不断续满） |
 | 轿厢中心 | 轨道中心 + 朝向前方 **2 格** |
 | 楼层门根方块 | 轨道 + 朝向前方 `RAIL_DISTANCE = 3` 格，同 Y |
 | 单扇门行程 | `(DOOR_WIDTH - 2*FRAME - SEAM)/2 = 20.5`（1/16 格）= 1.28125 格 |
@@ -1185,8 +1227,10 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 改动 | 必须一起改 |
 | --- | --- |
-| 提高 `HIGH_SPEED` | 确认 `speed + POSITION_EPSILON ≤ 1`（否则单刻可能跨过整格站点），并进游戏复核加/减速手感与到站对齐 |
-| 改 `CRUISE_RAMP_TICKS` / `MAX_ACCELERATION` | 加/减速段的时长、距离与加速度峰值都由 `CRUISE_RAMP_TICKS` 与巡航速度推出（`MAX_ACCELERATION` 只是硬上限）；注意"舒服"与"快"是此消彼长：过渡时间越长，段越长、加速度峰值越低、每趟越慢 |
+| 提高 `HIGH_SPEED`、改 `LOW_SPEED` | 确认 `speed + POSITION_EPSILON ≤ 1`（否则单刻可能跨过整格站点），并进游戏复核加/减速手感与到站对齐 |
+| 改 `CRUISE_RAMP_TICKS` / `MAX_ACCELERATION` | 加/减速段的时长（`1.5·T`）、距离（`0.75·v·T`）与加速度峰值（`v/T`）都由它和巡航速度推出（`MAX_ACCELERATION` 只是硬上限）；注意"舒服"与"快"是此消彼长：T 越长，段越长、加速度峰值越低、每趟越慢。文档里的数字口径见 PARAMETERS.md 1.1 |
+| 改货舱常量（`CargoLoad`） | `CargoLoad` 的五个常量 + `docs/CARGO.md` 的档位表 + 两条界面文案（`screen.easyelevator.cargo_rule` / `cargo_count`，在 `tools/generate_data.py` 里）+ `CargoTests.quantityBoundaries` 的期望值 |
+| 改限载人数 | `PASSENGER_NUM_LIMIT`（普通三型）或 `HIGH_PASSENGER_NUM_LIMIT`（重载空舱基准）。判超载的语义是"限载为正且人数超过它"，**0/负数 = 不限载**；重载的上限还会被 `CargoLoad.passengers` 按货量下调，改这两个数时一并看后壁铭牌与货舱面板是否同步 |
 | 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留，以及渲染同步 |
 | 改轿厢尺寸 | 实体 `dimensions`、`localBox`/`collisionBoxes`、`containsPassenger` 边界、`doorwayBlocked`、渲染几何、`ElevatorLine.cabins` 包围盒 |
 | 改选站面板布局 | `PanelLayout` + `ElevatorScreen` 常量 + `MAX_COLUMNS/MAX_ROWS` |
@@ -1209,9 +1253,12 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | `Queue` | List<Compound> | 每项 `Button`(long)；读档去重 + 上限 `MAX_REQUESTS` |
 | `HallCalls` | List<Compound> | 每项 `Button`(long) + `Up`(boolean)；旧存档无此键 → 空表 |
 | `Travel` | String | 服务方向；旧存档/非法 → `NONE` |
+| `TargetHallDirection` | String | 当前目标来自哪条厅呼（`UP`/`DOWN`/`NONE`）；到站时用它决定熄哪盏灯。**读档时被校验**：目标不在、或该方向已无呼叫 → 退回 `NONE`（保守当成车内选站，不猜） |
+| `StopService` | Compound | 当前"停靠会话"：`Station`(long) + `Served`(String，`UP`/`DOWN`/`NONE`)。双向呼叫到站时 `Served=NONE`，表示两盏灯都还没认领、等这一程方向明确。缺失（旧存档）时置 `recoverStopService`，由第一次 tick 按真实位置保守重建 |
 | `Riders` | List<Compound> | 每项 `Most`/`Least`(long UUID) + `X`/`Y`/`Z`(double 相对偏移)；旧存档无此键 → 不等待 |
+| `Cargo` | Compound | **仅重载轿厢**：原版容器格式（`Items` 列表），27 格货物的槽位、数量与物品组件。缺失 → 空舱；只由 `PowerfulCabinEntity` 读写 |
 
-实体世界坐标由原版实体保存流程负责。
+实体世界坐标由原版实体保存流程负责。**货量不写进同步字段之外的地方**：`CARGO_ITEMS` 是运行期同步用的派生值，读档后由 `Cargo` 重新算出并立即写入，因此不会出现"存档里的件数与货舱内容不一致"。
 
 ### 8.2 楼层门方块实体 NBT（`LandingDoorBlockEntity`）
 
@@ -1229,12 +1276,13 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 ### 8.3 兼容性规则
 
 1. **`call_button` ID 复用是刻意的**：楼层电梯门沿用旧按钮 ID，旧存档方块状态、旧物品堆、旧配方/掉落表继续有效；但旧位置不再是有效站点，需按新规则（距轨道 3 格）重放。
-2. `cabin` 就是普通型号，行为不变；高速/观光是新实体 ID 与新物品，不会与旧存档冲突。
-3. **型号不写进存档**：由实体类型唯一决定，避免「存档里的速度被写坏」。
-4. 读档时 `restore` 把 `MOVING` 降级为 `BLOCKED` 且 `door=0`，由下一 tick 先校验线路再恢复运行。
-5. 带着 `Riders` 的存档会先静止等人，上限 `RIDER_WAIT_TICKS`。
-6. **到站音效字段缺失按出厂默认处理**：本功能之前放置的门存档里没有 `ArrivalSound` / `ArrivalSoundChoice`，`readNbt` 对缺失的开关回退到"发声"，因此**旧门升级后照旧会响**，不需要逐扇重设；只有玩家在面板里主动关掉才写入 `ArrivalSound=false`（见 8.2）。
-7. **唯一的单向迁移**：本功能早期版本的 `writeNbt` 写反了（发声时写 `true`、关掉时什么都不写），那种存档里"关掉"没有留下痕迹，读回来会恢复成发声一次，需要在面板里再关一次。
+2. `cabin` 就是普通型号，行为不变；高速/观光/重载是新实体 ID 与新物品，不会与旧存档冲突。
+3. **型号不写进存档**：由实体类型唯一决定，避免「存档里的速度被写坏」；重载的**货量**则写在 `Cargo` 里，读档后据此重算动态限载。
+4. **2.3.0 新增的三个键都可缺失**：`Cargo`（→ 空舱）、`TargetHallDirection`（→ `NONE`，把目标当成车内选站）、`StopService`（→ `recoverStopService`，第一次 tick 按真实位置保守重建停靠会话）。因此 2.2.x 的存档可以直接被 2.3.0 读；反向（2.3.0 存档给旧版本）不保证：旧版本不认识 `Cargo`，会把货物留在存档里但**不显示也不掉出**，货运功能等于停用。
+5. 读档时 `restore` 把 `MOVING` 降级为 `BLOCKED` 且 `door=0`，由下一 tick 先校验线路再恢复运行。
+6. 带着 `Riders` 的存档会先静止等人，上限 `RIDER_WAIT_TICKS`。
+7. **到站音效字段缺失按出厂默认处理**：本功能之前放置的门存档里没有 `ArrivalSound` / `ArrivalSoundChoice`，`readNbt` 对缺失的开关回退到"发声"，因此**旧门升级后照旧会响**，不需要逐扇重设；只有玩家在面板里主动关掉才写入 `ArrivalSound=false`（见 8.2）。
+8. **唯一的单向迁移**：本功能早期版本的 `writeNbt` 写反了（发声时写 `true`、关掉时什么都不写），那种存档里"关掉"没有留下痕迹，读回来会恢复成发声一次，需要在面板里再关一次。
 
 ---
 
@@ -1244,7 +1292,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `./gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.2.1.jar`） |
+| 构建 | `./gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.0.jar`） |
 | 本机快捷构建 | `./tools/build.ps1 -Jdk <JDK21> -Task build` |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（`build/distributions/`） |
 | 开发启动 | `./gradlew.bat runClient` |
@@ -1252,8 +1300,8 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 **验收方式：** 工程内没有 `src/test`；`test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关闭，
 因此 `./gradlew.bat build` 只编译与打包。改完代码后按 [TESTING.md](TESTING.md) 的人工清单进游戏逐项确认——
-重点是乘坐手感、到站对齐、门联锁与防夹、以及多人同时乘坐。另有一套用 `-PriderTests` 可选开启的 GameTest 源集
-`src/gametest/`（27 个 `@GameTest`（12 个乘客、15 个厅呼调度）+ 1 个客户端冒烟测试，测试模组永不进发行包），覆盖乘客移动、历史补偿和厅呼调度等
+重点是乘坐手感、到站对齐、门联锁与防夹、多人同时乘坐、以及装卸货物时的门联锁。另有一套用 `-PriderTests` 可选开启的 GameTest 源集
+`src/gametest/`（37 个 `@GameTest`：12 乘客 + 15 厅呼 + 10 货舱，外加 2 个客户端冒烟测试；测试模组永不进发行包），覆盖乘客移动、历史补偿、厅呼调度与货舱等
 可自动化的回归，详见 3.2。
 
 ---
@@ -1262,17 +1310,17 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 10.1 新增第五种轿厢型号
 
-1. 新建 `entity/XxxCabinEntity extends AbstractCabinEntity`，构造传速度与**限载人数**（不限载就传 `PASSENGER_NUM_LIMIT = 0`），覆写 `cabinItem()`；需要玻璃墙覆写 `glassWalls()`，需要另一套内饰覆写 `heavyDuty()` 并在 `CabinRenderer` 里加一张 PARTS 表（照 `POWERFUL_PARTS` 的写法：保留普通内饰的行 + 自己的件 + 末尾同一块面板，然后让 `check_cabin_parts` 的断言认识它）。
+1. 新建 `entity/XxxCabinEntity extends AbstractCabinEntity`，构造传速度与**限载人数**（不限载就传 `PASSENGER_NUM_LIMIT` 的 0），覆写 `cabinItem()`；需要玻璃墙覆写 `glassWalls()`，需要另一套内饰覆写 `heavyDuty()` 并在 `CabinRenderer` 里加一张 PARTS 表（照 `POWERFUL_PARTS` 的写法：保留普通内饰的行 + 自己的件 + 末尾同一块面板，然后让 `check_cabin_parts` 的断言认识它）；限载要随状态变化就覆写 `passengerNumLimit()`（照 `PowerfulCabinEntity` 的写法，并保证**永不返回 0**——0 会被解释成"不限载"）。
 2. 在 `Easyelevator` 注册 `EntityType`（照抄现有维度/追踪参数，**并且照抄 `cabinType(...)` 的无参 `build()`**——
    用原版带 id 的 `build(String)` 会让每条实体在日志里刷一条 `No data fixer registered for …`，
    开发环境甚至直接崩，见 12.4）与 `CabinItem`，并加入物品栏 `entries`。
-3. 需要新外观时在 `CabinRenderer` 分支里加绘制方法（**外壳与碰撞沿用 `collisionBoxes()`，不要为新型号改井道**）。
+3. 需要新外观时在 `CabinRenderer` 分支里加绘制方法（**外壳与碰撞沿用 `collisionBoxes()`，不要为新型号改井道**）。带容器的新型号还要：注册一个 `ScreenHandlerType`、写 `ScreenHandler` 子类与 `Screen` 子类、在 `EasyelevatorClient` 里 `HandledScreens.register`（照货舱那套，见 10.8）。
 4. `EasyelevatorClient` 加一行 `EntityRendererRegistry.register(...)`。
 5. 加模型/物品图标/语言键/配方（模型与贴图**改 `tools/generate_art.py`、数据改 `tools/generate_data.py`**，别手改成品文件），再跑两个脚本，并按人工清单进游戏验收。
 
 ### 10.2 调速度或限载人数
 
-速度只改 `ElevatorParameters`（或新子类的构造参数），**门时序不受影响**；确认 `speed + POSITION_EPSILON ≤ 1`，并进游戏复核到站是否精确对齐楼层。限载人数改 `PASSENGER_NUM_LIMIT`（0 = 不限载）或 `HIGH_PASSENGER_NUM_LIMIT`：判超载必须写成"限载为正且人数超过它"（`overloaded()`），否则 0 会让普通轿厢站进一个人就"超载"；改完不需要动任何模型或贴图，强力舱铭牌上的红字会自动跟上。
+速度只改 `ElevatorParameters`（或新子类的构造参数），**门时序不受影响**；确认 `speed + POSITION_EPSILON ≤ 1`，并进游戏复核到站是否精确对齐楼层。限载人数改 `PASSENGER_NUM_LIMIT`（**0 = 不限载**）或 `HIGH_PASSENGER_NUM_LIMIT`（重载的空舱基准，实际值由 `CargoLoad.passengers` 按货量给出）：判超载必须写成"限载为正且人数超过它"（`overloaded()`），否则 0 会让轿厢站进一个人就"超载"；改完不需要动任何模型或贴图，重载舱铭牌与货舱面板上的数字会自动跟上。
 
 ### 10.3 改门尺寸 / 门面结构
 
@@ -1282,11 +1330,11 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md)。要点：门框走方块模型，门扇走方块实体渲染器；轿厢是硬编码的几何数据表（`BoxMesh` + `CabinRenderer` 的三张 PARTS 表），换模型即改那三张表或换 `CabinRenderer`。
 
-**模型与贴图都由脚本生成，别手改单个文件**：`python tools/generate_art.py` 写全部模型与贴图（并做几何自检），`python tools/generate_data.py` 写方块状态/语言/配方/掉落表/音效钩子。只换外观时改脚本再跑，两个脚本都可重复运行。
+**模型与贴图都由脚本生成，别手改单个文件**：`python tools/generate_art.py` 写全部模型与贴图（并做几何自检），`python tools/generate_data.py` 写方块状态/语言/配方/掉落表/音效钩子。只换外观时改脚本再跑，两个脚本都可重复运行。**唯一的例外是模组列表图标 `assets/easyelevator/icon.png`**：发布版是手工准备的 1254×1254 图，脚本里的 `build_icon()` 只是 128×128 占位图，因此它已从生成清单里移出（详见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) 第 1 节）——改图标请直接替换那个文件。
 
 ### 10.5 改调度策略
 
-只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景（没有常驻测试套件；另有 `-PriderTests` 可选开启的 `src/gametest` 乘客回归 GameTest，见 3.2 与第 9 节）。重点函数：`select / retarget / insertOrdered / nearest / furthestReverseHallCall / arriveAtStation`。
+只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景。**先跑 `HallCallRegression`**：它是不依赖 Minecraft 的断言体（`src/gametest/.../HallCallRegression.java`，可直接 `java HallCallRegression`），覆盖 288 种同层双向呼叫组合、反向接客顺路扫描、车内选站优先级与旧存档恢复；改完调度先让它通过，再跑 `-PriderTests runGameTest` 的整线路/NBT 用例。重点函数：`select / retarget / insertOrdered / nearest / furthestReverseHallCall / arriveAtStation / prepareDeparture / take`。
 
 ### 10.6 新增网络包
 
@@ -1299,6 +1347,15 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 ### 10.7 新增扩展事件
 
 在 `api/ElevatorEvents` 加接口与 `Event<T>` 字段，触发点放在 `AbstractCabinEntity.tick()` 的状态写回之后，保证订阅者看到自洽状态。
+
+### 10.8 给某个型号加容器（照货舱抄）
+
+1. **服务端**：`Easyelevator` 注册 `ScreenHandlerType`（要用 `FeatureFlags.VANILLA_FEATURES`），实体持有库存并在变更时把**派生量**写进 `DataTracker`（货舱写的是件数，不是槽位）；容器可开性判断放在实体上（`canUseCargo` 那样），**再在 `ScreenHandler.canUse` 里转发一次**，这样"人走开/死亡/换世界"会自动关闭界面。
+2. **`ScreenHandler`**：写成"两个构造器"的形态——服务端构造器绑定实体（可以实时算单格上限、实时判权限），客户端构造器只造空壳（`cabin == null` 时一律放行、按 64 显示），槽位坐标与 `Screen` 的背景尺寸必须配套。
+3. **客户端**：`EasyelevatorClient.onInitializeClient()` 里 `HandledScreens.register(类型, Screen::new)`；`Screen` 只负责画，数字一律问 `ScreenHandler`。覆写 `renderBackground` 去掉原版模糊时，**记得自己调 `drawBackground`**。
+4. **交互**：在子类 `interact` 里只吃掉"专属手势"（货舱是"主手 + 潜行 + 乘客"），其余手势交回父类，否则会抢掉回收与选站面板。
+5. **同步与存档**：槽位走原版容器同步即可，**不要再加自定义包**；库存用 `Inventories.writeNbt/readNbt` 写进实体 NBT（照 `Cargo`），并想清楚哪些 `RemovalReason` 该掉货（货舱只对 `KILLED`/`DISCARDED` 掉，其余视为"换个地方继续存在"）。
+6. **测试**：`src/gametest` 加一个用例类，至少覆盖"档位边界、单格上限、Shift 搬运不丢货、双人取放不复制、可开性随离开失效"；需要看画面时再照 `CargoClientSmoke` 加一个客户端冒烟 run。
 
 ---
 
@@ -1321,6 +1378,13 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 按钮一直红着 | 到站只在对应服务方向清扫；反方向呼叫会保留 | `arriveAtStation` 与 `targetHallDirection` |
 | 按了楼层却被径直开过 | 缺 `retarget` 的顺路改道 | `controller.retarget` |
 | 反向接客来回折返 | 把登记顺序当成停靠顺序，或把厅呼放进车内选站队列 | `select` / `retarget` 用 `furthestReverseHallCall` 选择回程起点；保持请求来源 |
+| 同层两盏灯只熄了一盏 / 该熄的那盏不熄 | 到站清扫方向取错 | 到站先登记 `StopService`（双向时 `served=NONE`），方向在 `prepareDeparture` 明确；目标来源存 `TargetHallDirection` |
+| 重载舱潜行右键没反应 / 打不开货舱 | ① 不在厢内（判据是 `containsPassenger`，站门外不算）；② 服务端认为你已无权（`canUseCargo`），此时只发 `message.easyelevator.cargo_stopped` | `PowerfulCabinEntity.interact` / `canUseCargo` |
+| 货舱面板打开但格子点不动、件数不变 | 后部新货箱的位置上有人或动物，单格上限被压到 0 | `cargoSlotLimit` / `cargoSpaceLimit`：让开人物即可，提示文案 `message.easyelevator.cargo_space` |
+| 货箱插进玩家/动物身体里 | 渲染与碰撞不同源，或没走 `cargoSpaceLimit` 的限制 | 渲染 `CabinRenderer.drawCargo` 与碰撞 `PowerfulCabinEntity.cargoBox` **必须都取 `CargoLoad.box(i)`**；装货上限由 `cargoSlotLimit` 把关 |
+| 客户端看不到货箱 / 限载显示 20 不动 | `CARGO_ITEMS` 没同步（只在服务端 `syncCargo()` 写），或服务端与客户端版本不一致 | `syncCargo()` 的 `isClient` 守卫；联机要求两端同版本 |
+| 装卸时门被关上、车开走了 | 有人在用货舱时必须每刻顶门、并拒绝关门指令 | `PowerfulCabinEntity.tick`（`doorCommand(true)`）与 `doorCommand(false)` 的拒绝分支 |
+| 回收轿厢后货物凭空消失 | `remove(reason)` 的掉货条件写错（应当只对 `KILLED`/`DISCARDED` 掉，且先取空再丢弃以防重复） | `PowerfulCabinEntity.remove` |
 | 站点扫不到 / 线路被截断 | 门不完整、朝向不一致、区块未加载 | `LandingDoorBlock.complete`、`ElevatorLine.matches`（未加载一律 false） |
 | 面板/门框显示 `--` | `FLOOR==0`：尚未经过任何站点或线路无效 | `FloorIndicator.floorNumber` 返回 0 |
 | 日志刷 `No data fixer registered for easyelevator:xxx`（每条实体一次；开发环境还会直接抛异常） | 实体类型用了原版**带 id** 的 `EntityType.Builder.build(String)`：`saveable`（默认 true）时会先向原版数据修复器要这个 id 的 choice type，而模组 id 一定不在原版 schema 里 | 改成 Fabric 的无参 `build()`（`Easyelevator.cabinType` 就是这一处），见 12.4 |
@@ -1339,7 +1403,8 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 实体/物品  easyelevator:cabin                 普通
            easyelevator:high_speed_cabin      高速
            easyelevator:observation_cabin     观光
-           easyelevator:powerful_cabin        强力（限载 20 人 + 重载内饰）
+           easyelevator:powerful_cabin        重载（2/3 速度、27 格货舱、限载随货量 1..20）
+容器菜单   easyelevator:cargo                 货舱容器（ScreenHandlerType，仅重载用）
 物品栏     easyelevator:main
 音效       easyelevator:elevator_running / elevator_arrival / elevator_arrival_custom
 自定义包   S2C（network/ElevatorNetworking.java，7 个）
@@ -1352,7 +1417,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
            easyelevator:rider_move            乘客移动包（携带轿厢样本编号，不在 ElevatorNetworking 里）
 ```
 
-ID 与 §6.3 协议表逐一对应：`ElevatorNetworking` 共 **14 个** payload（7 S2C + 7 C2S），另有独立的 `rider_move`。
+ID 与 §6.3 协议表逐一对应：`ElevatorNetworking` 共 **14 个** payload（7 S2C + 7 C2S），另有独立的 `rider_move`；货舱**不占任何自定义包**（走原版容器同步）。
 
 ### 12.2 翻译键一览（完整列表见 [lang/en_us.json](../src/main/resources/assets/easyelevator/lang/en_us.json)）
 
@@ -1360,11 +1425,12 @@ ID 与 §6.3 协议表逐一对应：`ElevatorNetworking` 共 **14 个** payload
 | --- | --- |
 | `itemGroup.easyelevator` | 物品栏组名 |
 | `block.easyelevator.*` / `item.easyelevator.*` / `entity.easyelevator.*` | 方块/物品/实体名 |
-| `message.easyelevator.*` | actionbar 与提示（无轿厢/多轿厢/无效站点/已排队/受阻/进入提示/门按钮失败/基准层已设/门放置说明） |
-| `screen.easyelevator.*` | 标题、站点、状态、页数、空列表、开门/关门、翻页、厅外面板与悬停 |
-| `phase.easyelevator.*` | `open/closing/moving/opening/blocked/overload`（面板状态行；`overload` 仅强力舱会出现） |
-| `text.easyelevator.capacity` | `限载 %s 人` / `Max %s people`：强力舱后壁载重铭牌上的那一行，`%s` = 限载人数 |
-| `item/entity.easyelevator.powerful_cabin` | 强力电梯轿厢 / Powerful Elevator Cabin |
+| `message.easyelevator.*` | actionbar 与提示（无轿厢/多轿厢/无效站点/已排队/受阻/进入提示/门按钮失败/基准层已设/门放置说明/**货舱无法装卸**/**后部被占**） |
+| `screen.easyelevator.*` | 标题、站点、状态、页数、空列表、开门/关门、翻页、厅外面板与悬停；**货舱**：`cargo`（标题）/`cargo_count`（件数行）/`cargo_capacity`（限载行）/`cargo_rule`（悬停规则） |
+| `phase.easyelevator.*` | `open/closing/moving/opening/blocked/overload`（面板状态行；`overload` 所有型号都可能出现，重载更常见） |
+| `text.easyelevator.capacity` | `限载 %s 人` / `Max %s people`：重载舱后壁载重铭牌上的那一行，`%s` = 当前限载人数（随货量变化） |
+| `item/entity.easyelevator.powerful_cabin` | 重载电梯轿厢 / Powerful Elevator Cabin |
+| `item.easyelevator.cargo_hint` | 重载轿厢物品的 Tooltip（怎么打开货舱；只有这一件物品有额外提示行） |
 | `status.easyelevator.*` | `up/down/idle`（箭头/状态语义） |
 | `subtitles.easyelevator.*` | 3 个音效字幕 |
 
@@ -1384,6 +1450,9 @@ ID 与 §6.3 协议表逐一对应：`ElevatorNetworking` 共 **14 个** payload
 | 防夹区域 | X ±1.3，Y 0.2..2.8，Z 0.95..1.6 |
 | 面板按键 | 20×20 像素，间距 4，单页 ≤ 8×8=64 |
 | 面板分区 | 表头 64 + 1 分隔线 + 凹底 ±6 + 按键区 + 1 分隔线 + 页脚 40 |
+| 货舱面板 | 176×210 像素；表头 1..46、槽位凹槽按 `handler.slots`、进度条 x 8..168（y 43..45）、悬停热区 x 8..168 / y 19..46 |
+| 货箱几何（重载） | 0.64 × 0.4 × 0.64 格；三列 x 起点 −1.08 / −0.32 / 0.44，两层 y 0.2 / 0.6；Z −1.14..−0.50（`CargoLoad.box`） |
+| 货舱档位 | 27 槽 / 1728 件上限 / 128 件每少 1 人 / 288 件每 1 个货箱 / 最多 6 个 |
 | 方向箭头闪烁 | 亮 0.5 s / 灭 0.5 s（墙钟毫秒） |
 
 ### 12.4 注册实体类型：为什么必须用 Fabric 的无参 `build()`
@@ -1413,16 +1482,18 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
 
 ### 12.5 接入新设备的检查清单
 
-- [ ] 新增/修改的 `logic` 类保持无 Minecraft 依赖（便于单独 `javac` 验证）
+- [ ] 新增/修改的 `logic` 类保持无 Minecraft 依赖（便于单独 `javac` 验证；`CargoLoad` 这类只用 `Box` 的算"中间类"）
 - [ ] 服务端与客户端都改了（网络字段、渲染、语言键）
 - [ ] 所有客户端输入在服务端重新校验
-- [ ] 客户端判据只用**同步数据**（`PHASE/DOOR/FACING/TARGET_Y/FLOOR` + 面板下发的站点列表）；
+- [ ] 客户端判据只用**同步数据**（`PHASE/DOOR/FACING/TARGET_Y/FLOOR` + 面板下发的站点列表 + 重载的 `CARGO_ITEMS`）；
       客户端调 `cabin.line()` 一定拿到 null（railX/railZ 恒 0），别拿它当条件
+- [ ] 新增容器时：`ScreenHandlerType` 两端都注册（服务端 `Easyelevator`、客户端 `HandledScreens.register`），
+      `ScreenHandler.canUse` 转发实体的可开性判定，且**不新增自定义包**（走原版容器同步）
 - [ ] 不新增区块加载
-- [ ] `./gradlew.bat build` 成功
-- [ ] 按 `docs/TESTING.md` 人工清单验收（上下各一次、运行中存档重进、防夹、观光玻璃视角）
-- [ ] 文档同步：`PARAMETERS.md`（改常量）、`ASSET_INTEGRATION.md`（改素材）、`README.md`（改玩法）
+- [ ] `./gradlew.bat build` 成功；改了调度/货舱再跑 `tools/build.ps1 -Task runGameTest`（37 项）
+- [ ] 按 `docs/TESTING.md` 人工清单验收（上下各一次、运行中存档重进、防夹、观光玻璃视角、重载装卸）
+- [ ] 文档同步：`PARAMETERS.md`（改常量）、`CARGO.md`（改货舱）、`ASSET_INTEGRATION.md`（改素材）、`README.md`（改玩法）
 
 ---
 
-*本手册由代码通读整理，覆盖版本 2.2.1。改动架构或接口后请同步更新本文对应章节。*
+*本手册由代码通读整理，覆盖版本 2.3.0。改动架构或接口后请同步更新本文对应章节。*

@@ -11,8 +11,10 @@ This script owns everything the player *sees*:
 * ``textures/block/*.png`` - brushed-steel frame plate, dark anodised door leaf, the two
   cabin icon plates, the powerful cabin's red load plate, the door-header display band and the
   machined dark plate;
-* ``textures/entity/cabin.png`` - the 4x4 material atlas the cabin renderer addresses;
-* ``icon.png``             - the mod list icon.
+* ``textures/entity/cabin.png`` - the 4x4 material atlas the cabin renderer addresses.
+
+``icon.png`` (the mod list icon) is **not** written by this script: the shipped icon is a hand-made
+1254x1254 image, while ``build_icon()`` only draws a 128x128 placeholder.  See the note in ``main()``.
 
 Everything else (blockstates, lang, recipes, loot tables, sounds) is written by
 ``tools/generate_data.py``.  Both scripts are deterministic: running them twice produces
@@ -618,6 +620,9 @@ def build_atlas():
 # --------------------------------------------------------------------------------------
 # mod icon
 # --------------------------------------------------------------------------------------
+# Reference only: the shipped ``icon.png`` is a hand-made 1254x1254 image and is no longer written
+# by main() (see the note in its outputs dict).  This function stays as the record of the original
+# 128x128 placeholder design.
 def build_icon():
     """128x128 mod list icon: a lit landing door with both call arrows."""
     size = 128
@@ -1228,7 +1233,11 @@ def main():
         BLOCK_TEX / 'blank_powerful.png': tex_powerful_plate(),
         BLOCK_TEX / 'blank_glass.png': tex_glass_plate(),
         ENTITY_TEX / 'cabin.png': build_atlas(),
-        ASSETS / 'icon.png': build_icon(),
+        # NOTE: icon.png is deliberately NOT generated here.  The shipped mod icon is a hand-made
+        # 1254x1254 image; build_icon() only draws a 128x128 placeholder, so having it in this dict
+        # silently overwrote the real icon on every run (observed once during the 2.3.0 doc pass,
+        # restored with `git checkout`).  build_icon() is kept for reference, and the stale-file
+        # cleanup below only touches textures/block/blank*.png, so nothing deletes the icon.
     }
     for path, canvas in outputs.items():
         canvas.save(path)

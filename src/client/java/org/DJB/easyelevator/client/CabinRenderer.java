@@ -60,13 +60,16 @@ import org.DJB.easyelevator.logic.*;
  * <p>三种外观（几何外壳与碰撞完全一致，只有材质、内饰件与哪几块面透明不同）：
  * <ul>
  *   <li>普通 / 高速：整舱不透明。高速型号刻意与普通型号外观完全相同——速度不是外观差异。</li>
- *   <li>强力（{@link AbstractCabinEntity#heavyDuty()} 为 true）：外壳与门与普通型号<b>逐件相同</b>，
+ *   <li>重载（{@link AbstractCabinEntity#heavyDuty()} 为 true）：外壳与门与普通型号<b>逐件相同</b>，
  *       只在 {@link #STANDARD_PARTS} 之上再叠一层"重载"内饰（{@link #POWERFUL_PARTS} =
  *       普通内饰 + 强化件 + 同一块操纵面板）：上下<b>两道</b>不锈钢扶手围成的双扶手环、后壁两根
  *       立柱把两道扶手连成整体、顶棚<b>两块</b>顶灯（门口再补一盏）、后壁的载重铭牌
- *       （深色边框 + 亮面板，上面用红字写出 {@link AbstractCabinEntity#passengerNumLimit()}），
- *       以及门槛内侧的一条防滑钢踏板。载客量是"能不能装下更多人"，因此改的是<b>装潢与灯具</b>，
- *       不是外壳尺寸：井道预留、碰撞、门时序与普通型号逐位相同。</li>
+ *       （深色边框 + 亮面板，上面用红字写出 {@link AbstractCabinEntity#passengerNumLimit()}，
+ *       也就是随货量变化的当前限载），以及门槛内侧的一条防滑钢踏板。
+ *       此外它还有<b>会随货量长出来的货箱</b>：{@link #drawCargo} 按 {@link CargoLoad#box(int)}
+ *       在后部画 0..6 个木箱（钢带 + 标牌），与实体那边的碰撞盒用的是同一份坐标，
+ *       因此货箱既看得见也挡得住人、还能站上去。载客量是"能不能装下更多人"，
+ *       因此改的是<b>装潢、灯具与货箱</b>，不是外壳尺寸：井道预留、碰撞、门时序与普通型号逐位相同。</li>
  *   <li>观光（{@link AbstractCabinEntity#glassWalls()} 为 true）：地板、顶板、四根角柱（支撑边）
  *       保持不透明，左右侧墙 / 后墙换成无色透明玻璃（每处一张零厚度双面，正反都可见）；门换成
  *       <b>铁框玻璃门</b>（周围钢框、中间玻璃，见 {@link FramedGlassDoor}），于是从厢内朝外看仍然通透；
@@ -84,9 +87,9 @@ import org.DJB.easyelevator.logic.*;
  * 因此本类固定按"层"分组绘制，且画完一组就不再回头：
  * <ol>
  *   <li>不透明层 {@code getEntityCutout}：舱体外壳、全部内饰、门口门槛与门楣、两扇滑门、
- *       背面的抱轨导靴（观光型号只画地板 / 顶板 / 四根角柱与内饰、压条、分格）；</li>
+ *       背面的抱轨导靴、重载型号的货箱（观光型号只画地板 / 顶板 / 四根角柱与内饰、压条、分格）；</li>
  *   <li>文字层（由 {@link TextRenderer#draw} 内部取用）：面板上的楼层号与运行状态，
- *       以及强力型号后壁载重铭牌上的限载人数；</li>
+ *       以及重载型号后壁载重铭牌上的限载人数；</li>
  *   <li>玻璃层 {@code getEntityCutout}（仅观光型号）：玻璃墙与玻璃门，必须最后画，画完不再写任何顶点。</li>
  * </ol>
  * 楼层门渲染器 {@link LandingDoorRenderer} 遵守同一条约定（先画文字、再画门扇层）。
@@ -170,15 +173,15 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     };
 
     /**
-     * 强力轿厢的内饰件：{@link #STANDARD_PARTS} 的<b>全部</b>普通内饰（踢脚线、扶手、灯槽、顶灯）
+     * 重载轿厢的内饰件：{@link #STANDARD_PARTS} 的<b>全部</b>普通内饰（踢脚线、扶手、灯槽、顶灯）
      * + 一组<b>重载件</b> + 与普通轿厢逐字相同的操纵面板。
      *
      * <p>为什么写成"整表复制 + 追加"而不是让代码把两张表拼起来：{@code tools/generate_art.py} 直接解析
-     * Java 源里的表，正是靠这一点断言"强力舱确实保留了普通舱的每一件内饰"
+     * Java 源里的表，正是靠这一点断言"重载舱确实保留了普通舱的每一件内饰"
      * （{@code POWERFUL_PARTS[:12] == STANDARD_PARTS[:12]} 且两者最后 6 行都是同一块面板）。
      * 于是"保留原来基本样貌、另外加料"这条需求变成了构建期就守得住的约束，而不是一句口头约定。
      *
-     * <p>为什么要"加料"：强力型号的卖点是<b>载客量</b>（{@link AbstractCabinEntity#passengerNumLimit()}
+     * <p>为什么要"加料"：重载型号的卖点是<b>载客量</b>（{@link AbstractCabinEntity#passengerNumLimit()}
      * 块 20 人，普通型号不限），因此多出来的一律是"人多时用得着"的东西——
      * <ol>
      *   <li><b>第二道扶手</b>（Y=1.55..1.62）：站着的乘客也有地方扶，是"大轿厢"最直观的特征；
@@ -193,7 +196,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *
      * <p>刻意的<b>不变</b>：外壳、地板、门扇、门槛与门楣全部沿用普通型号的件
      * （外壳画在 {@link #drawStandardShell}，门与门口画在 {@link #drawDoors} / {@link #drawDoorway}），
-     * 因此井道预留、碰撞盒、门口防夹、门时序与普通型号逐位相同——换乘强力型号不需要改任何建筑。
+     * 因此井道预留、碰撞盒、门口防夹、门时序与普通型号逐位相同——换乘重载型号不需要改任何建筑。
      */
     private static final float[][] POWERFUL_PARTS={
         // ↓↓↓ 以下 12 行与 STANDARD_PARTS 的前 12 行逐字相同（普通内饰原样保留）↓↓↓
@@ -213,7 +216,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         // 顶灯（后侧一块）：灯槽框 + 中间灯罩；灯罩自发光，井道再暗也亮着
         {-.92f,2.786f,-1.02f,.92f,2.812f,.52f,1,0},
         {-.85f,2.78f,-.95f,.85f,2.804f,.45f,5,1},
-        // ↓↓↓ 以下为强力型号独有的"重载件"（普通型号没有）↓↓↓
+        // ↓↓↓ 以下为重载型号独有的"重载件"（普通型号没有）↓↓↓
         // 第二道扶手（Y=1.55..1.62）：与下面那道 0.95 的扶手同规格，右侧壁一段在操纵面板前收头
         {-1.302f,1.55f,-1.25f,-1.22f,1.62f,1.02f,6,0},
         {1.22f,1.55f,-1.25f,1.302f,1.62f,.18f,6,0},
@@ -306,7 +309,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     private static final float ARROW_LINE_CENTRE=.08f, FLOOR_LINE_CENTRE=-.10f;
     /**
-     * 强力型号后壁载重铭牌上那行限载人数的字号（格/像素）与落点。
+     * 重载型号后壁载重铭牌上那行限载人数的字号（格/像素）与落点。
      *
      * <p>为什么比面板上的字号小：铭牌只有 1.24 x 0.30 格，而这一行是<b>一句带数字的话</b>
      * （中英文字宽差得很多，见 {@code text.easyelevator.capacity}），字号稍大英文就会溢出板面。
@@ -346,7 +349,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     }
 
     /** 绘制轿厢。只读服务端同步的状态（FACING、DOOR 的插值门进度），不修改任何游戏状态。
-     * @param cabin 目标轿厢实体（普通 / 高速 / 强力 / 观光）
+     * @param cabin 目标轿厢实体（普通 / 高速 / 重载 / 观光）
      * @param yaw 实体朝向角（未使用，朝向由 FACING 决定）
      * @param delta 渲染插值系数（0..1）
      * @param matrices 渲染矩阵栈
@@ -364,14 +367,14 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
         float open=cabin.doorProgress(delta);
-        // 强力型号：外壳、门与门口构件全部与普通型号共用，只在内饰表上换成"重载"那一张（见 POWERFUL_PARTS）。
+        // 重载型号：外壳、门与门口构件全部与普通型号共用，只在内饰表上换成"重载"那一张（见 POWERFUL_PARTS）。
         // 之所以在这里取一次而不是在每个绘制方法里各判一次，是为了让"同一帧只认一个型号"这件事只写一遍。
         boolean heavyDuty=cabin.heavyDuty();
         // 光照保留世界采样值，BoxMesh 逐面调用 CabinLighting：
         // 外表面不补光，舱内朝向灯具的表面获得衰减补光，灯罩仅朝下发亮。
-        // 舱内补光的采样器按型号选：普通 / 高速 / 观光按舱顶后侧那一盏灯补光；强力舱门口还有第二盏灯，
+        // 舱内补光的采样器按型号选：普通 / 高速 / 观光按舱顶后侧那一盏灯补光；重载舱门口还有第二盏灯，
         // 因此它的外壳内面与内饰一起改走双灯采样（`CabinLighting.surfaceTwoLamps`，取两盏里更亮的一盏）。
-        // 这一步刻意只对强力型号生效：把第二盏灯并进通用采样会顺手改掉另外三种型号的舱内观感。
+        // 这一步刻意只对重载型号生效：把第二盏灯并进通用采样会顺手改掉另外三种型号的舱内观感。
         BoxMesh.FaceLighting surface=heavyDuty?CabinLighting::surfaceTwoLamps:CabinLighting::surface;
         // 第 1 组（不透明层）：外壳 + 内饰 + 门口构件 + 门扇。所有不透明几何必须在这一组里画完，
         // 否则切到文字层之后再回头写它就会触发 Not building!（见类注释）
@@ -389,7 +392,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         drawDoorway(matrices,out,front,doorBack,light); // 门槛 + 门楣轨道
         if(cabin instanceof PowerfulCabinEntity powerful) drawCargo(powerful,matrices,out,light);
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号；
-        // 强力型号再多一行后壁铭牌上的限载人数。两次都是同一类文字层，之间不会发生层切换（见类注释）。
+        // 重载型号再多一行后壁铭牌上的限载人数。两次都是同一类文字层，之间不会发生层切换（见类注释）。
         drawFloorDisplay(cabin,matrices,buffers);
         if(heavyDuty) drawCapacityPlate(cabin,matrices,buffers);
         // 第 3 组（玻璃 cutout 层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
@@ -400,7 +403,35 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
     }
 
-    /** 钢带木色货箱：完全位于共用碰撞几何之内，不占门口、不遮住后壁铭牌。 */
+    /**
+     * 画重载轿厢后部的货箱（钢带木箱）：每箱 = 一个木色箱体 + 两条竖向钢带 + 一块正面铭牌色的小标牌。
+     *
+     * <p>几何完全来自 {@link CargoLoad#box(int)}（与 {@code PowerfulCabinEntity.cargoBox} 用的是同一份
+     * 局部坐标），并且每一件都在那个箱子范围内<b>各向内缩 3~8 毫米</b>：
+     * <ul>
+     *   <li>箱体内缩（Z 两端各 0.006、顶面 −0.003）：给钢带与标牌让出深度差，同时保证箱体所有面都落在
+     *       碰撞盒内部——"看得见的木箱"绝不会比"挡得住人的箱子"大出一丝；</li>
+     *   <li>钢带落在箱子宽度的 22% 与 78% 处、厚 0.05 格，Z 与 Y 都取满箱子（因此钢带两端与箱体表面
+     *       必然不共面：钢带是包在箱体外侧的独立长方体）；</li>
+     *   <li>小标牌贴在箱子正面（Z 取箱子前沿再收 0.008），只有 0.1 × 0.11 格，是"封条"的观感。</li>
+     * </ul>
+     *
+     * <p>配色不走材质图集：木箱用暖木色（{@code 0xFFC28C50}）、钢带用冷钢色（{@code 0xFF536477}）、
+     * 标牌用浅黄（{@code 0xFFE7CF8A}），都是顶点色 × 图集亮度（箱体取 {@link Mat#WALL} 的拉丝格子、
+     * 钢带与小标牌取 {@link Mat#TRIM}）——这样货箱与舱内不锈钢内饰同属一套材质家族，
+     * 不需要为"偶尔才出现几个的箱子"新增图集格（图集格号是跨版本稳定的接口，能不动就不动）。
+     *
+     * <p>光照用 {@link CabinLighting#surfaceTwoLamps}：这是重载舱的舱内采样器（门口还有第二盏顶灯），
+     * 必须与它自己的外壳、内饰保持一致，否则箱子与地板会被两套灯位分别照亮，接触面上看得出来。
+     *
+     * <p>调用时机：与外壳、内饰同在**不透明层**（第 1 组），因此不能挪到文字层之后——那一层的
+     * {@code VertexConsumer} 会被切换缓冲作废（见类注释的层顺序约束）。
+     *
+     * @param cabin 重载轿厢（提供当前货箱数量；客户端读的是同步字段，不需要货舱内容）
+     * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
+     * @param out 不透明顶点缓冲
+     * @param light 打包后的光照值
+     */
     private static void drawCargo(PowerfulCabinEntity cabin, MatrixStack matrices, VertexConsumer out, int light) {
         float[] woodCell = MATERIAL_UV[Mat.WALL.ordinal()], bandCell = MATERIAL_UV[Mat.TRIM.ordinal()];
         float[][] wood = {woodCell,woodCell,woodCell,woodCell,woodCell,woodCell};
@@ -440,7 +471,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param parts 内饰清单，每行 {x,y,z,X,Y,Z,材质格号,自发光}
      * @param light 环境光；按面区分外表面、舱内受光面与灯罩朝下的发光面。
      * @param surface 舱内表面的补光采样器：普通 / 高速 / 观光传 {@link CabinLighting#surface}，
-     *                强力舱传 {@link CabinLighting#surfaceTwoLamps}（门口还有第二盏顶灯）。灯罩行不受它影响，
+     *                重载舱传 {@link CabinLighting#surfaceTwoLamps}（门口还有第二盏顶灯）。灯罩行不受它影响，
      *                自发光行一律走 {@link CabinLighting#lamp}。
      */
     private static void drawParts(MatrixStack matrices,VertexConsumer out,float[][] parts,int light,BoxMesh.FaceLighting surface) {
@@ -474,7 +505,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     }
 
     /**
-     * 画普通 / 高速 / 强力轿厢的外壳：整舱不透明（高速型号刻意不做任何区别，强力型号只换内饰表）。
+     * 画普通 / 高速 / 重载轿厢的外壳：整舱不透明（高速型号刻意不做任何区别，重载型号只换内饰表）。
      *
      * <p>五块几何的坐标与 {@code AbstractCabinEntity.collisionBoxes()} 的前五项逐一对应，
      * 因此"看得见的墙"就是"挡得住人的墙"。只有材质从纯白顶点色换成了图集里的分格：
@@ -485,7 +516,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param front 轿厢正面前缘 Z（格）
      * @param light 打包后的光照值
      * @param surface 舱内表面的补光采样器：普通 / 高速传 {@link CabinLighting#surface}，
-     *                强力舱传 {@link CabinLighting#surfaceTwoLamps}（外壳内面与内饰必须用同一盏/一组灯，
+     *                重载舱传 {@link CabinLighting#surfaceTwoLamps}（外壳内面与内饰必须用同一盏/一组灯，
      *                否则舱壁与扶手会被两套灯位分别照亮，接缝上看得出来）
      */
     private static void drawStandardShell(MatrixStack matrices,VertexConsumer out,float front,int light,BoxMesh.FaceLighting surface) {
@@ -747,9 +778,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     }
 
     /**
-     * 在强力轿厢后壁的载重铭牌上画一行红字：本型号的限载人数。
+     * 在重载轿厢后壁的载重铭牌上画一行红字：本型号的限载人数。
      *
-     * <p>为什么要"把人数写出来"：强力型号与普通型号的外壳、门、井道尺寸<b>逐位相同</b>，差别只在
+     * <p>为什么要"把人数写出来"：重载型号与普通型号的外壳、门、井道尺寸<b>逐位相同</b>，差别只在
      * 内饰件与 {@link AbstractCabinEntity#passengerNumLimit()}；铭牌上的数字直接取自那个常量，
      * 因此调参或装卸货物时不需要改任何贴图或几何，
      * 数字永远和状态机里判超载用的那一个一致。
@@ -790,7 +821,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
 
     /**
      * 在轿厢内的某一块板面上画一行水平居中的红字：面板显示窗（{@link #drawPanelLine}）与
-     * 强力型号的后壁载重铭牌（{@link #drawCapacityPlate}）共用这一处落笔逻辑。
+     * 重载型号的后壁载重铭牌（{@link #drawCapacityPlate}）共用这一处落笔逻辑。
      *
      * <p>行心 → 字体坐标的换算：字体内部 y 轴向下、且这一行从顶边开始画，
      * 所以顶边 = 行心 + 半个字高，再除以 scale 并取负号换到"局部 +Y 朝下"的坐标系：

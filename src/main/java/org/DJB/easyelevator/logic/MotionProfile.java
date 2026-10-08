@@ -25,11 +25,12 @@ import java.util.List;
  *   <li><b>限速</b>：曲线速度恒 ≤ 巡航上限（即轿厢型号速度），因此单刻位移恒 ≤ 巡航上限，
  *       "单刻位移 + {@link ElevatorParameters#POSITION_EPSILON} ≤ 1 格"这一到站精度前提继续成立。</li>
  *   <li><b>限加速度</b>：|a| 恒 ≤ 生效的加速度上限。按型号构造（{@link #forCruiseSpeed}）时它就是
- *       "巡航速度 / {@link ElevatorParameters#CRUISE_RAMP_TICKS}"，因此曲线走的是<b>三角形</b>加速度波形
- *       （没有匀加速平台），加/减速段长度与舒适度由该时间唯一决定；{@link ElevatorParameters#MAX_ACCELERATION}
+ *       "巡航速度 / {@link ElevatorParameters#CRUISE_RAMP_TICKS}"，因此曲线走的是<b>梯形</b>加速度波形
+ *       （斜坡 T/2 升到峰值 → 峰值平台 T/2 → 斜坡 T/2 回落，合计 1.5·T 刻），
+ *       加/减速段长度与舒适度由该时间与巡航速度唯一决定；{@link ElevatorParameters#MAX_ACCELERATION}
  *       只是兜底硬上限。</li>
- *   <li><b>限加加速度</b>：S 段的 |j| 恒等于生效的 jerk 上限（按型号构造时由加速度峰值与斜坡时长推出，
- *       {@code j = 2·a_p/T}）；收尾斜坡段的 j = 0，因此不存在无界的加速度跳变。</li>
+ *   <li><b>限加加速度</b>：S 段的 |j| 恒等于生效的 jerk 上限（按型号构造时由加速度上限与过渡时间推出，
+ *       {@code j = 2·aMax/T}）；收尾斜坡段的 j = 0，因此不存在无界的加速度跳变。</li>
  *   <li><b>精确到站</b>：曲线终点就是目标站点本身，因此 {@link #advance} 在最后一刻直接给出"恰好到站"
  *       的位移，不需要最小位移量子或容差兜底（与旧实现的精确吸附语义一致）。</li>
  *   <li><b>可重规划</b>：{@link #plan} 接受任意初速度/初加速度，因此"运行途中顺路改道到更近的楼层"
@@ -127,14 +128,24 @@ public final class MotionProfile {
      * 按轿厢型号构造：由"巡航速度 + {@link ElevatorParameters#CRUISE_RAMP_TICKS}"解出加/减速段的几何。
      *
      * <p>这是生产路径（{@link ElevatorController} 走的就是它）。给定巡航速度 v 与过渡时间 T（刻）：
-     * 加速度上限 {@code a_p = v / T}、jerk 上限 {@code j = 2·a_p / T}（于是加速度波形是"斜坡 T/2 +
-     * 回落 T/2"的三角形，峰值恰好 a_p、加/减速段各 T 刻、各走 {@code v·T/2} 格）。
-     * 因为 slew 率与斜坡时长由同一个 a_p 推出，{@link #planRamp} 的"加速度触顶"分支不会触发，
-     * 曲线永远走三角形波形——这正是"加/减速距离由 T 唯一决定"的含义。
+     * 加速度上限 {@code aMax = v / T}、jerk 上限 {@code j = 2·aMax / T}。这条 jerk 斜率<b>不是</b>
+     * "随便挑的舒服值"，而是与 aMax 配套：按最短形状解斜坡时长会得到
+     * {@code t1 = sqrt(Δv/j) = T/√2}、{@code a1 = j·t1 = √2·aMax > aMax}，也就是<b>一定会撞上</b>
+     * {@link #planRamp} 的"加速度触顶"分支。触顶之后：
+     * <ul>
+     *   <li>斜坡时长压到 {@code t1 = aMax/j = T/2}；</li>
+     *   <li>剩下的速度差由<b>峰值平台</b>补足：{@code tHold = Δv/aMax − t1 = T/2}；</li>
+     *   <li>因此加/减速段的总时长是 <b>1.5·T</b>（斜坡 T/2 + 平台 T/2 + 回落 T/2），
+     *       加速度波形是<b>梯形</b>而不是三角形，峰值恰好 aMax；</li>
+     *   <li>段内平均速度恰为 v/2，所以单段距离 = <b>0.75·v·T</b> 格（= 1.5 × v·T/2）。</li>
+     * </ul>
+     * 实测（T=32）：普通 48 刻 / 4.8 格 / 0.00625 格/刻²；重载 48 刻 / 3.2 格 / 0.0041667；
+     * 高速 48 刻 / 12.0 格 / 0.015625。三型时长相同、距离与峰值随巡航速度成比例——
+     * 这就是"加/减速几何由 T 与 v 唯一决定"的含义（站距太短时改用 {@link #rampPlan} 的收尾斜坡，见类注释）。
      *
      * <p>加速度仍与 {@link ElevatorParameters#MAX_ACCELERATION} 取较小值：把
-     * {@code CRUISE_RAMP_TICKS} 调得特别小时，加速度会先撞上硬上限，加/减速段比 T 短——
-     * 这是"不许把乘客甩出去"的底线，而不是正常工作点。
+     * {@code CRUISE_RAMP_TICKS} 调得特别小时（{@code v/T > 0.15}），工作点会先撞上硬上限，
+     * 加/减速段比 1.5·T 更短——这是"不许把乘客甩出去"的底线，而不是正常工作点。
      *
      * @param cruiseSpeed 巡航速度上限（格/刻）；非法时退化为 {@link ElevatorParameters#SPEED}
      * @param rampTicks 从静止加到该巡航速度所需的刻数；非有限或非正时退化为
@@ -145,7 +156,8 @@ public final class MotionProfile {
         double speed = positive(cruiseSpeed, ElevatorParameters.SPEED);
         double ramp = Double.isFinite(rampTicks) && rampTicks > 0 ? rampTicks : ElevatorParameters.CRUISE_RAMP_TICKS;
         double acceleration = Math.min(speed / ramp, ElevatorParameters.MAX_ACCELERATION);
-        // 斜坡时长取 T/2（而不是"从 0 加到 a_p 所需的最短时长"），加速度波形因此是等腰三角形。
+        // jerk 与加速度上限配套：由它解出的最短斜坡一定会触顶（见方法注释），
+        // 于是实际波形是"斜坡 T/2 + 平台 T/2 + 回落 T/2"的梯形，而不是三角形。
         double jerk = 2 * acceleration / ramp;
         return new MotionProfile(speed, acceleration, jerk);
     }

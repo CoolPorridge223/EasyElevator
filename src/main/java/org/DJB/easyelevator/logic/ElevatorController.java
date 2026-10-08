@@ -11,7 +11,7 @@ import java.util.List;
  * 所有世界查询都通过 {@link Environment} 回调注入，因此整个类不引用任何 Minecraft 类，
  * 可以脱离游戏做单元测试，并且行为完全确定（同一输入序列必然得到同一输出）。</p>
  *
- * <p>在整体架构中的位置：服务端权威。AbstractCabinEntity（及其四个子类：普通 / 高速 / 观光 / 强力）每刻调用 {@link #tick(double, Environment)}，
+ * <p>在整体架构中的位置：服务端权威。AbstractCabinEntity（及其四个子类：普通 / 高速 / 观光 / 重载）每刻调用 {@link #tick(double, Environment)}，
  * 用匿名 Environment 实现把 valid/canMove/doorwayBlocked/arrived/outOfPassengerNumLimit 这些世界查询喂进来；
  * 状态机产出的 phase/door/target 再由服务端同步给客户端，客户端只做只读渲染与镜头插值。
  * <b>运动形状委托给 {@link MotionProfile}</b>：状态机只决定"什么时候能走、往哪走"，每刻向曲线索取
@@ -81,13 +81,33 @@ public final class ElevatorController {
      */
     public record HallCall(long id, int y, boolean up) { }
 
-    /** 本次停靠的厅外服务状态；served 为 NONE 时等待下一程方向，否则本方向已经认领。 */
+    /**
+     * <b>本次开门停留</b>（一次停靠会话）的厅外服务状态：停在哪个站点、已认领了哪个方向。
+     *
+     * <p>为什么需要它：同一层可能有上行与下行两条独立呼叫，轿厢到站时<b>不能</b>把两盏灯一起熄掉
+     * （那等于"我还没打算往那边走就替乘客撤销了请求"）。于是到站先把这场"停靠会话"记下来：
+     * <ul>
+     *   <li>只有一条呼叫 → 直接认领它的方向（{@link #arriveAtStation} 立刻清灯）；</li>
+     *   <li>两条呼叫都有 → {@code served = NONE}：两盏灯都留着，等这一趟<b>实际要往哪边开</b>
+     *       在 {@link #prepareDeparture} 里明确（或等轿厢在某层换向时）再认领其中一条；</li>
+     *   <li>会话持续到轿厢离开该站（{@link #atServiceStation} 变假）为止；期间
+     *       {@link #deferredHere} 会让"最近站选择"跳过这条呼叫，避免把它当成零距离任务就地消费掉。</li>
+     * </ul>
+     *
+     * <p>随存档保存（{@code StopService} + {@code StopService.Served}），因为"这次停靠还没认领方向"
+     * 这件事跨越保存/重进必须延续：读档后若把它当成"没停过"，轿厢会重新选站、把已经服务过的方向
+     * 再跑一趟。旧存档没有这个字段时有 {@link #recoverStopService} 兜底。
+     *
+     * @param station 本次停靠的站点（不可为 null）
+     * @param served 已认领的方向；{@link Travel#NONE} = 还没认领，等这一程方向明确
+     */
     public record StopService(Stop station, Travel served) {
         public StopService {
             java.util.Objects.requireNonNull(station);
             java.util.Objects.requireNonNull(served);
         }
     }
+
     /**
      * 世界查询回调：让纯 Java 状态机在不引用 Minecraft 类的前提下感知世界。
      * 实现方是 AbstractCabinEntity 中的匿名类，在每次 tick() 内同步调用，返回结果只对本次调用有效。
@@ -134,7 +154,7 @@ public final class ElevatorController {
          *
          * <p>只由轿厢型号决定：状态机不认识"限载几人"，它只问这一句。实现方（{@code AbstractCabinEntity}）
          * 负责把"限载 0 或负数 = 不限载"这条规则落实掉，因此普通 / 高速 / 观光三型恒返回 false，
-         * 只有强力型号会在人数超过 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 时为真。
+         * 只有重载型号会在人数超过 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 时为真。
          *
          * <p>调用时机：{@link #tick} 在 OPEN 与 CLOSING 两个阶段各问一次（门开着的时候才需要判超载）。
          * 本方法必须<b>无副作用</b>，且对同一次 tick 内的重复调用返回同一个值。
@@ -216,8 +236,22 @@ public final class ElevatorController {
      * 保守地把目标当成必须停靠的选站，不延长接客行程。双向呼叫由 StopService 等待下一程决定。
      */
     private Travel targetHallDirection = Travel.NONE;
+    /**
+     * 当前"停靠会话"（{@link StopService}）；null = 车体不在任何刚停靠过的站点上。
+     *
+     * <p>它由 {@link #arriveAtStation} 在到站时登记、在 {@link #prepareDeparture} 里结算，
+     * 并在车体离开该站后自然失效（判据是"高度还对不对得上"，因此不需要额外的清理时机）。
+     * 随存档保存——见 {@link StopService} 的说明。
+     */
     private StopService stopService;
-    /** 旧存档第一次 tick 时，根据真实位置恢复停靠状态，不能猜测已完成了哪个方向。 */
+    /**
+     * 旧存档第一次 tick 时，根据<b>真实位置</b>恢复停靠状态，而不是猜测完成了哪个方向。
+     *
+     * <p>2.3.0 之前没有 {@code StopService} 字段：这样的存档读进来时不知道"这一层是不是刚停过、
+     * 认领过哪一边"，于是置位本标志，由 {@link #tick} 在第一刻用当前位置补出会话，之后清掉。
+     * 保守原则：宁可把目标当成"必须停靠的选站"（不延长接客行程），也不凭空补一条已服务的呼叫——
+     * 后者会让一盏灯永远亮着（请求看起来被服务了，实际没人来）。
+     */
     private boolean recoverStopService;
     /**
      * 是否正处于故障（受阻暂停）之中，见 {@link #faulted()} 与 {@link Environment#canResume()}。
@@ -240,7 +274,8 @@ public final class ElevatorController {
 
     /**
      * 用默认速度（{@link ElevatorParameters#SPEED}）构造状态机，即普通轿厢与观光轿厢。
-     * 保留无参构造：既有测试与调用方按默认速度使用状态机，不必关心轿厢型号。
+     * 保留无参构造：既有测试与调用方按默认速度使用状态机，不必关心轿厢型号
+     * （重载与高速型号分别用 {@link ElevatorParameters#LOW_SPEED} / {@link ElevatorParameters#HIGH_SPEED} 显式构造）。
      */
     public ElevatorController() { this(ElevatorParameters.SPEED); }
 
@@ -266,7 +301,7 @@ public final class ElevatorController {
         this.profile = MotionProfile.forCruiseSpeed(this.speed, rampTicks);
     }
 
-    /** @return 本实例的巡航速度上限（单位：格/刻）：普通 0.20、高速 0.50；只读，运行中不变。 */
+    /** @return 本实例的巡航速度上限（单位：格/刻）：重载 0.1333、普通/观光 0.20、高速 0.50；只读，运行中不变。 */
     public double speed() { return speed; }
 
     /**
@@ -994,18 +1029,38 @@ public final class ElevatorController {
      * 副作用：覆盖 phase/door/target/queue/hallCalls/travel/dwell，旧入口保守重建停靠状态；MOVING 降级为 BLOCKED 且门置 0。
      * 为什么：载入时不存在“正在运动”的合法状态（既没有上一刻位置也无从继续插值），
      * 降级为 BLOCKED 后由 tick() 先校验线路有效性再恢复运行，避免恢复出一条穿墙的行程。
+     * @see #restore(Phase, float, Stop, List, List, Travel, StopService, Travel)
      */
     public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls, Travel travel) {
         restore(phase, door, target, pending, calls, travel, null);
     }
 
-    /** 含停靠服务快照的恢复入口；旧存档传 null，第一次 tick 按真实位置保守恢复。 */
+    /**
+     * 含"停靠服务快照"的恢复入口：多传一个 {@link StopService}。
+     *
+     * <p>旧存档（或调用方拿不到会话时）传 {@code null}：本方法会把 {@code recoverStopService} 置位，
+     * 由第一次 {@link #tick} 按真实位置保守恢复停靠状态，而不是凭空认领一个方向。
+     * 目标来源按"未知"处理（{@link Travel#NONE}），即把当前目标当成必须停靠的选站。
+     *
+     * @param service 存档中保存的停靠会话；null = 旧存档/未知
+     */
     public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls,
                         Travel travel, StopService service) {
         restore(phase, door, target, pending, calls, travel, service, Travel.NONE);
     }
 
-    /** 保存目标来源，使纯厅呼接客在读档后仍可重排；旧存档来源未知时保守地保留停靠。 */
+    /**
+     * 完整恢复入口（2.3.0 起的生产路径）：多传"当前目标来自哪条方向的厅外呼叫"。
+     *
+     * <p>为什么连这个也要存：它能决定"到站时熄哪一盏灯"。若读档后丢掉它，纯厅呼接客的行程
+     * （目标来自厅外呼叫、不是车内选站）就会被当成车内选站，{@link #retarget} 于是不再允许它被顺路改写，
+     * 双方向的剩余呼叫也只能等到最后一起清——表现为"读档后那盏灯要等很久才熄"。
+     *
+     * <p>保守校验：只有当目标确实还在、且该方向上确实还有呼叫时才采用存档里的来源，
+     * 否则退回 {@link Travel#NONE}（不猜）。
+     *
+     * @param targetHallDirection 存档中保存的目标来源方向；null 或与实际不符时按 {@link Travel#NONE}
+     */
     public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls,
                         Travel travel, StopService service, Travel targetHallDirection) {
         this.phase = phase; this.door = Math.max(0, Math.min(1, door)); this.target = target;

@@ -1,10 +1,10 @@
 {
-  "item.easyelevator.cargo_hint": "停稳开门后，在轿厢内潜行右键打开 27 格货舱。",
+  "item.easyelevator.cargo_hint": "在轿厢内潜行右键打开 27 格货舱。",
   "screen.easyelevator.cargo": "重载电梯 · 货舱",
   "screen.easyelevator.cargo_count": "货物：%s / 1728 件",
   "screen.easyelevator.cargo_capacity": "当前限载：%s / 20 人",
   "screen.easyelevator.cargo_rule": "27 格货舱。每 128 件占 1 人载重，不足一档也计入；每 288 件显示一个货箱。按实际件数计，容器内物品不另计。装卸时保持开门，关闭面板后恢复运行。",
-  "message.easyelevator.cargo_stopped": "请在电梯停稳、门完全打开后装卸货物。",
+  "message.easyelevator.cargo_stopped": "当前状态无法装卸货物。",
   "message.easyelevator.cargo_space": "请让乘客或动物离开轿厢后部货箱区域后继续装货。",
   "itemGroup.easyelevator": "简易电梯",
   "block.easyelevator.elevator_rail": "电梯轨道",

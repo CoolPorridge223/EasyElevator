@@ -48,7 +48,7 @@ import java.util.UUID;
  * <p>为什么要有这一层：模组提供四种轿厢——普通轿厢 {@link CabinEntity}、
  * 高速轿厢 {@link HighSpeedCabinEntity}（巡航速度是普通的 {@link ElevatorParameters#HIGH_SPEED} 倍，
  * 且加/减速段更长）、观光轿厢 {@link ObservationCabinEntity}（四面墙换成玻璃）、
- * 强力轿厢 {@link PowerfulCabinEntity}（限载 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人，
+ * 重载轿厢 {@link PowerfulCabinEntity}（限载 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人，
  * 外壳不变、内饰换重载件）。四者的运动学、乘客处理、
  * 门联锁、存档与同步<b>完全相同</b>，差别只有三项：构造时传入的巡航速度与限载人数，以及子类覆写的
  * {@link #cabinItem()}（回收时掉落哪一种物品）、{@link #glassWalls()} 与 {@link #heavyDuty()}
@@ -111,7 +111,7 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /**
      * 本型轿厢的限载人数（构造时注入，运行中不变）：<b>0 或负数 = 不限载</b>（普通 / 高速 / 观光），
-     * 强力型号用 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。判超载见 {@link #overloaded()}。
+     * 重载型号用 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。判超载见 {@link #overloaded()}。
      */
     private final int passengerNumLimit;
 
@@ -223,13 +223,17 @@ public abstract class AbstractCabinEntity extends Entity {
      *             {@code easyelevator:high_speed_cabin}、{@code easyelevator:observation_cabin}、
      *             {@code easyelevator:powerful_cabin}）
      * @param world 所在世界
-     * @param speed 本型轿厢的巡航速度上限（格/刻）：普通 / 观光 / 强力用 {@link ElevatorParameters#SPEED}，
-     *              高速用 {@link ElevatorParameters#HIGH_SPEED}。用构造参数而不是子类覆写方法，
+     * @param speed 本型轿厢的巡航速度上限（格/刻）：普通 / 观光用 {@link ElevatorParameters#SPEED}、
+     *              高速用 {@link ElevatorParameters#HIGH_SPEED}、重载用 {@link ElevatorParameters#LOW_SPEED}。
+     *              用构造参数而不是子类覆写方法，
      *              是为了避免"父类构造期间调用子类方法"，也让速度天然成为 final 的只读事实。
-     *              加加速度（jerk）由状态机按该速度推出：高速档更小 ⇒ 加/减速段更长。
-     * @param passengerNumLimit 本型轿厢的限载人数：<b>0 或负数 = 不限载</b>
-     *              （普通 / 高速 / 观光），强力型号用 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。
-     *              超过它时状态机进入 {@link ElevatorController.Phase#OVERLOAD}（门保持全开、不走车），
+     *              加速度与 jerk 上限由状态机按该速度与 {@link ElevatorParameters#CRUISE_RAMP_TICKS} 推出
+     *              （见 {@code MotionProfile.forCruiseSpeed}）。
+     * @param passengerNumLimit 本型轿厢的<b>默认</b>限载人数：<b>0 或负数 = 不限载</b>。
+     *              普通 / 高速 / 观光传 {@link ElevatorParameters#PASSENGER_NUM_LIMIT}（8 人）；
+     *              重载传 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}（空舱 20 人）并覆写
+     *              {@link #passengerNumLimit()} 按货量动态下调——因此这个构造参数对重载型号只是<b>基准值</b>。
+     *              超过当前上限时状态机进入 {@link ElevatorController.Phase#OVERLOAD}（门保持全开、不走车），
      *              判据见 {@link #overloaded()}；它同时是渲染后壁载重铭牌上那个数字的来源
      */
     protected AbstractCabinEntity(EntityType<?> type, World world, double speed, int passengerNumLimit) {
@@ -240,12 +244,14 @@ public abstract class AbstractCabinEntity extends Entity {
         this.controller = new ElevatorController(speed); // 速度在构造时一次性注入状态机，运行中不变
     }
 
-    /** @return 本型轿厢的巡航速度上限（格/刻）：普通与观光 0.20，高速 0.50；只读，供渲染/面板/测试读取。 */
+    /** @return 本型轿厢的巡航速度上限（格/刻）：重载 0.1333、普通/观光 0.20、高速 0.50；只读，供渲染/面板/测试读取。 */
     public final double speed() { return speed; }
 
     /**
-     * @return 当前限载人数；0 或负数表示不限载。普通、高速、观光沿用构造时的配置值；
-     *         重载子类按货量动态计算。铭牌与超载判定使用同一方法。
+     * @return 当前限载人数；0 或负数表示不限载。普通、高速、观光沿用构造时的配置值
+     *         （{@link ElevatorParameters#PASSENGER_NUM_LIMIT} = 8 人）；重载子类覆写本方法、按货量动态计算
+     *         （空舱 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人 → 每 128 件少 1 人 → 满载保底 1 人）。
+     *         后壁铭牌与超载判定读的都是本方法，因此"显示的数字"永远等于"判定的数字"。
      */
     public int passengerNumLimit() { return passengerNumLimit; }
 
@@ -289,11 +295,11 @@ public abstract class AbstractCabinEntity extends Entity {
     public boolean glassWalls() { return false; }
 
     /**
-     * 是否是强力轿厢：外壳与普通型号完全相同，但内饰换成"重载"那一套（双扶手、双顶灯、载重铭牌、
+     * 是否是重载轿厢：外壳与普通型号完全相同，但内饰换成"重载"那一套（双扶手、双顶灯、载重铭牌、
      * 防滑钢踏板）。**纯客户端渲染提示**，与 {@link #glassWalls()} 同一性质、同样不写同步字段。
      *
      * <p>为什么不直接用 {@link #passengerNumLimit()} 判断：限载人数是状态机的数据，
-     * "画哪一套内饰"是型号的静态属性；两者恰好同源（只有强力型号限载），但把它们绑在一起
+     * "画哪一套内饰"是型号的静态属性；两者恰好同源（只有重载型号限载），但把它们绑在一起
      * 会让"给普通型号加个限载"这种改动意外改掉它的外观。渲染只认型号，读数据只读数据。
      *
      * @return true 时 {@code CabinRenderer} 在内饰表上叠加 {@code POWERFUL_PARTS} 的强化件
@@ -756,6 +762,11 @@ public abstract class AbstractCabinEntity extends Entity {
      * {@code CabinCrosshairMixin} 会把乘客的准星一律改写成本厢，因此这里对乘客是无条件开面板）。
      * 站在外面的非乘客只收到一条"请进入轿厢"的提示，并返回 PASS 把点击让给身后的方块。
      *
+     * <p><b>子类可以拦截某一种手势</b>：重载轿厢（{@code PowerfulCabinEntity}）把
+     * "厢内潜行右键"改成打开货舱，其余手势仍走本方法——因此"潜行右键"在厢外是回收、在厢内是开货舱，
+     * 两种语义由"是不是乘客"分开。写新的子类时照这个规矩来：只吃掉自己那一种手势，别把父类的
+     * 回收/开面板语义整段复制一遍。
+     *
      * @see #doorsOpen() 门是否完全打开
      */
     @Override
@@ -885,8 +896,8 @@ public abstract class AbstractCabinEntity extends Entity {
 
             /**
              * 本厢此刻是否超载。判据只有一条，写在 {@link AbstractCabinEntity#overloaded()} 里：
-             * 限载人数为正、且厢内玩家数超过它。<b>限载 0 或负数 = 不限载</b>，
-             * 因此普通 / 高速 / 观光三型永远不会因为"车里有个人"而被判超载。
+             * 当前限载人数为正、且厢内玩家数超过它。<b>限载 0 或负数 = 不限载</b>，
+             * 因此把参数改成 0 就能让某一型彻底不判超载；默认配置下三型是 8 人、重载按货量在 1..20 之间变化。
              *
              * @return 超载时为 true；状态机会据此把相位切到
              *         {@link ElevatorController.Phase#OVERLOAD}（门保持全开、不派发行程）

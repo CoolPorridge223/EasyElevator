@@ -32,14 +32,15 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  *
  * <p>在整体架构中的位置：本类只负责“把对象登记进原版注册表并暴露全局单例”，不含任何电梯逻辑；
  * 运行逻辑由 {@link org.DJB.easyelevator.logic.ElevatorController}（纯 Java 状态机）与
- * {@link org.DJB.easyelevator.entity.AbstractCabinEntity}（世界适配层，三个型号的父类）承担。</p>
+ * {@link org.DJB.easyelevator.entity.AbstractCabinEntity}（世界适配层，四个型号的父类）承担。</p>
  *
  * <p>游戏内组件：电梯轨道 {@link #RAIL}、楼层电梯门 {@link #LANDING_DOOR}（注册 ID 仍为
  * {@code easyelevator:call_button}），以及四种共用父类 {@link AbstractCabinEntity} 的轿厢——
- * 普通 {@link #CABIN} / {@link #CABIN_ITEM}、高速 {@link #HIGH_SPEED_CABIN} / {@link #HIGH_SPEED_CABIN_ITEM}
- * （速度 2.5 倍，外观不变）、观光 {@link #OBSERVATION_CABIN} / {@link #OBSERVATION_CABIN_ITEM}
- * （四面玻璃，性能不变）、强力 {@link #POWERFUL_CABIN} / {@link #POWERFUL_CABIN_ITEM}
- * （限载 20 人、内饰换成重载件，外壳与速度不变）。四种轿厢的实体 ID 与物品 ID 一一对应。</p>
+ * 普通 {@link #CABIN} / {@link #CABIN_ITEM}（限载 {@link org.DJB.easyelevator.logic.ElevatorParameters#PASSENGER_NUM_LIMIT} 人）、
+ * 高速 {@link #HIGH_SPEED_CABIN} / {@link #HIGH_SPEED_CABIN_ITEM}（速度 2.5 倍，外观与普通逐面相同）、
+ * 观光 {@link #OBSERVATION_CABIN} / {@link #OBSERVATION_CABIN_ITEM}（四面玻璃，性能不变）、
+ * 重载 {@link #POWERFUL_CABIN} / {@link #POWERFUL_CABIN_ITEM}（速度 2/3、27 格货舱、限载随货量在 1..20 之间变化）。
+ * 四种轿厢的实体 ID 与物品 ID 一一对应；只有重载型号额外注册一个容器菜单 {@link #CARGO_SCREEN}。</p>
  *
  * <p>注册顺序约束：所有注册都必须在 {@link #onInitialize()} 内、且晚于类加载时创建的静态单例字段，
  * 否则可能出现“注册了未初始化的实例”或 Fabric API 未就绪的问题。注册 ID 一经发布不可更改，
@@ -48,6 +49,21 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
 public class Easyelevator implements ModInitializer {
     /** 模组 ID，同时是全部注册 ID 的命名空间；与 fabric.mod.json 中的 id 必须一致。 */
     public static final String MOD_ID = "easyelevator";
+    /**
+     * 重载轿厢货舱的容器菜单类型单例（注册 ID {@code easyelevator:cargo}）。
+     *
+     * <p>整个模组唯一的 {@code ScreenHandlerType}：普通 / 高速 / 观光型号没有容器，选中/门设置等
+     * 面板都是纯客户端屏幕（不改物品栏、不与服务端做槽位事务），只有货舱需要原版的容器同步——
+     * 27 格物品、拖放分配、多人同时装卸、光标物品回收全部由原版事务保证，因此这里老老实实注册一个菜单。
+     *
+     * <p>{@link net.minecraft.resource.featuretoggle.FeatureFlags#VANILLA_FEATURES} 表示本菜单
+     * 不依赖任何实验性世界开关（它只用原版物品与槽位能力），因此在普通存档里也能开。
+     * 类型工厂指向 {@code CargoScreenHandler} 的<b>两参构造器</b>（客户端空壳，见该类的类注释）：
+     * 服务端实例由 {@code PowerfulCabinEntity.interact} 直接 new 出来并绑定轿厢。
+     *
+     * <p>注册顺序：必须在本类的静态初始化里、早于 {@code onInitialize()} 里
+     * {@code PowerfulCabinEntity} 的使用（那个类按名字引用本字段），放在 {@link #MOD_ID} 之后即可。
+     */
     public static final ScreenHandlerType<CargoScreenHandler> CARGO_SCREEN = Registry.register(
             Registries.SCREEN_HANDLER, id("cargo"),
             new ScreenHandlerType<>(CargoScreenHandler::new, FeatureFlags.VANILLA_FEATURES));
@@ -118,26 +134,35 @@ public class Easyelevator implements ModInitializer {
     public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN =
             Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
     /**
-     * 强力电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
+     * 重载电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
      *
-     * <p>碰撞与追踪参数与 {@link #CABIN} 相同（井道尺寸一致），差别有两处：限载
-     * {@link org.DJB.easyelevator.logic.ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人（超过就超载、门不再关），
-     * 以及客户端渲染的"重载"内饰（双扶手、双顶灯、载重铭牌、防滑钢踏板）。外壳、门与速度都与普通轿厢相同。</p>
+     * <p>碰撞与追踪参数与 {@link #CABIN} 完全相同（井道尺寸一致，换型号不需要改建筑），差别有三处：
+     * <ul>
+     *   <li><b>速度</b>：{@link org.DJB.easyelevator.logic.ElevatorParameters#LOW_SPEED}（普通型号的 2/3 ≈ 2.67 格/秒）——"重载"的代价；</li>
+     *   <li><b>限载随货量变化</b>：空舱 {@link org.DJB.easyelevator.logic.ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 人，
+     *       每 128 件货少载 1 人，满载（1728 件）仍可载 6 人；超过当前上限即进入
+     *       {@link org.DJB.easyelevator.logic.ElevatorController.Phase#OVERLOAD}（门保持全开、不派发行程）；</li>
+     *   <li><b>27 格货舱</b>：潜行右键打开（{@link #CARGO_SCREEN}），货物随实体存档，
+     *       并让后部按货量长出最多 6 个可站可撞的木箱。</li>
+     * </ul>
+     * 渲染上另有一层"重载"内饰（双扶手、双顶灯、载重铭牌、防滑钢踏板），见
+     * {@code PowerfulCabinEntity.heavyDuty()}。</p>
      */
     public static final EntityType<PowerfulCabinEntity> POWERFUL_CABIN =
             Registry.register(Registries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
     /**
      * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
      *
-     * <p>三个物品只在"生成哪一种轿厢 / 回收哪一件"上不同，逻辑共用 {@link CabinItem}；
-     * 实体类型用 Supplier 延迟读取，避免与上方静态字段的初始化顺序耦合。</p>
+     * <p><b>四个</b>物品只在"生成哪一种轿厢 / 回收哪一件"上不同，逻辑共用 {@link CabinItem}；
+     * 实体类型用 Supplier 延迟读取，避免与上方静态字段的初始化顺序耦合。
+     * 重载轿厢的物品还多一条 Tooltip 提示（怎么打开货舱），见 {@code CabinItem.appendTooltip}。</p>
      */
     public static final Item CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> CABIN);
     /** 高速轿厢生成物品单例：右键轨道生成高速轿厢（外观与普通一致，速度 2.5 倍）。 */
     public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> HIGH_SPEED_CABIN);
     /** 观光轿厢生成物品单例：右键轨道生成观光轿厢（四面玻璃，性能与普通一致）。 */
     public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> OBSERVATION_CABIN);
-    /** 强力轿厢生成物品单例：右键轨道生成强力轿厢（运载人数更高） */
+    /** 重载轿厢生成物品单例：右键轨道生成重载轿厢（速度 2/3、27 格货舱、限载随货量变化） */
     public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> POWERFUL_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
@@ -187,13 +212,15 @@ public class Easyelevator implements ModInitializer {
     }
 
     /**
-     * Fabric 模组入口：按“方块 -> 物品 -> 实体 -> 物品栏分组 -> 网络”的顺序完成全部注册。
+     * Fabric 模组入口：按“方块 -> 物品 -> 物品栏分组 -> 网络”的顺序完成入表。
      *
-     * <p>顺序不能随意调整：{@link #CABIN_ITEM} 等静态字段在类加载时创建，
-     * 而入表动作必须发生在此方法内；网络通道最后注册，因为其 payload 类型会引用前面已注册的实体类型。</p>
+     * <p>顺序不能随意调整：{@link #CABIN_ITEM} 等静态字段在类加载时创建（实体类型、方块实体类型、
+     * 货舱菜单类型都在那一刻注册），而入表动作必须发生在此方法内；网络通道最后注册，
+     * 因为其 payload 类型会引用前面已注册的实体类型。</p>
      *
-     * <p>副作用：写入 BLOCK / ITEM / ENTITY_TYPE / ITEM_GROUP / SOUND_EVENT 注册表，
-     * 并注册 S2C 与 C2S 自定义数据包。</p>
+     * <p>副作用：写入 BLOCK / ITEM / ITEM_GROUP 注册表，并注册 S2C 与 C2S 自定义数据包。
+     * （ENTITY_TYPE / BLOCK_ENTITY_TYPE / SCREEN_HANDLER / SOUND_EVENT 都是静态字段自注册，
+     * 不经过本方法。）</p>
      */
     @Override
     public void onInitialize() {
@@ -207,7 +234,7 @@ public class Easyelevator implements ModInitializer {
         Registry.register(Registries.ITEM, id("observation_cabin"), OBSERVATION_CABIN_ITEM);
         Registry.register(Registries.ITEM, id("powerful_cabin"), POWERFUL_CABIN_ITEM);
         // 自定义物品栏分组：图标固定用普通轿厢物品；entries 回调在分组内容被构建时执行，
-        // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、三种轿厢），
+        // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、四种轿厢），
         // 避免依赖注册顺序或每次打开物品栏都重建列表。
         Registry.register(Registries.ITEM_GROUP, id("main"), FabricItemGroup.builder()
                 .displayName(Text.translatable("itemGroup.easyelevator"))

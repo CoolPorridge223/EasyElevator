@@ -218,7 +218,7 @@ public class CargoTests implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE)
-    public void loadingHoldsDoorAndBlocksMovingAccess(TestContext ctx) {
+    public void loadingHoldsDoorAndAccessFollowsPassenger(TestContext ctx) {
         var cabin = cabin(ctx);
         var player = ctx.createMockCreativeServerPlayerInWorld();
         player.setPosition(cabin.getX(), cabin.getY()+.2, cabin.getZ()+.2);
@@ -230,7 +230,11 @@ public class CargoTests implements FabricGameTest {
         player.closeHandledScreen();
         ctx.assertTrue(cabin.doorCommand(false), "closing container releases door");
         cabin.tick();
-        ctx.assertTrue(!cabin.canUseCargo(player), "closing/moving phase rejects cargo access");
+        // 货舱能不能操作只看"还是不是厢内乘客"（见 PowerfulCabinEntity.canUseCargo）：与门开没开、
+        // 相位是什么无关。因此关掉面板、门开始关之后，人还在厢内就仍可再开；走出厢门则立即失效。
+        ctx.assertTrue(cabin.canUseCargo(player), "still inside keeps cargo access after the container closes");
+        player.setPosition(cabin.getX() + 8, cabin.getY()+.2, cabin.getZ());
+        ctx.assertTrue(!cabin.canUseCargo(player), "leaving the cabin invalidates cargo access");
         player.discard();
         ctx.complete();
     }

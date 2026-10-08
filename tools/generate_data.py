@@ -174,12 +174,22 @@ def main():
            for key in ['elevator_running', 'elevator_arrival', 'elevator_arrival_custom']})
 
     # --- translations -------------------------------------------------------------
+    # 顺序即 JSON 的键顺序（en 是按下标 zip 上来的），因此新增键时两边必须同时加在同一位置。
     zh = {
+        # 重载轿厢的货舱：物品提示、容器界面标题/统计/规则、两种失败提示。
+        # 数字口径由 CargoLoad 的常量决定（1728 = 27×64、128 件/人、288 件/箱），改常量时这几句要一起改。
+        'item.easyelevator.cargo_hint': '在轿厢内潜行右键打开 27 格货舱。',
+        'screen.easyelevator.cargo': '重载电梯 · 货舱',
+        'screen.easyelevator.cargo_count': '货物：%s / 1728 件',
+        'screen.easyelevator.cargo_capacity': '当前限载：%s / 20 人',
+        'screen.easyelevator.cargo_rule': '27 格货舱。每 128 件占 1 人载重，不足一档也计入；每 288 件显示一个货箱。按实际件数计，容器内物品不另计。装卸时保持开门，关闭面板后恢复运行。',
+        'message.easyelevator.cargo_stopped': '当前状态无法装卸货物。',
+        'message.easyelevator.cargo_space': '请让乘客或动物离开轿厢后部货箱区域后继续装货。',
         'itemGroup.easyelevator': '简易电梯', 'block.easyelevator.elevator_rail': '电梯轨道',
         'block.easyelevator.call_button': '电梯门', 'item.easyelevator.cabin': '电梯轿厢', 'entity.easyelevator.cabin': '电梯轿厢',
         'item.easyelevator.high_speed_cabin': '高速电梯轿厢', 'entity.easyelevator.high_speed_cabin': '高速电梯轿厢',
         'item.easyelevator.observation_cabin': '观光电梯轿厢', 'entity.easyelevator.observation_cabin': '观光电梯轿厢',
-        'item.easyelevator.powerful_cabin': '强力电梯轿厢', 'entity.easyelevator.powerful_cabin': '强力电梯轿厢',
+        'item.easyelevator.powerful_cabin': '重载电梯轿厢', 'entity.easyelevator.powerful_cabin': '重载电梯轿厢',
         'message.easyelevator.no_cabin': '这条线路没有轿厢，请先在轨道上放置轿厢。',
         'message.easyelevator.multiple_cabins': '这条线路存在多个轿厢，请移除多余轿厢。',
         'message.easyelevator.called': '呼叫已加入队列。', 'message.easyelevator.invalid_stop': '站点或线路已变化，或请求队列已满，请检查轨道和电梯门。',
@@ -226,6 +236,14 @@ def main():
         'message.easyelevator.door_sound_no_dialog': '这个游戏进程弹不出文件对话框，请检查启动器参数（不要禁用系统窗口）后重试。',
     }
     en = dict(zip(zh, [
+        # 与上面的 zh 逐位对应；开头七条是货舱。
+        'Sneak-use inside the cabin to open its 27-slot cargo hold.',
+        'Heavy Elevator Cargo',
+        'Cargo: %s / 1728 items',
+        'Passengers: %s / 20',
+        '27 slots. Each started batch of 128 items replaces one passenger; each 288 items adds a crate. Counts individual items, excluding nested contents. Doors stay open while loading. Close this screen to resume service.',
+        'The current condition makes it impossible to load the cargo.',
+        'Move passengers or animals away from the rear cargo area before loading more.',
         'Easy Elevator', 'Elevator Rail', 'Landing Door', 'Elevator Cabin', 'Elevator Cabin',
         'High-Speed Elevator Cabin', 'High-Speed Elevator Cabin',
         'Observation Elevator Cabin', 'Observation Elevator Cabin',

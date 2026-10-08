@@ -17,9 +17,9 @@ import java.util.function.Supplier;
 /**
  * 电梯轿厢生成物品：对电梯轨道使用后，在轨道前方生成一台轿厢。
  *
- * <p>三种轿厢（普通 / 高速 / 观光）共用这一个物品类：它们唯一的行为差别是"生成哪一种实体"，
- * 因此实体类型由构造参数注入，放置校验、扣物品、失败提示与消息键完全共用一份实现，
- * 将来新增型号也只需要再注册一个实体类型与一个物品。
+ * <p><b>四个</b>轿厢（普通 / 高速 / 观光 / 重载）共用这一个物品类：它们唯一的行为差别是
+ * "生成哪一种实体"，因此实体类型由构造参数注入，放置校验、扣物品、失败提示与消息键完全共用一份实现，
+ * 将来新增型号也只需要再注册一个实体类型与一个物品。</p>
  *
  * <p>在整体架构中的位置：属于“服务端权威”链路的入口动作之一。世界查询与实体生成只在服务端执行，
  * 客户端仅做预测性返回，真正的成败判定由 {@link ActionResult} 回传给客户端——因此
@@ -45,6 +45,22 @@ public class CabinItem extends Item {
      */
     public CabinItem(Settings s, Supplier<EntityType<? extends AbstractCabinEntity>> type) { super(s); this.type = type; }
 
+    /**
+     * 物品提示：<b>只有重载轿厢</b>多一行"怎么打开货舱"的说明，其余三种保持原版观感（不额外加行）。
+     *
+     * <p>为什么按实体类型判断而不是给每个物品加一个"提示键"字段：全模组只有这一条型号专属提示，
+     * 为此往构造参数里塞一个可空字符串，会让四个物品的注册都多一个读不出意图的参数；
+     * 直接比一次 {@link Easyelevator#POWERFUL_CABIN} 更直白，而且新增型号时不会被漏掉——
+     * 只有需要提示时才在这里加一个分支。
+     *
+     * <p>用灰色（{@link Formatting#GRAY}）：与物品名区分开、读起来像说明文字，
+     * 而不是像附魔（浅紫）或警告（红）那样的"属性"。
+     *
+     * @param stack 本物品的物品堆
+     * @param context 提示上下文（当前未使用）
+     * @param tooltip 提示行列表，直接追加
+     * @param tooltipType 提示类型（当前未使用）
+     */
     @Override public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType tooltipType) {
         super.appendTooltip(stack, context, tooltip, tooltipType);
         if (type.get() == Easyelevator.POWERFUL_CABIN)

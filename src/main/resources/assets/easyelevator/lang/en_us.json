@@ -1,10 +1,10 @@
 {
-  "item.easyelevator.cargo_hint": "Sneak-use inside while stopped with doors open: 27 cargo slots.",
+  "item.easyelevator.cargo_hint": "Sneak-use inside the cabin to open its 27-slot cargo hold.",
   "screen.easyelevator.cargo": "Heavy Elevator Cargo",
   "screen.easyelevator.cargo_count": "Cargo: %s / 1728 items",
   "screen.easyelevator.cargo_capacity": "Passengers: %s / 20",
   "screen.easyelevator.cargo_rule": "27 slots. Each started batch of 128 items replaces one passenger; each 288 items adds a crate. Counts individual items, excluding nested contents. Doors stay open while loading. Close this screen to resume service.",
-  "message.easyelevator.cargo_stopped": "Wait until the elevator stops with its doors fully open before loading cargo.",
+  "message.easyelevator.cargo_stopped": "The current condition makes it impossible to load the cargo.",
   "message.easyelevator.cargo_space": "Move passengers or animals away from the rear cargo area before loading more.",
   "itemGroup.easyelevator": "Easy Elevator",
   "block.easyelevator.elevator_rail": "Elevator Rail",
