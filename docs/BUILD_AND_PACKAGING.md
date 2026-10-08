@@ -57,7 +57,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 
 `--version` 中检查 Gradle=8.14.3，Launcher JVM/Daemon JVM 使用 Java 21。`build` 会编译客户端与服务端、处理资源，再生成重映射的正式 JAR。
 
-**关于测试**：java 插件自动创建的 `test` / `testClasses` 任务已在 `build.gradle` 里关闭（工程内没有 `src/test`），所以 `build` 只做编译与打包。另有一套**可选开启**的乘客回归测试（`src/gametest`：12 个 `@GameTest` + 1 个客户端冒烟测试），只有显式加 `-PriderTests` 才会被 Loom 创建成 `easyelevator-test` 测试模组，**永远不会进发行包**：
+**关于测试**：java 插件自动创建的 `test` / `testClasses` 任务已在 `build.gradle` 里关闭（工程内没有 `src/test`），所以 `build` 只做编译与打包。另有一套**可选开启**的乘客回归测试（`src/gametest`：27 个 `@GameTest`（12 个乘客、15 个厅呼调度）+ 1 个客户端冒烟测试），只有显式加 `-PriderTests` 才会被 Loom 创建成 `easyelevator-test` 测试模组，**永远不会进发行包**：
 
 ```powershell
 # 服务端 GameTest（12 项乘客回归）

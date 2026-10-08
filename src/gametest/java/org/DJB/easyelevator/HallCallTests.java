@@ -28,21 +28,12 @@ public class HallCallTests implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE) public void interruptedDeparture(TestContext ctx) { HallCallRegression.interruptedDeparture(); ctx.complete(); }
     @GameTest(templateName = EMPTY_STRUCTURE) public void openDoorCallsAndIdle(TestContext ctx) { HallCallRegression.openDoorCallsAndIdle(); ctx.complete(); }
     @GameTest(templateName = EMPTY_STRUCTURE) public void existingDispatchAndLegacyRestore(TestContext ctx) { HallCallRegression.existingDispatchAndLegacyRestore(); ctx.complete(); }
+    @GameTest(templateName = EMPTY_STRUCTURE) public void reversePickupSweep(TestContext ctx) { HallCallRegression.reversePickupSweep(); ctx.complete(); }
+    @GameTest(templateName = EMPTY_STRUCTURE) public void pickupPreservesCarStops(TestContext ctx) { HallCallRegression.pickupPreservesCarStops(); ctx.complete(); }
 
     @GameTest(templateName = EMPTY_STRUCTURE)
     public void entityRoutesAndNbt(TestContext ctx) {
-        BlockPos rail = ctx.getAbsolutePos(new BlockPos(2, 4, 1));
-        for (BlockPos pos : BlockPos.iterate(rail.add(-1, 0, 1), rail.add(1, 15, 3)))
-            ctx.getWorld().setBlockState(pos, Blocks.AIR.getDefaultState(), 2);
-        for (int y = 0; y <= 14; y++) ctx.getWorld().setBlockState(rail.up(y),
-                Easyelevator.RAIL.getDefaultState().with(ElevatorRailBlock.FACING, Direction.SOUTH), 2);
-        for (int floor = 0; floor < 3; floor++) {
-            BlockPos root = rail.up(floor * 6).south(3);
-            for (int column = 0; column < 3; column++) for (int level = 0; level < 3; level++)
-                ctx.getWorld().setBlockState(root.offset(Direction.WEST, column - 1).up(level),
-                        Easyelevator.LANDING_DOOR.getDefaultState().with(LandingDoorBlock.FACING, Direction.SOUTH)
-                                .with(LandingDoorBlock.COLUMN, column).with(LandingDoorBlock.LEVEL, level), 2);
-        }
+        BlockPos rail = buildShaft(ctx, 3);
         BlockPos middle = rail.up(6).south(3);
         for (var type : List.of(Easyelevator.CABIN, Easyelevator.HIGH_SPEED_CABIN,
                 Easyelevator.OBSERVATION_CABIN, Easyelevator.POWERFUL_CABIN)) {
@@ -80,6 +71,67 @@ public class HallCallTests implements FabricGameTest {
                         }
                         ctx.assertTrue(arrivals.equals(List.of(1, destination, 1)), "entity route " + arrivals);
                         ctx.assertTrue(savedCommitted && cabin.hallCalls().isEmpty(), "NBT restored route completes");
+                    } finally {
+                        cabin.discard();
+                    }
+                }
+        }
+        ctx.complete();
+    }
+
+    private static BlockPos buildShaft(TestContext ctx, int floors) {
+        BlockPos rail = ctx.getAbsolutePos(new BlockPos(2, 4, 1));
+        for (BlockPos pos : BlockPos.iterate(rail.add(-1, 0, 1), rail.add(1, floors * 6 - 3, 3)))
+            ctx.getWorld().setBlockState(pos, Blocks.AIR.getDefaultState(), 2);
+        for (int y = 0; y < floors * 6 - 3; y++) ctx.getWorld().setBlockState(rail.up(y),
+                Easyelevator.RAIL.getDefaultState().with(ElevatorRailBlock.FACING, Direction.SOUTH), 2);
+        for (int floor = 0; floor < floors; floor++) {
+            BlockPos root = rail.up(floor * 6).south(3);
+            for (int column = 0; column < 3; column++) for (int level = 0; level < 3; level++)
+                ctx.getWorld().setBlockState(root.offset(Direction.WEST, column - 1).up(level),
+                        Easyelevator.LANDING_DOOR.getDefaultState().with(LandingDoorBlock.FACING, Direction.SOUTH)
+                                .with(LandingDoorBlock.COLUMN, column).with(LandingDoorBlock.LEVEL, level), 2);
+        }
+        return rail;
+    }
+
+    /** 四型号 × 上下镜像 × 纯接客/已选站；真正写读实体 NBT 后，再插入远端呼叫。 */
+    @GameTest(templateName = EMPTY_STRUCTURE)
+    public void reversePickupSourceNbt(TestContext ctx) {
+        BlockPos rail = buildShaft(ctx, 4);
+        for (var type : List.of(Easyelevator.CABIN, Easyelevator.HIGH_SPEED_CABIN,
+                Easyelevator.OBSERVATION_CABIN, Easyelevator.POWERFUL_CABIN)) {
+            for (boolean mirror : new boolean[]{false, true})
+                for (boolean carStop : new boolean[]{false, true}) {
+                    int start = mirror ? 0 : 3, middleFloor = mirror ? 2 : 1, endFloor = mirror ? 3 : 0;
+                    BlockPos middle = rail.up(middleFloor * 6).south(3), end = rail.up(endFloor * 6).south(3);
+                    AbstractCabinEntity cabin = type.create(ctx.getWorld());
+                    cabin.initialize(rail.up(start * 6), Direction.SOUTH);
+                    ctx.getWorld().spawnEntity(cabin);
+                    try {
+                        ctx.assertTrue(cabin.requestHallCall(middle, !mirror), "near reverse call accepted");
+                        for (int i = 0; i < 300 && Math.abs(cabin.getY() - rail.getY() - start * 6) < .5; i++) cabin.tick();
+                        ctx.assertTrue(cabin.phase() == Phase.MOVING, "pickup moving before save");
+                        if (carStop) ctx.assertTrue(cabin.requestStop(middle), "explicit destination accepted");
+                        NbtCompound saved = new NbtCompound();
+                        cabin.writeNbt(saved);
+                        ctx.assertTrue(saved.getString("TargetHallDirection").equals(carStop ? "NONE" : mirror ? "DOWN" : "UP"),
+                                "persist pickup versus car-stop source");
+                        cabin.readNbt(saved);
+                        ctx.assertTrue(cabin.requestHallCall(end, !mirror), "far reverse call accepted after restore");
+                        List<Integer> arrivals = new ArrayList<>();
+                        List<Integer> expected = carStop ? List.of(middleFloor, endFloor, middleFloor) : List.of(endFloor, middleFloor);
+                        for (int tick = 0; tick < 2400 && arrivals.size() < expected.size(); tick++) {
+                            Phase previous = cabin.phase();
+                            cabin.tick();
+                            if (cabin.phase() == Phase.OPENING && previous != Phase.OPENING) {
+                                arrivals.add((int) Math.round((cabin.getY() - rail.getY()) / 6));
+                                if (arrivals.size() < expected.size())
+                                    ctx.assertTrue(cabin.hasHallCall(middle, !mirror), "middle lamp stays lit until return service");
+                            }
+                        }
+                        ctx.assertTrue(arrivals.equals(expected), "restored pickup route " + arrivals + " expected " + expected);
+                        ctx.assertTrue(cabin.hallCalls().isEmpty(), "restored pickup clears all hall calls");
                     } finally {
                         cabin.discard();
                     }

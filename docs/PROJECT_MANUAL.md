@@ -373,7 +373,7 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 - `.\tools\build.ps1 -Jdk <JDK21> -Task runGameTest`（或 `-Task runRiderClient`）——脚本会自动补上 `-PriderTests`；
 - 或直接 `.\gradlew.bat -PriderTests runGameTest`（同族任务：`runGameTest`、`runClientGameTest`、`runRiderClient`）。
 
-日常验收仍以 [TESTING.md](TESTING.md) 的人工清单为准；GameTest 只覆盖乘客移动 / 历史补偿这类可自动化的回归。
+日常验收仍以 [TESTING.md](TESTING.md) 的人工清单为准；GameTest 覆盖乘客移动、历史补偿和厅呼调度等可自动化的回归。
 
 ### 3.3 可脱离 Minecraft 的「叶子」类
 
@@ -463,7 +463,7 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 
 【运行到站 → 开门】服务端每刻（见 4.2）
   controller.tick
-    └─ y == target.y() → env.arrived(stop) + serveStation + phase=OPENING
+    └─ y == target.y() → env.arrived(stop) + arriveAtStation + phase=OPENING
   OPENING 结束 → phase=OPEN，dwell=DWELL_TICKS
   AbstractCabinEntity.tick 末尾
     └─ LandingDoorBlock.refresh(每个站点)
@@ -514,7 +514,7 @@ tick(y, env)
      │    ├─ dwell--
      │    └─ dwell==0                                   停留到点就关门（无请求也一样）
      │         ├─ target = select(y)
-     │         └─ target.y == y → serveStation(y); dwell=DWELL_TICKS
+     │         └─ target.y == y → arriveAtStation(y); dwell=DWELL_TICKS
      │            否则（含 target==null）phase = CLOSING   ← 关到全闭后停在 MOVING、无目的站
      ├─ CLOSING
      │    ├─ env.outOfPassengerNumLimit() → phase=OPENING（超载：把门重新打开，见 Phase#OVERLOAD）
@@ -531,7 +531,7 @@ tick(y, env)
      │    ├─ !env.canMove(y,next) → phase=BLOCKED; stopMotion()（曲线作废，速度清零）
      │    ├─ y = next; profileTick++
      │    ├─ 曲线走完 → 残余 ≤ POSITION_EPSILON 时吸附到站点高度
-     │    └─ y == target.y → y=target.y; env.arrived; serveStation; phase=OPENING; stopMotion()
+     │    └─ y == target.y → y=target.y; env.arrived; arriveAtStation; phase=OPENING; stopMotion()
      ├─ OPENING
      │    ├─ door += 1/DOOR_TICKS
      │    └─ door>0.9999 → door=1; phase=OPEN; dwell=DWELL_TICKS
@@ -554,9 +554,10 @@ select(y)  ← 派车核心
  ├─ travel==NONE → travel = initialTravel(y)
  ├─ ① nearest(y, travel, aheadOnly=false, sameFloorOnly=true) → take()   本层就地开门
  ├─ ② nearest(y, travel, aheadOnly=true,  sameFloorOnly=false) → take()  顺路可服务（选站 + 同向厅外）
- ├─ ③ oldestAheadHallCall(y, travel, includeHere=false) → take()         前方只剩反方向呼叫也先去
+ ├─ ③ furthestReverseHallCall(y, travel, includeHere=false) → take()      前方只剩反向呼叫时先到最远端
  └─ ④ travel = opposite(travel)
-      ├─ oldestAheadHallCall(y, travel, includeHere=true) → take()（含本层）
+      ├─ nearest(y, travel, true, false) → take()（含本层的顺路请求）
+      ├─ furthestReverseHallCall(y, travel, includeHere=true) → take()
       ├─ nearest(y, null, false, false) → take()（按距离兜底）
       └─ 都没有 → travel 复原; null
       └─ 命中后：travel = directionTowards(y, any.stop().y())   服务方向取实际行驶方向
@@ -564,16 +565,17 @@ select(y)  ← 派车核心
 retarget(y)  ← 运行途中改道
  ├─ travel = directionTowards(y, target.y())
  ├─ ahead = nearest(y, travel, aheadOnly=true, false)
- ├─ ahead==null || ahead.y==target.y → 不动
+ ├─ 纯反向厅呼目标 → 优先 ahead，否则取 furthestReverseHallCall（允许沿原方向延长接客行程）
+ ├─ 车内选站/同向厅呼目标：ahead==null || ahead.y==target.y → 不动
  ├─ 严格更近才改道（加 POSITION_EPSILON 容差）
- ├─ insertOrdered(target)     原目标放回队列，不丢站
+ ├─ 仅车内选站 insertOrdered(target)；厅呼仍在 hallCalls，保持方向
  └─ target = take(ahead)
 
-serveStation(stationY)  ← 到站清扫
- ├─ served = targetHallDirection != NONE ? targetHallDirection : travel
- ├─ served==NONE → hallCalls.removeIf(c.y==stationY)          旧存档兜底全清
- │   否则        → hallCalls.removeIf(c.y==stationY && c.up==(served==UP))  只清本趟方向
- ├─ queue.removeIf(s.y==stationY)                            清同层重复选站
+arriveAtStation(station)  ← 到站清扫
+ ├─ 同层双向呼叫 → served=NONE，留待 prepareDeparture 按下一程方向认领
+ ├─ 单向呼叫 → 根据 targetHallDirection / travel 认领；与方向不符时仍保留
+ ├─ 保存 StopService；只清本次已认领方向的厅呼
+ ├─ queue.removeIf(s.y==station.y)                           清同层重复选站
  └─ targetHallDirection = NONE
 ```
 
@@ -583,9 +585,9 @@ serveStation(stationY)  ← 到站清扫
 | --- | --- | --- |
 | `insertOrdered` | `request`、`retarget` | 按服务方向插入队列（方向 NONE 时保持插入顺序） |
 | `nearest` | `select`、`retarget` | 候选集里取最近（先选站 FIFO 再厅外呼叫登记顺序，严格更近才替换） |
-| `oldestAheadHallCall` | `select` | 方向前方**按登记先后**的第一条呼叫（不只是同向） |
+| `furthestReverseHallCall` | `select`、`retarget` | 当前行驶方向前方最远的反向呼叫，作为回程接客起点 |
 | `directionTowards` | `retarget`、`select`、`initialTravel` | 由「当前位置 → 目标」求实际行驶方向 |
-| `along` | `nearest`、`oldestAheadHallCall` | 楼层是否位于某方向的前方（含同层，1e-7 容差） |
+| `along` | `nearest`、`furthestReverseHallCall` | 楼层是否位于某方向的前方（含同层，1e-7 容差） |
 | `initialTravel` | `select` | 空闲时由最早的请求决定起始方向 |
 | `take` | `select`、`retarget` | 消费一次选中：选站出队、记录 `targetHallDirection` |
 | `opposite` | `select` | 掉头 |
@@ -785,16 +787,18 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `canOpenDoor(Phase, int targetY, boolean atStation, boolean hasStations)` | 相位、目标 Y、是否停在完整站点、线路是否至少有一扇完整的门 | boolean | **static 纯函数**：`!hasStations`（无站线路，车永远不会动）→ 可用；处于故障 → 可用；`MOVING` 且有目标 → 不可用；否则 `atStation`。**绝不查世界**：四个入参全部来自同步数据与调用方算好的事实，客户端面板直接复用 |
 | `canOpenDoor(boolean atStation, boolean hasStations)` | 同上两个事实 | boolean | 服务端权威版：先用 `faulted` 这个准确记忆（乘客开门脱困后相位已变，它仍为真），其余转发给上面的纯函数。**只允许服务端调用**（客户端的 `railX/railZ` 恒 0，算不出这两个事实） |
 
+当前目标来源通过 `TargetHallDirection` 写入实体 NBT：`UP` / `DOWN` 表示纯厅呼接客，`NONE` 表示车内目的层或未知来源。对当前接客目标再次进行车内选站会将其转为必须停靠的目的层。旧存档缺少该字段时不猜测来源，保留当前目标；后续派车按新规则执行。
+
 #### 私有方法（改动调度时的重点）
 
 | 方法 | 要点 |
 | --- | --- |
 | `insertOrdered(Stop)` | 方向 NONE → 追加（保留先来先服务）；否则按服务方向位置重排 |
-| `select(double y)` | 四步派车：本层就地 → 顺路最近 → 前方最早呼叫 → 掉头兜底 |
-| `retarget(double y)` | 运行途中「严格更近的同方向请求」改道；原目标放回队列 |
-| `serveStation(int stationY)` | 只清本次服务方向的厅外呼叫 + 同层选站 |
+| `select(double y)` | 四步派车：本层就地 → 顺路最近 → 前方反向呼叫最远端 → 掉头后同规则派车 |
+| `retarget(double y)` | 运行中插停更近的顺路请求；纯反向接客可延长到最远端；仅车内目的层放回选站队列 |
+| `arriveAtStation(Stop station)` | 记录停靠服务状态，只清已认领方向的厅呼及同层选站 |
 | `nearest(y, direction, aheadOnly, sameFloorOnly)` | 先选站（FIFO）后厅外（登记序），严格更近才替换 → 结果确定 |
-| `oldestAheadHallCall(y, direction, includeHere)` | 方向前方**登记最早**的呼叫（不是最近） |
+| `furthestReverseHallCall(y, direction, includeHere)` | 前方最远的反向呼叫，确保回程按楼层顺路接客 |
 | `directionTowards(y, stationY)` | 实际行驶方向；同层沿用当前 travel |
 | `initialTravel(y)` | 空闲起始方向：先看队首选站相对位置，再看最早厅外呼叫所在侧（不是按钮方向） |
 | `along / opposite / take / Pick` | 纯辅助 |
@@ -1105,7 +1109,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
   DataTracker(PHASE=CLOSING→MOVING) ──► 门动画；MotionFrame ──► CabinMotion 提交轿厢并托举乘客
   服务端每刻 refresh 楼层门（关闭）
 到站
-  controller: y==target → arrived + serveStation + OPENING
+  controller: y==target → arrived + arriveAtStation + OPENING
   DataTracker(PHASE=OPENING/OPEN, FLOOR=n, TARGET_Y=MIN) ──► 面板与门框文字
   refresh ──► 该站 OPEN=true ──► 门扇跟随门进度打开、交出碰撞
 ```
@@ -1249,7 +1253,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 **验收方式：** 工程内没有 `src/test`；`test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关闭，
 因此 `./gradlew.bat build` 只编译与打包。改完代码后按 [TESTING.md](TESTING.md) 的人工清单进游戏逐项确认——
 重点是乘坐手感、到站对齐、门联锁与防夹、以及多人同时乘坐。另有一套用 `-PriderTests` 可选开启的 GameTest 源集
-`src/gametest/`（12 个 `@GameTest` + 1 个客户端冒烟测试，测试模组永不进发行包），只覆盖乘客移动 / 历史补偿这类
+`src/gametest/`（27 个 `@GameTest`（12 个乘客、15 个厅呼调度）+ 1 个客户端冒烟测试，测试模组永不进发行包），覆盖乘客移动、历史补偿和厅呼调度等
 可自动化的回归，详见 3.2。
 
 ---
@@ -1282,7 +1286,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 10.5 改调度策略
 
-只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景（没有常驻测试套件；另有 `-PriderTests` 可选开启的 `src/gametest` 乘客回归 GameTest，见 3.2 与第 9 节）。重点函数：`select / retarget / insertOrdered / nearest / oldestAheadHallCall / serveStation`。
+只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景（没有常驻测试套件；另有 `-PriderTests` 可选开启的 `src/gametest` 乘客回归 GameTest，见 3.2 与第 9 节）。重点函数：`select / retarget / insertOrdered / nearest / furthestReverseHallCall / arriveAtStation`。
 
 ### 10.6 新增网络包
 
@@ -1314,9 +1318,9 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 运行途中保存退出后乘客掉出电梯 | 乘客名册丢失或等待窗口被绕过 | `tickPassengers`、`Riders` NBT、`RIDER_WAIT_TICKS` |
 | 高速车跳过整格站点 | 单刻位移 ≥ 1 格 | 约束 `speed + POSITION_EPSILON ≤ 1` |
 | 断轨/障碍后停在半空 | `BLOCKED` 是暂停不是失败。这时**开门键可用**，乘客可开门脱困；恢复后先关门再继续原行程（见 `PARAMETERS.md` 4.1） | `controller.tick` 末尾的故障脱困段、`canResume` |
-| 按钮一直红着 | 到站只在对应服务方向清扫；反方向呼叫会保留 | `serveStation` 与 `targetHallDirection` |
+| 按钮一直红着 | 到站只在对应服务方向清扫；反方向呼叫会保留 | `arriveAtStation` 与 `targetHallDirection` |
 | 按了楼层却被径直开过 | 缺 `retarget` 的顺路改道 | `controller.retarget` |
-| 后按的楼层抢走目的地 | 派车取「最近」而非「最早」 | `select` 第 ③ 步用 `oldestAheadHallCall`，不是距离 |
+| 反向接客来回折返 | 把登记顺序当成停靠顺序，或把厅呼放进车内选站队列 | `select` / `retarget` 用 `furthestReverseHallCall` 选择回程起点；保持请求来源 |
 | 站点扫不到 / 线路被截断 | 门不完整、朝向不一致、区块未加载 | `LandingDoorBlock.complete`、`ElevatorLine.matches`（未加载一律 false） |
 | 面板/门框显示 `--` | `FLOOR==0`：尚未经过任何站点或线路无效 | `FloorIndicator.floorNumber` 返回 0 |
 | 日志刷 `No data fixer registered for easyelevator:xxx`（每条实体一次；开发环境还会直接抛异常） | 实体类型用了原版**带 id** 的 `EntityType.Builder.build(String)`：`saveable`（默认 true）时会先向原版数据修复器要这个 id 的 choice type，而模组 id 一定不在原版 schema 里 | 改成 Fabric 的无参 `build()`（`Easyelevator.cabinType` 就是这一处），见 12.4 |

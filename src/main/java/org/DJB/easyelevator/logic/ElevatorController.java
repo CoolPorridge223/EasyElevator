@@ -30,8 +30,8 @@ import java.util.List;
  * </ul>
  * 调度规则（{@link #select(double)}，确定性、无饥饿、无空转）：
  * ① 本次停靠的厅外请求单独认领；② 起始方向看最早请求与轿厢的相对位置；
- * ③ 先找当前方向前方可服务的最近请求，再找前方最早登记的反向厅呼；
- * ④ 前方没有任务后才换向，再按登记顺序与距离选择另一侧请求，
+ * ③ 先找当前方向前方可服务的最近请求，再到前方反向厅呼的最远端开始回程接人；
+ * ④ 前方没有任务后才换向，另一侧同样先顺路、再选回程起点，
  * 保证任何请求最终都会被服务。同层双向呼叫到站时暂留两灯，关门前按下一程方向认领一条，
  * 另一条留待返回；没有外层任务时才允许分两次停留原地换向服务。</p>
  *
@@ -212,8 +212,8 @@ public final class ElevatorController {
      * 当前目的站是"哪一条厅外呼叫"带来的（{@link Travel#NONE} = 目的站来自轿厢内选站）。
      *
      * <p>单向呼叫到站时据此决定熄灭哪个方向的呼叫灯：空车跨越方向去接人（例如上行去接"下行"呼叫）时，
-     * 按钮方向与行驶方向相反，只看 {@link #travel} 会清错那一盏灯。读档恢复出的行程没有这个信息，
-     * 退回按行驶方向清扫；方向未知时不清除。双向呼叫由 StopService 等待下一程决定。
+     * 按钮方向与行驶方向相反，只看 {@link #travel} 会清错那一盏灯。此字段随目标存档；旧存档缺失时
+     * 保守地把目标当成必须停靠的选站，不延长接客行程。双向呼叫由 StopService 等待下一程决定。
      */
     private Travel targetHallDirection = Travel.NONE;
     private StopService stopService;
@@ -287,6 +287,8 @@ public final class ElevatorController {
     public float door() { return door; }
     /** @return 当前目的站；空闲或受阻等待时为 null。 */
     public Stop target() { return target; }
+    /** 当前目标的厅呼来源；NONE 表示车内选站或来源未知，不能延后该站。 */
+    public Travel targetHallDirection() { return targetHallDirection; }
     /** @return 轿厢内选站队列的不可变快照（按处理顺序），供服务端同步与存档使用。 */
     public List<Stop> pending() { return List.copyOf(queue); }
     /** @return 待服务的厅外呼叫的不可变快照（按登记顺序），供服务端同步（按钮点亮）与存档使用。 */
@@ -309,7 +311,12 @@ public final class ElevatorController {
      * 本层请求不再入队而只续满停留时间，否则会出现“刚关门又立刻开门”的抖动。
      */
     public boolean request(Stop stop, double y) {
-        if (stop.equals(target) || queue.contains(stop)) return true;
+        if (stop.equals(target)) {
+            // 厅呼目的层现在也承载车内送客请求，必须停靠，不能再延长到更远的接客起点。
+            targetHallDirection = Travel.NONE;
+            return true;
+        }
+        if (queue.contains(stop)) return true;
         if (Math.abs(y - stop.y()) <= ElevatorParameters.POSITION_EPSILON && (phase == Phase.OPEN || phase == Phase.OPENING)) { dwell = DWELL_TICKS; return true; }
         if (queue.size() >= MAX_REQUESTS) return false;
         insertOrdered(stop); // 插入即重排序：队列始终按服务方向的位置顺序排列（见 insertOrdered）
@@ -609,8 +616,7 @@ public final class ElevatorController {
                 if (door > 0) break;
                 if (target == null) target = select(y);
                 if (target == null) break;
-                // 顺路改道：运行途中新插入的请求若在同方向前方且比当前目标更近，就先停它
-                // （例如正驶向 10 层时有人在 5 层按了上行——不重排就会径直开过 5 层）。
+                // 顺路改道：同向送客/接客可插停；纯反向接客可延长到最远端，再掉头顺路接人。
                 retarget(y);
                 // 规划 S 形曲线：目的站变了（开始、改道、读档恢复）就从"当前位置 + 当前速度/加速度"
                 // 重新规划。曲线接受任意初速度，因此改道不会过冲；曲线终点就是站点本身，
@@ -659,7 +665,10 @@ public final class ElevatorController {
                     door = 1; phase = Phase.OPEN; dwell = DWELL_TICKS;
                     // Anti-crush reopening preserves the interrupted request.
                     // 已认领的停靠保留目的站，防止重开改变出发方向；途中脱困仍按原规则归队。
-                    if (target != null && stopService == null) { queue.addFirst(target); target = null; targetHallDirection = Travel.NONE; stopMotion(); }
+                    if (target != null && stopService == null) {
+                        if (targetHallDirection == Travel.NONE) queue.addFirst(target);
+                        target = null; targetHallDirection = Travel.NONE; stopMotion();
+                    }
                 }
             }
             case OVERLOAD -> {
@@ -689,25 +698,10 @@ public final class ElevatorController {
     }
 
     /**
-     * 运行途中重排停站：把"顺路且更近"的请求插到当前目标之前。
-     *
-     * <p><b>为什么必须每刻做</b>：目标一旦定下，原来的实现只会在到站之后才重新选站，
-     * 于是"正驶向 10 层时有人在 5 层按了上行（或选了 5 层）"会被径直开过——这不符合真实电梯的
-     * 集选行为，玩家也会觉得"按了没用"。这里每刻检查一次：当前服务方向上、位于轿厢前方、
-     * 且比当前目标更近的可服务请求，改道先去它。
-     *
-     * <p>处理细节：
-     * <ul>
-     *   <li>只考虑<b>当前服务方向</b>且<b>尚未驶过</b>的请求（{@link #nearest} 的 aheadOnly），
-     *       因此反方向的呼叫不会让轿厢半路掉头，仍按"先走完这一趟再回头"的顺序服务；</li>
-     *   <li>已被驶过的楼层不会被选中（上层判定带 1e-7 容差），所以不会出现"回头补停"；</li>
-     *   <li>换目标时把原目标放回队列（若它本来就是厅外呼叫，呼叫表里的那条本来就还在，
-     *       重复一条也只是多一次同层清扫，不会漏停），因此不会因为改道而丢站；</li>
-     *   <li>严格更近才改道（同层或更远不动），因此不会在两层之间来回抖动。</li>
-     * </ul>
-     *
-     * @param y 轿厢当前高度（格）
-     * 副作用：可能修改 target/queue（放回原目标、取出新的选站），不改 phase/door。
+     * 运行途中只在实际行驶方向前方重排，不回头追已驶过的请求。
+     * 车内选站或同向厅呼目标只允许插入更近的顺路停靠；纯反向厅呼目标尚未接客，
+     * 可以先服务前方的送客/同向呼叫，再到反向呼叫最远端开始回程。
+     * 原厅呼始终留在 hallCalls，不得将它放入无方向的车内队列，否则会错误地提前停靠。
      */
     private void retarget(double y) {
         if (target == null) return;
@@ -717,11 +711,16 @@ public final class ElevatorController {
         // 这里也会在下一 tick 自动纠正。
         travel = directionTowards(y, target.y());
         Pick ahead = nearest(y, travel, true, false);
+        if (targetHallDirection != Travel.NONE && targetHallDirection != travel) {
+            if (ahead == null) ahead = furthestReverseHallCall(y, travel, false);
+            if (ahead != null && !ahead.stop().equals(target)) target = take(ahead);
+            return;
+        }
         if (ahead == null) return;
         if (ahead.stop().y() == target.y()) return; // 最近的就是当前目标：不动
         // 只有"严格更近"才改道：容差与到站判定同源，避免浮点误差导致来回切换。
         if (Math.abs(ahead.stop().y() - y) + ElevatorParameters.POSITION_EPSILON >= Math.abs(target.y() - y)) return;
-        insertOrdered(target);   // 原目标放回队列，掉头或下一轮自然会停
+        if (targetHallDirection == Travel.NONE) insertOrdered(target); // 只放回真正的车内选站；厅呼仍在 hallCalls
         target = take(ahead);    // 新目标（选站会出队；厅外呼叫保留在呼叫表里直到到站）
     }
 
@@ -821,18 +820,16 @@ public final class ElevatorController {
         if (here != null) return take(here);
         // ③ 只要"当前方向的前方还有请求"就继续这个方向（真实电梯的"跑完这一趟再掉头"）：
         //    a. 先挑该方向上真正顺路可服务的（轿厢内选站 + 同向厅外呼叫）；
-        //    b. 若没有，但前方还有反方向的厅外呼叫，也先去它——车已经往这边开了，顺路接上比掉头更符合预期。
-        //       这里按<b>登记先后</b>取最早的那条，而不是"最近"的：同时挂着"1 层上行（先按）"和
-        //       "2 层上行（后按）"时，车应当先下到 1 层（那是它被派去的目的地），再顺路上来接 2 层；
-        //       取最近会让后按的 2 层抢走目的地（用户报告的正是这个现象）。真正的"顺路抢单"只发生在
-        //       {@link #retarget} 里，且仅限同方向呼叫，因此不会破坏"先来先服务"。
+        //    b. 前方只剩反向厅呼时，先到最远端再掉头顺路接人，与登记先后无关。
+        //       例如车在 4 层，2 层和 1 层都按上行：无论谁先按，都先下到 1 层再上行接 2 层。
         Pick servable = nearest(y, travel, true, false);
         if (servable != null) return take(servable);
-        Pick aheadAny = oldestAheadHallCall(y, travel, false); // 严格在前：本层的反方向呼叫交给第 ④ 步
+        Pick aheadAny = furthestReverseHallCall(y, travel, false); // 严格在前：本层的反方向呼叫交给第 ④ 步
         if (aheadAny != null) return take(aheadAny);
-        // ④ 该方向前方确实没有活了：掉头，服务另一侧（同样先来先服务，含反方向孤立呼叫，保证不饥饿、不空转）。
+        // ④ 前方没有任务才掉头；另一侧仍先服务顺路请求，再选择反向接客的回程起点。
         travel = opposite(travel);
-        Pick any = oldestAheadHallCall(y, travel, true); // 这一步含本层：停在本层、另一方向有人按 → 就地变成那个方向
+        Pick any = nearest(y, travel, true, false); // 含本层：掉头后同层呼叫也可就地服务
+        if (any == null) any = furthestReverseHallCall(y, travel, true);
         if (any == null) any = nearest(y, null, false, false);
         if (any == null) { travel = opposite(travel); return null; }
         // 服务方向取"轿厢实际要走的那个方向"，而不是按钮自身的方向：车在 10 层、底层按了"上行"时，
@@ -909,27 +906,27 @@ public final class ElevatorController {
     }
 
     /**
-     * 当前方向上"前方"的任意请求（<b>含反方向的厅外呼叫</b>），取<b>最早登记</b>的那一条。
-     *
-     * <p>只回答一个问题：这条方向还有没有活干（决定"继续往前"还是"掉头"）。真正顺路可服务的请求由
-     * {@link #nearest} 挑（它会把反方向厅外呼叫过滤掉），因此顺序永远是"先服务顺路的，再谈掉头"。
-     *
-     * <p>取最早登记而不是最近的一条：同时挂着"1 层上行（先按）"与"2 层上行（后按）"时，
-     * 车应当先下到它被派去的那一层，再顺路上来接人；取最近会让后按的那层抢走目的地。
+     * 选择当前行驶方向前方、按钮方向相反的最远呼叫，作为回程接客起点。
+     * 下行接上行乘客先到最低呼叫层，上行接下行乘客先到最高呼叫层；同高度保持登记顺序。
      *
      * @param y 轿厢当前高度（格）
      * @param direction 当前服务方向
      * @param includeHere false = 跳过与轿厢同高的呼叫（本层的反方向呼叫留给"就地开门"那一步处理）
-     * @return 该方向前方最早登记的请求；前方什么都没有时返回 null
+     * @return 最远的反向呼叫；没有符合条件的呼叫时返回 null
      */
-    private Pick oldestAheadHallCall(double y,Travel direction,boolean includeHere) {
-        // hallCalls 本身就是登记顺序（新呼叫追加在尾部、到站时按下标删除），因此第一条命中即最早的那条。
+    private Pick furthestReverseHallCall(double y, Travel direction, boolean includeHere) {
+        Pick best = null;
+        double bestDistance = -1;
         for (HallCall c : hallCalls) {
-            if (deferredHere(c, y)) continue;
+            if (deferredHere(c, y) || callDirection(c) != opposite(direction)) continue;
             if (!includeHere && Math.abs(c.y() - y) <= ElevatorParameters.POSITION_EPSILON) continue;
-            if (along(c.y(), y, direction, true)) return new Pick(new Stop(c.id(), c.y()), c);
+            double distance = Math.abs(c.y() - y);
+            if (along(c.y(), y, direction, true) && distance > bestDistance) {
+                best = new Pick(new Stop(c.id(), c.y()), c);
+                bestDistance = distance;
+            }
         }
-        return null;
+        return best;
     }
 
     /**
@@ -1005,6 +1002,12 @@ public final class ElevatorController {
     /** 含停靠服务快照的恢复入口；旧存档传 null，第一次 tick 按真实位置保守恢复。 */
     public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls,
                         Travel travel, StopService service) {
+        restore(phase, door, target, pending, calls, travel, service, Travel.NONE);
+    }
+
+    /** 保存目标来源，使纯厅呼接客在读档后仍可重排；旧存档来源未知时保守地保留停靠。 */
+    public void restore(Phase phase, float door, Stop target, List<Stop> pending, List<HallCall> calls,
+                        Travel travel, StopService service, Travel targetHallDirection) {
         this.phase = phase; this.door = Math.max(0, Math.min(1, door)); this.target = target;
         // distinct() 去重、limit() 截断：防止被手工篡改或旧版本写坏的存档撑爆队列。
         queue.clear(); pending.stream().distinct().limit(MAX_REQUESTS).forEach(queue::addLast);
@@ -1012,7 +1015,8 @@ public final class ElevatorController {
         this.travel = travel == null ? Travel.NONE : travel;
         this.stopService = service;
         this.recoverStopService = service == null;
-        this.targetHallDirection = Travel.NONE;
+        this.targetHallDirection = target != null && targetHallDirection != null && hasHallAt(target, targetHallDirection)
+                ? targetHallDirection : Travel.NONE;
         dwell = DWELL_TICKS;
         // S 形曲线不从存档恢复：载入时不存在"正在运动"的合法状态（既没有上一刻位置也无从继续求值），
         // 因此曲线一律作废、速度归零，由 tick() 在重新校验线路后从静止重新规划。

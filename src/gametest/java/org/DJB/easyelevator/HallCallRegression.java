@@ -47,7 +47,7 @@ public final class HallCallRegression {
             var old = controller;
             controller = new ElevatorController();
             controller.restore(old.phase(), old.door(), old.target(), old.pending(), old.hallCalls(), old.travel(),
-                    legacy ? null : old.stopService());
+                    legacy ? null : old.stopService(), legacy ? Travel.NONE : old.targetHallDirection());
         }
     }
 
@@ -220,12 +220,112 @@ public final class HallCallRegression {
         finish(fault, 1);
     }
 
+    /** 两侧镜像、不同登记顺序与方向记忆；包括派车前、运行中和即将到站时新增远端呼叫。 */
+    public static void reversePickupSweep() {
+        for (boolean mirror : new boolean[]{false, true}) {
+            int start = mirror ? 1 : 4, middle = mirror ? 3 : 2, end = mirror ? 4 : 1;
+            for (Travel memory : Travel.values()) for (boolean farFirst : new boolean[]{false, true})
+                for (int timing = 0; timing < 3; timing++) for (boolean reload : new boolean[]{false, true}) {
+                    Ride ride = new Ride(start);
+                    ride.controller.restore(Phase.MOVING, 0, null, List.of(), List.of(), memory);
+                    ride.hall(farFirst ? end : middle, !mirror);
+                    if (timing > 0) {
+                        ride.until(() -> Math.abs(ride.y - start * 10) > .5, "pickup underway");
+                        if (timing == 2) ride.until(() -> Math.abs(ride.y - (farFirst ? end : middle) * 10) < .25,
+                                "pickup braking");
+                        check(ride.arrivals.isEmpty(), "late request arrives before doors open");
+                    }
+                    if (reload) ride.reload(false);
+                    ride.hall(farFirst ? middle : end, !mirror);
+                    ride.until(() -> ride.arrivals.size() == 1, "first sweep pickup");
+                    check(ride.arrivals.equals(List.of(end)), "start at reversal end, not registration order: " + ride.arrivals);
+                    check(ride.controller.hallCalls().equals(List.of(call(middle, !mirror))), "middle lamp waits for return");
+                    ride.until(() -> ride.arrivals.size() == 2, "return pickup");
+                    check(ride.arrivals.equals(List.of(end, middle)), "monotonic return pickup: " + ride.arrivals);
+                    ride.ticks(300);
+                    check(!ride.controller.hasRequests() && ride.arrivals.size() == 2, "no leftover calls or duplicate stops");
+                }
+        }
+    }
+
+    /** 原有 4→1 选站路径与沿途同向接人、明确选定当前目标的送客任务都不能被跳过。 */
+    public static void pickupPreservesCarStops() {
+        for (boolean mirror : new boolean[]{false, true}) {
+            int start = mirror ? 1 : 4, middle = mirror ? 3 : 2, end = mirror ? 4 : 1;
+            Ride passenger = new Ride(start);
+            passenger.hall(start, mirror);
+            passenger.until(() -> passenger.arrivals.size() == 1, "boarding at start");
+            passenger.select(end);
+            passenger.hall(middle, !mirror);
+            passenger.ticks(2);
+            passenger.hall(end, !mirror);
+            passenger.until(() -> passenger.arrivals.size() == 3, "car trip followed by return pickup");
+            check(passenger.arrivals.equals(List.of(start, end, middle)), "preserve existing car destination route");
+            passenger.ticks(300);
+            check(!passenger.controller.hasRequests(), "original scenario drains both calls");
+
+            Ride committed = new Ride(start);
+            committed.hall(middle, !mirror);
+            committed.ticks(2);
+            committed.select(middle); // 同一目标既是厅呼也是车内目的层，不能被当成纯接客任务延后。
+            committed.hall(end, !mirror);
+            committed.until(() -> committed.arrivals.size() == 1, "committed car arrival");
+            check(committed.arrivals.equals(List.of(middle)), "never bypass explicit car destination");
+            committed.until(() -> !committed.controller.hasRequests() && committed.controller.target() == null, "finish car and hall calls");
+
+            Ride onRoute = new Ride(start);
+            int pickup = mirror ? 2 : 3;
+            onRoute.hall(middle, !mirror);
+            onRoute.ticks(2);
+            onRoute.hall(end, !mirror);
+            onRoute.hall(pickup, mirror);
+            onRoute.until(() -> onRoute.arrivals.size() == 3, "same-direction pickup before reversal");
+            check(onRoute.arrivals.equals(List.of(pickup, end, middle)), "serve same-direction calls before return sweep");
+            check(!onRoute.controller.hasRequests(), "all pickup lights cleared");
+
+            for (int interruption = 0; interruption < 3; interruption++) {
+                Ride reopening = new Ride(start);
+                reopening.controller = new ElevatorController(); // 起始门开着，尚无 StopService。
+                reopening.hall(middle, !mirror);
+                reopening.until(() -> reopening.controller.phase() == Phase.CLOSING, "pickup departure closing");
+                if (interruption == 0) reopening.blocked = true;
+                if (interruption == 1) reopening.overloaded = true;
+                if (interruption == 2) check(reopening.controller.forceOpen(), "reopen pickup departure");
+                reopening.tick();
+                reopening.blocked = false;
+                reopening.overloaded = false;
+                reopening.until(() -> reopening.controller.phase() == Phase.OPEN, "pickup departure reopened");
+                reopening.hall(end, !mirror);
+                reopening.until(() -> reopening.arrivals.size() == 2, "replanned pickup after reopening");
+                check(reopening.arrivals.equals(List.of(end, middle)), "reopening must not convert hall call to car stop");
+            }
+
+            Ride late = new Ride(start);
+            late.hall(middle, !mirror);
+            late.until(() -> late.arrivals.size() == 1, "pickup already arrived");
+            late.hall(end, !mirror);
+            late.until(() -> late.arrivals.size() == 2, "late call served next");
+            check(late.arrivals.equals(List.of(middle, end)) && late.controller.hallCalls().isEmpty(),
+                    "new calls cannot undo an arrival or recreate a served lamp");
+
+            Ride legacy = new Ride(start);
+            legacy.hall(middle, !mirror);
+            legacy.ticks(2);
+            legacy.reload(true);
+            legacy.hall(end, !mirror);
+            legacy.until(() -> legacy.arrivals.size() == 1, "legacy target kept");
+            check(legacy.arrivals.equals(List.of(middle)), "unknown legacy target could be a car stop; do not bypass it");
+        }
+    }
+
     public static void main(String[] args) {
+        reversePickupSweep();
+        pickupPreservesCarStops();
         for (int start : new int[]{3, 1}) for (boolean firstUp : new boolean[]{false, true})
             for (int destination : new int[]{1, 3}) matrixCase(start, firstUp, destination);
         interruptedDeparture();
         openDoorCallsAndIdle();
         existingDispatchAndLegacyRestore();
-        System.out.println("PASS: 288 matrix combinations plus reopening, overload, idle, legacy restore and dispatch regressions");
+        System.out.println("PASS: 288 dual-call combinations, 72 reverse-pickup combinations, car-stop preservation, reopening, overload, idle and legacy restore regressions");
     }
 }

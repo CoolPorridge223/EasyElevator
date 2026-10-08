@@ -1151,7 +1151,7 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /**
      * 把轿厢状态写入实体 NBT：RailX / RailZ / Facing / Phase / Door / Target / Queue / HallCalls /
-     * Travel / StopService / Riders。
+     * Travel / TargetHallDirection / StopService / Riders。
      * 世界坐标由原版实体保存流程另行写出，这里只存状态机、线路绑定与乘客名册所需的最小信息。
      *
      * @param nbt 待写入的实体 NBT
@@ -1163,6 +1163,7 @@ public abstract class AbstractCabinEntity extends Entity {
         nbt.putInt("RailX",railX); nbt.putInt("RailZ",railZ); nbt.putInt("Facing",facing().getId());
         nbt.putString("Phase",controller.phase().name()); nbt.putFloat("Door",controller.door());
         if (controller.target()!=null) nbt.putLong("Target",controller.target().id()); // 无目标时不写字段，读档以 contains 判定
+        nbt.putString("TargetHallDirection", controller.targetHallDirection().name());
         NbtList list = new NbtList();
         for (var stop : controller.pending()) { NbtCompound s = new NbtCompound(); s.putLong("Button",stop.id()); list.add(s); } // 队列只存打包坐标：Y 可从 BlockPos 解出
         nbt.put("Queue",list);
@@ -1232,7 +1233,11 @@ public abstract class AbstractCabinEntity extends Entity {
                 service = new ElevatorController.StopService(stop(savedService.getLong("Station")), served);
             }
         }
-        controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,queue,calls,travel,service);
+        ElevatorController.Travel targetHallDirection;
+        try { targetHallDirection = ElevatorController.Travel.valueOf(nbt.getString("TargetHallDirection")); }
+        catch (IllegalArgumentException e) { targetHallDirection = ElevatorController.Travel.NONE; } // 旧存档不能猜目标来源，保留停靠
+        controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,
+                queue,calls,travel,service,targetHallDirection);
         dataTracker.set(PHASE,controller.phase().ordinal()); dataTracker.set(DOOR,controller.door()); previousDoor=controller.door(); // 连 previousDoor 一起对齐，首帧门动画不插值
         dataTracker.set(TARGET_Y,controller.target()==null?Integer.MIN_VALUE:controller.target().y());
         recoveringPassengers.clear();
