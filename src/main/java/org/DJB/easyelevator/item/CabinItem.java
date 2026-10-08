@@ -3,6 +3,10 @@ package org.DJB.easyelevator.item;
 import net.minecraft.entity.EntityType;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemUsageContext;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.util.Formatting;
+import java.util.List;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import org.DJB.easyelevator.Easyelevator;
@@ -40,6 +44,12 @@ public class CabinItem extends Item {
      * @param type 本物品生成的轿厢实体类型（例如 {@code () -> Easyelevator.CABIN}）
      */
     public CabinItem(Settings s, Supplier<EntityType<? extends AbstractCabinEntity>> type) { super(s); this.type = type; }
+
+    @Override public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType tooltipType) {
+        super.appendTooltip(stack, context, tooltip, tooltipType);
+        if (type.get() == Easyelevator.POWERFUL_CABIN)
+            tooltip.add(Text.translatable("item.easyelevator.cargo_hint").formatted(Formatting.GRAY));
+    }
 
     /**
      * 对电梯轨道使用本物品：校验线路后生成一台站在被点击那一格轨道上的轿厢。

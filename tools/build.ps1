@@ -10,7 +10,7 @@
 # 退出行为：Gradle 退出码非 0 时抛异常（脚本失败）；成功时静默返回。
 param(
     [string]$Jdk = $env:JAVA_HOME,
-    [ValidateSet('build','packageRelease','packageProject','runClient','runGameTest','runRiderClient','clean')]
+    [ValidateSet('build','packageRelease','packageProject','runClient','runGameTest','runRiderClient','runCargoClient','clean')]
     [string]$Task = 'build'
 )
 $ErrorActionPreference = 'Stop'
@@ -31,7 +31,7 @@ $oldGradle = $env:GRADLE_USER_HOME
 # 乘客回归测试的任务名（runGameTest / runRiderClient / runClientGameTest）只有在 `-PriderTests`
 # 打开时才由 Loom 注册；不加这个属性直接调用会得到 "Task not found"。这里按任务名自动补上，
 # 其余任务（build / package* / runClient / clean）不带该属性，产物与发布流程不受影响。
-$priderTests = $Task -in @('runGameTest','runRiderClient','runClientGameTest')
+$priderTests = $Task -in @('runGameTest','runRiderClient','runCargoClient','runClientGameTest')
 $gradleArgs = @()
 if ($priderTests) { $gradleArgs += '-PriderTests' }
 $gradleArgs += @($Task, '--console=plain')

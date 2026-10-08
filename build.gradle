@@ -39,6 +39,13 @@ fabricApi {
 if (project.hasProperty('riderTests')) {
     sourceSets.gametest.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
     loom.runs {
+        cargoClient {
+            client()
+            source sourceSets.gametest
+            runDir 'build/run/cargoClient'
+            vmArg '-Deasyelevator.cargoSmoke=true'
+            programArgs '--quickPlaySingleplayer', 'CargoSmoke', '--username', 'CargoSmoke', '--width', '1280', '--height', '800'
+        }
         riderClient {
             client()
             source sourceSets.gametest

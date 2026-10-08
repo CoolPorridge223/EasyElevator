@@ -15,6 +15,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
+import org.DJB.easyelevator.entity.PowerfulCabinEntity;
 import org.DJB.easyelevator.logic.*;
 
 /** Replace this renderer/model only: simulation and animation timing live in AbstractCabinEntity.
@@ -386,6 +387,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         drawGuideShoes(matrices,out,light);   // 背面的抱轨导靴：让轿厢看起来骑在轨道上（三种外观共用，且不进碰撞）
         drawDoors(matrices,out,light,open,cabin.glassWalls()); // 两扇对开滑门（观光型号画铁框，玻璃在后面一组）
         drawDoorway(matrices,out,front,doorBack,light); // 门槛 + 门楣轨道
+        if(cabin instanceof PowerfulCabinEntity powerful) drawCargo(powerful,matrices,out,light);
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号；
         // 强力型号再多一行后壁铭牌上的限载人数。两次都是同一类文字层，之间不会发生层切换（见类注释）。
         drawFloorDisplay(cabin,matrices,buffers);
@@ -396,6 +398,26 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
             drawGlassDoorPanes(matrices,buffers,light,open); // 门扇中间的玻璃（与玻璃墙同一层）
         }
         matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
+    }
+
+    /** 钢带木色货箱：完全位于共用碰撞几何之内，不占门口、不遮住后壁铭牌。 */
+    private static void drawCargo(PowerfulCabinEntity cabin, MatrixStack matrices, VertexConsumer out, int light) {
+        float[] woodCell = MATERIAL_UV[Mat.WALL.ordinal()], bandCell = MATERIAL_UV[Mat.TRIM.ordinal()];
+        float[][] wood = {woodCell,woodCell,woodCell,woodCell,woodCell,woodCell};
+        float[][] band = {bandCell,bandCell,bandCell,bandCell,bandCell,bandCell};
+        for(int i=0;i<cabin.cargoCrates();i++) {
+            var b=CargoLoad.box(i);
+            BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(b.minX,b.minY,b.minZ+.006,
+                    b.maxX,b.maxY-.003,b.maxZ-.006),light,0xFFC28C50,wood,CabinLighting::surfaceTwoLamps);
+            // 钢带套在木箱上，略内嵌，外表面留出深度差，避免共面闪烁。
+            for(double fraction:new double[]{.22,.78}) {
+                double sx=b.minX+(b.maxX-b.minX)*fraction;
+                BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(sx-.025,b.minY,b.minZ,
+                        sx+.025,b.maxY,b.maxZ),light,0xFF536477,band,CabinLighting::surfaceTwoLamps);
+            }
+            BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(b.minX+.27,b.minY+.14,b.maxZ-.008,
+                    b.minX+.37,b.minY+.25,b.maxZ),light,0xFFE7CF8A,band,CabinLighting::surfaceTwoLamps);
+        }
     }
 
     // ----------------------------------------------------------------------------------
@@ -729,7 +751,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *
      * <p>为什么要"把人数写出来"：强力型号与普通型号的外壳、门、井道尺寸<b>逐位相同</b>，差别只在
      * 内饰件与 {@link AbstractCabinEntity#passengerNumLimit()}；铭牌上的数字直接取自那个常量，
-     * 因此调参（{@code ElevatorParameters.HIGH_PASSENGER_NUM_LIMIT}）不需要改任何贴图或几何，
+     * 因此调参或装卸货物时不需要改任何贴图或几何，
      * 数字永远和状态机里判超载用的那一个一致。
      *
      * <p>板面与落点：铭牌是 {@link #POWERFUL_PARTS} 里的"深色边框 + 亮色板"，正面朝 +Z（轿厢内部）；

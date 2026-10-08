@@ -1,48 +1,165 @@
 package org.DJB.easyelevator.entity;
 
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.inventory.Inventories;
+import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.Item;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.text.Text;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
+import org.DJB.easyelevator.logic.CargoLoad;
+import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorParameters;
+import org.DJB.easyelevator.screen.CargoScreenHandler;
 
-/**
- * 强力电梯轿厢（注册 ID {@code easyelevator:powerful_cabin}）：<b>大载客量</b>型号。
- *
- * <p>与普通轿厢的差别只有两项，其余全部继承父类：
- * <ul>
- *   <li><b>限载人数</b>：{@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}（20 人）。厢内玩家数超过它时，
- *       状态机把相位切到 {@link org.DJB.easyelevator.logic.ElevatorController.Phase#OVERLOAD}：
- *       门保持全开、不派发行程，轿内面板与门框上的显示都变成"超载"，直到有人走出厢门。
- *       普通 / 高速 / 观光三型的限载是 {@link ElevatorParameters#PASSENGER_NUM_LIMIT}（0 = 不限载），
- *       因此只有这一型会被判超载；判据见 {@link AbstractCabinEntity#overloaded()}。</li>
- *   <li><b>内饰外观</b>：{@link #heavyDuty()} 返回 true，渲染时在内饰表上换成
- *       {@code CabinRenderer.POWERFUL_PARTS}——在普通内饰之上再叠一组重载件（第二道不锈钢扶手、
- *       后壁两根立柱、第二块顶灯、后壁载重铭牌、门槛内侧的防滑钢踏板），铭牌上的红字就是这个限载人数。</li>
- * </ul>
- *
- * <p><b>速度、外壳、门与井道尺寸都与普通轿厢逐位相同</b>（巡航速度 = {@link ElevatorParameters#SPEED}，
- * 同一个 {@code drawStandardShell} 外壳与同一套滑门）：建模、井道预留、门口防夹、门联锁与站点位置
- * 都不需要为了这个型号改动——把普通轿厢换成强力轿厢，只是"这一趟能多站几个人"。
- *
- * <p>限载人数<b>不写进存档</b>：它由实体类型唯一决定（读档时按注册类型重建），
- * 因此不会出现"存档里写坏了载客量"的情况。
- */
+import java.util.List;
+
+/** 重载轿厢：空载 20 人；持久化货舱、货箱碰撞和动态载客上限只作用于本型号。 */
 public class PowerfulCabinEntity extends AbstractCabinEntity {
+    private static final TrackedData<Integer> CARGO_ITEMS = DataTracker.registerData(
+            PowerfulCabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+    private final SimpleInventory cargo = new SimpleInventory(CargoLoad.SLOTS);
 
-    /**
-     * 构造强力轿厢。
-     *
-     * @param type 实体类型（由 {@link Easyelevator#POWERFUL_CABIN} 注册，ID 为 {@code easyelevator:powerful_cabin}）
-     * @param world 所在世界
-     */
     public PowerfulCabinEntity(EntityType<?> type, World world) {
         super(type, world, ElevatorParameters.SPEED, ElevatorParameters.HIGH_PASSENGER_NUM_LIMIT);
+        cargo.addListener(inventory -> syncCargo());
     }
 
-    /** @return 强力轿厢物品 {@link Easyelevator#POWERFUL_CABIN_ITEM}：回收后仍得到强力轿厢 */
-    @Override protected Item cabinItem() { return Easyelevator.POWERFUL_CABIN_ITEM; }
+    @Override protected void initDataTracker(DataTracker.Builder builder) {
+        super.initDataTracker(builder);
+        builder.add(CARGO_ITEMS, 0);
+    }
 
-    /** @return 恒为 true：渲染时叠加"重载"内饰（双扶手、双顶灯、载重铭牌、防滑钢踏板），外壳与普通型号相同 */
+    public SimpleInventory cargo() { return cargo; }
+    public int cargoItems() { return dataTracker.get(CARGO_ITEMS); }
+    public int cargoCrates() { return CargoLoad.crates(cargoItems()); }
+
+    private void syncCargo() {
+        if (!getWorld().isClient) {
+            int count = 0;
+            for (int i = 0; i < cargo.size(); i++) count += cargo.getStack(i).getCount();
+            dataTracker.set(CARGO_ITEMS, count);
+        }
+    }
+
+    @Override public int passengerNumLimit() { return CargoLoad.passengers(cargoItems()); }
+    @Override protected Item cabinItem() { return Easyelevator.POWERFUL_CABIN_ITEM; }
     @Override public boolean heavyDuty() { return true; }
+
+    /** 装卸只在开门停靠时进行；离厢、跨世界、死亡或实体移除后容器立即失效。 */
+    public boolean canUseCargo(PlayerEntity player) {
+        return isAlive() && player.isAlive() && !player.isSpectator() && player.getWorld() == getWorld()
+                && containsPassenger(player) && doorProgress(1) >= .999f
+                && (phase() == ElevatorController.Phase.OPEN || phase() == ElevatorController.Phase.OPENING
+                    || phase() == ElevatorController.Phase.OVERLOAD);
+    }
+
+    private boolean cargoInUse() {
+        return getWorld().getPlayers().stream().anyMatch(player ->
+                player.currentScreenHandler instanceof CargoScreenHandler handler
+                        && handler.cabin() == this && canUseCargo(player));
+    }
+
+    @Override public void tick() {
+        if (!getWorld().isClient && cargoInUse()) super.doorCommand(true);
+        super.tick();
+    }
+
+    @Override public boolean doorCommand(boolean open) {
+        if (!open && cargoInUse()) return false;
+        return super.doorCommand(open);
+    }
+
+    @Override public ActionResult interact(PlayerEntity player, Hand hand) {
+        if (hand == Hand.MAIN_HAND && player.isSneaking() && containsPassenger(player)) {
+            if (!getWorld().isClient) {
+                if (canUseCargo(player)) {
+                    player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                            (syncId, inventory, viewer) -> new CargoScreenHandler(syncId, inventory, this),
+                            Text.translatable("screen.easyelevator.cargo")));
+                } else player.sendMessage(Text.translatable("message.easyelevator.cargo_stopped"), true);
+            }
+            return ActionResult.SUCCESS;
+        }
+        return super.interact(player, hand);
+    }
+
+    public Box cargoBox(int index) {
+        Box box = CargoLoad.box(index);
+        return localBox(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    /** 不允许新出现的实体货箱与人/动物重叠；已存在的货箱不影响继续填装。 */
+    public int cargoSlotLimit(int slot) {
+        return Math.max(0, Math.min(64, cargoSpaceLimit() - cargoItems() + cargo.getStack(slot).getCount()));
+    }
+
+    public boolean cargoSpaceBlocked() {
+        int limit = cargoSpaceLimit();
+        return limit < CargoLoad.MAX_ITEMS && limit <= cargoItems();
+    }
+
+    private int cargoSpaceLimit() {
+        for (int i = cargoCrates(); i < CargoLoad.MAX_CRATES; i++) {
+            if (!getWorld().getOtherEntities(this, cargoBox(i), e -> e instanceof LivingEntity && !e.isSpectator()).isEmpty()) {
+                return i * CargoLoad.ITEMS_PER_CRATE;
+            }
+        }
+        return CargoLoad.MAX_ITEMS;
+    }
+
+    @Override public List<Box> collisionBoxesStatic() {
+        List<Box> boxes = super.collisionBoxesStatic();
+        for (int i = 0; i < cargoCrates(); i++) boxes.add(cargoBox(i));
+        return boxes;
+    }
+
+    /** 站在货箱顶部也属于实体支撑，避免把移动中的箱顶乘客判为浮空。 */
+    @Override public boolean supportsPassenger(Entity entity) {
+        if (super.supportsPassenger(entity)) return true;
+        if (!containsPassenger(entity)) return false;
+        Box feet = entity.getBoundingBox();
+        for (int i=0; i<cargoCrates(); i++) {
+            Box box = cargoBox(i);
+            if (Math.abs(entity.getY()-box.maxY) < .025 && feet.maxX > box.minX && feet.minX < box.maxX
+                    && feet.maxZ > box.minZ && feet.minZ < box.maxZ) return true;
+        }
+        return false;
+    }
+
+    @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
+        super.writeCustomDataToNbt(nbt);
+        nbt.put("Cargo", Inventories.writeNbt(new NbtCompound(), cargo.getHeldStacks(), getRegistryManager()));
+    }
+
+    @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
+        super.readCustomDataFromNbt(nbt);
+        cargo.clear();
+        Inventories.readNbt(nbt.getCompound("Cargo"), cargo.getHeldStacks(), getRegistryManager());
+        syncCargo();
+    }
+
+    /** 回收和 /kill 掉货一次；区块卸载、停服和跨维度移除必须保留库存供保存/转移。 */
+    @Override public void remove(RemovalReason reason) {
+        if (!getWorld().isClient && !isRemoved()
+                && (reason == RemovalReason.KILLED || reason == RemovalReason.DISCARDED)) {
+            for (int i = 0; i < cargo.size(); i++) {
+                var stack = cargo.removeStack(i);
+                if (!stack.isEmpty()) dropStack(stack);
+            }
+            syncCargo();
+        }
+        super.remove(reason);
+    }
 }

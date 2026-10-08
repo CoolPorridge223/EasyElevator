@@ -74,8 +74,8 @@ import java.util.UUID;
  *       {@link #collisionBoxes()}，否则实心包围盒会把乘客挡在轿厢外。</li>
  *   <li>BLOCKED 表示受阻暂停（断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站门被拆），
  *       不是失败；条件恢复后继续原行程。</li>
- *   <li>限载人数为 0 或负数 = 不限载（限载只能在构造时给出、运行中不变），见 {@link #overloaded()}；
- *       超载只影响"门开着、不派发行程"，不改变碰撞、承托与存档。</li>
+ *   <li>限载人数为 0 或负数 = 不限载（默认限载由构造参数给出），见 {@link #overloaded()}；
+ *       重载子类按货量动态下调正数上限；超载仍通过原状态机保持开门、不派发行程。</li>
  *   <li>乘客名册（{@link #passengers}）随存档保存：读档后必须先等这些人回到世界，才能继续原行程，
  *       否则轿厢会抢在玩家实体载入之前开走，把乘客留在空掉的井道里（见 {@link #tickPassengers()}）。</li>
  * </ul>
@@ -244,11 +244,10 @@ public abstract class AbstractCabinEntity extends Entity {
     public final double speed() { return speed; }
 
     /**
-     * @return 本型轿厢的限载人数；<b>0 或负数表示不限载</b>（普通 / 高速 / 观光三型的原有行为：
-     *         只要人站得进来就能走）。强力型号为 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT}。
-     *         只读，渲染（后壁载重铭牌上的数字）与状态机（超载判定）读的是同一个值。
+     * @return 当前限载人数；0 或负数表示不限载。普通、高速、观光沿用构造时的配置值；
+     *         重载子类按货量动态计算。铭牌与超载判定使用同一方法。
      */
-    public final int passengerNumLimit() { return passengerNumLimit; }
+    public int passengerNumLimit() { return passengerNumLimit; }
 
     /**
      * 本厢此刻是否<b>超载</b>：厢内乘客数超过 {@link #passengerNumLimit()}。
@@ -265,7 +264,10 @@ public abstract class AbstractCabinEntity extends Entity {
      *
      * @return 超载时为 true；不限载的型号恒为 false
      */
-    public final boolean overloaded() { return passengerNumLimit > 0 && passengerNum > passengerNumLimit; }
+    public final boolean overloaded() {
+        int limit = passengerNumLimit();
+        return limit > 0 && passengerNum > limit;
+    }
 
     /**
      * 本型轿厢回收时掉落的生成物品。四种轿厢共用同一个回收交互（潜行、空手、门全开、厢内无人），

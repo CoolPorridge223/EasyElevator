@@ -5,7 +5,7 @@
   "name": "EasyElevator rider regressions",
   "environment": "*",
   "entrypoints": {
-    "fabric-gametest": ["org.DJB.easyelevator.RiderMovementTests", "org.DJB.easyelevator.HallCallTests"],
-    "client": ["org.DJB.easyelevator.RiderClientSmoke"]
+    "fabric-gametest": ["org.DJB.easyelevator.RiderMovementTests", "org.DJB.easyelevator.HallCallTests", "org.DJB.easyelevator.CargoTests"],
+    "client": ["org.DJB.easyelevator.RiderClientSmoke", "org.DJB.easyelevator.CargoClientSmoke"]
   }
 }

@@ -1,6 +1,7 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -45,6 +46,7 @@ public class EasyelevatorClient implements ClientModInitializer {
     /** 客户端初始化。副作用：注册实体渲染器与两个 S2C 包处理器，并挂载客户端刻与断线事件回调；不改世界状态。 */
     @Override
     public void onInitializeClient() {
+        HandledScreens.register(Easyelevator.CARGO_SCREEN, CargoScreen::new);
         // 启动时把"这个进程能不能弹 AWT 窗口"记一行：headless 时门设置面板的"选择文件"会改走系统原生对话框，
         // 出问题时这一行能直接说明走的是哪条路（免去再猜一轮）。
         LOGGER.info("File dialog backend: {}", FilePicker.isHeadless() ? "native (AWT is headless)" : "AWT");

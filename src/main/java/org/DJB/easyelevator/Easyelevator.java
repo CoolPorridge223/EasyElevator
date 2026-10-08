@@ -14,6 +14,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
+import net.minecraft.resource.featuretoggle.FeatureFlags;
+import net.minecraft.screen.ScreenHandlerType;
+import org.DJB.easyelevator.screen.CargoScreenHandler;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -45,6 +48,9 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
 public class Easyelevator implements ModInitializer {
     /** 模组 ID，同时是全部注册 ID 的命名空间；与 fabric.mod.json 中的 id 必须一致。 */
     public static final String MOD_ID = "easyelevator";
+    public static final ScreenHandlerType<CargoScreenHandler> CARGO_SCREEN = Registry.register(
+            Registries.SCREEN_HANDLER, id("cargo"),
+            new ScreenHandlerType<>(CargoScreenHandler::new, FeatureFlags.VANILLA_FEATURES));
     /** 电梯轨道方块单例：垂直放置的一列连续轨道，朝向即轿厢所在方向。 */
     public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
