@@ -170,9 +170,28 @@ $env:JAVA_HOME = '<JDK21>'
 | 顶点颜色透明被 cutout 丢弃 | 打印写入缓冲的 `color` | `0xffffffff`（不透明） |
 | 贴图丢失/带透明 | 直接查看 `cabin.png`（128×128、4×4 图集、RGBA、完全不透明）；把测试方块换成**原版石头贴图**再画一次 | 换原版贴图一样不显示 → **与模组贴图无关** |
 | 实体渲染通道坏了 | 在同一次运行里生成 3 只**原版牛** | 牛正常显示 → 实体通道本身没问题 |
-| 图层被背面剔除 | 把测试方块改用 `getEntityCutoutNoCull` | 一样不显示 → 与剔除无关 |
-| 写入的缓冲没人画 | 在渲染器末尾与每次切层前显式 `drawCurrentLayer()` | **不改变症状**（改动保留：它按 1.20.1 的缓冲契约显式逐层提交） |
-| 事件没进缓冲 | 打印顶点消费者的类型 | 是真的 `BufferBuilder`（写顶点时若未 `begin()` 会抛 `Not building!`，未出现） |
+| 图层被背面剔除 | 测试方块改用 `getEntityCutoutNoCull`（含改用**直接绘制路径**再测一次） | 一样不显示 → 与剔除无关 |
+| 写入的缓冲没人画 | ① 每次切层前显式 `drawCurrentLayer()`；② 完全绕开 `Immediate`，改成原版的直接绘制路径（`Tessellator` + `RenderLayer.draw(BufferBuilder, VertexSorter)`，内部即 `end() → startDrawing() → BufferRenderer.drawWithGlobalProgram() → endDrawing()`） | **两种都不改变症状**（改动均已回滚） |
+| 顶点数据本身坏了 | 在渲染器里写一个 **字面坐标**、**完全不用矩阵也不用 `BoxMesh`** 的 3×3 方块面 | 一样不显示 → **与 `BoxMesh`/矩阵无关**，从我们的渲染器里写出的顶点就是到不了屏幕 |
+| 图层没被预注册 | 改用原版**预注册**的图集实体层 `TexturedRenderLayers.getEntityCutout()` 画同一个测试面 | 一样不显示 |
+
+**源码层面的机制**（`genSources` 反编译后确认，是理解这个问题的关键）：
+
+```java
+// WorldRenderer.renderEntities（1.20.1）：实体循环结束后只画这些
+immediate.drawCurrentLayer();                                        // 只画"当前图层"
+immediate.draw(RenderLayer.getEntitySolid(BLOCK_ATLAS_TEXTURE));     // 以及 4 个预注册的图集实体层
+immediate.draw(RenderLayer.getEntityCutout(BLOCK_ATLAS_TEXTURE));
+immediate.draw(RenderLayer.getEntityCutoutNoCull(BLOCK_ATLAS_TEXTURE));
+immediate.draw(RenderLayer.getEntitySmoothCutout(BLOCK_ATLAS_TEXTURE));
+```
+
+1.21 的 `VertexConsumerProvider$Immediate` 给**每个图层**各留一个缓冲；1.20.1 只由 `BufferBuilderStorage`
+预建少数内置图层的缓冲（图集实体层、附魔光效、水罩、床/箱子/告示牌等），**自定义贴图的图层一律落在同一个
+共享 fallback 缓冲上**。按 `Immediate.getBuffer` 的源码，切到新图层时会把上一个（未预注册的）图层
+`draw` 掉，因此"一帧内混用多个自定义图层"理论上仍然能画出来——但实测从不出现。
+注意 `RenderLayer.draw()` 只在 `buffer.isBuilding()` 时才真正绘制，且 `Immediate.draw(RenderLayer)`
+对"既不是当前图层、缓冲又是 fallback"的图层会**直接返回**。
 
 **实验方法（可复用）**：临时在 `EasyelevatorClient` 的客户端刻回调里，用**集成服务端**把玩家传送到观察位
 （`server.getPlayerManager().getPlayer(uuid).teleport(...)`；直接改客户端坐标会被服务端拉回），
@@ -180,16 +199,13 @@ $env:JAVA_HOME = '<JDK21>'
 （注意：截图落在 `run/screenshots/` 而不是 `run/`）自动截图，然后用图片直接看效果。
 配合"往渲染器里塞一个 16×11×16 的测试方块"可以快速区分"渲染路径坏了"还是"绘制代码坏了"。
 
-**1.20.1 与 1.21 的缓冲语义差异**（源码层面确认，`VertexConsumerProvider$Immediate` + `BufferBuilderStorage`）：
-1.21 给每个图层各留一个缓冲；1.20.1 只给少数内置图层（图集实体层、附魔光效、水罩等）预建缓冲，
-**自定义贴图的图层一律落在同一个共享 fallback 缓冲上**，且 `RenderLayer.draw()` 只在 `buffer.isBuilding()` 时才真正画。
-本模组一帧内会用到三种顶点格式不同的图层（不透明 / 文字 / 玻璃），移植时必须留意这条差异；
-`docs` 里此前的 `BoxMesh` 注释也提醒过"换层会结束上一层缓冲"。
-
 **下一步建议（尚未执行）**：用临时 Mixin 钩住 `VertexConsumerProvider$Immediate`
-的 `getBuffer` / `drawCurrentLayer` / `draw(RenderLayer)`，打印**图层名、`buffer.isBuilding()`、顶点数**，
-即可判定"我们的图层到底有没有被画、画的时候有多少顶点、用的是不是 fallback 缓冲"。
-这是目前唯一能把问题钉死的手段。
+的 `getBuffer` / `drawCurrentLayer` / `draw(RenderLayer)`，打印**图层名、`buffer.isBuilding()`、顶点数、是否 fallback**，
+即可判定"我们的图层到底有没有被画、画的时候缓冲里有多少顶点"。这是目前唯一能把问题钉死的手段。
+另一条可行性更高的路线：**把轿厢/门扇改用原版模型渲染**（`ModelPart`/`TexturedModelData`，或把几何烘成方块模型
+再用 `BlockModelRenderer`）——原版牛的模型走的是同一条 `Immediate.getBuffer` 路径且**在本机实测正常**，
+说明"模型渲染"这条链路是好的；代价是要重写几何数据表，而且逐面补光（`CabinLighting`）可能无法完全保留。
+
 
 ## 9. 1.20.1 线与 main（1.21.1）的差异清单
 

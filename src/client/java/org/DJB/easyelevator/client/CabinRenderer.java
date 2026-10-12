@@ -392,22 +392,16 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         drawDoors(matrices,out,light,open,cabin.glassWalls()); // 两扇对开滑门（观光型号画铁框，玻璃在后面一组）
         drawDoorway(matrices,out,front,doorBack,light); // 门槛 + 门楣轨道
         if(cabin instanceof PowerfulCabinEntity powerful) drawCargo(powerful,matrices,out,light);
-        // 1.20.1：切层之前显式提交不透明层（缓冲语义与 1.21 不同，详见 BoxMesh.flush）
-        BoxMesh.flush(buffers);
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号；
         // 重载型号再多一行后壁铭牌上的限载人数。两次都是同一类文字层，之间不会发生层切换（见类注释）。
         drawFloorDisplay(cabin,matrices,buffers);
         if(heavyDuty) drawCapacityPlate(cabin,matrices,buffers);
-        // 同样：切到玻璃层之前显式提交文字层
-        BoxMesh.flush(buffers);
         // 第 3 组（玻璃 cutout 层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
         if(cabin.glassWalls()) {
             drawObservationGlass(matrices,buffers,front,doorBack,light);
             drawGlassDoorPanes(matrices,buffers,light,open); // 门扇中间的玻璃（与玻璃墙同一层）
         }
         matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
-        // 收尾：最后写入的那一层也显式提交
-        BoxMesh.flush(buffers);
     }
 
     /**

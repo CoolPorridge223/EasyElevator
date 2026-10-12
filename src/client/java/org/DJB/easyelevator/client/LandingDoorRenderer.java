@@ -107,8 +107,6 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         if(left==null&&right==null) return;
         // getEntityCutout 会剔除背面：门扇是实心长方体，背向的面本来看不见；
         // 顺带让"门扇外缘与门框内缘贴合"处的共面三角形不再互相闪烁。
-        // 1.20.1：切层之前显式提交文字层（缓冲语义与 1.21 不同，详见 BoxMesh.flush）
-        BoxMesh.flush(buffers);
         VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutout(TEXTURE));
         // 观光轿厢所在的线路：所有楼层门的门扇都换成"铁框 + 中间玻璃"（判据来自门方块实体，见 glassDoors()）。
         // 玻璃必须画在不透明层之后、而且必须在返回前只写玻璃层（换层会结束上一层缓冲，见 BoxMesh 类注释）。
@@ -124,13 +122,9 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
             // 铁框玻璃门：不透明层只画铁框，玻璃在同一层的末尾单独画（见下面 glassPanes）
             if(left!=null) FramedGlassDoor.frame(matrices,out,left,plateAlongZ,BoxMesh.FULL_UV,light);
             if(right!=null) FramedGlassDoor.frame(matrices,out,right,plateAlongZ,BoxMesh.FULL_UV,light);
-            // 切到玻璃层之前显式提交铁框所在的层
-            BoxMesh.flush(buffers);
             VertexConsumer panes=buffers.getBuffer(GlassLayers.DOOR);
             if(left!=null) FramedGlassDoor.glass(matrices,panes,left,plateAlongZ,BoxMesh.FULL_UV,light,GLASS_COLOR);
             if(right!=null) FramedGlassDoor.glass(matrices,panes,right,plateAlongZ,BoxMesh.FULL_UV,light,GLASS_COLOR);
-            // 1.20.1 必须自己把顶点交出去（详见 BoxMesh.flush 的说明）。
-            BoxMesh.flush(buffers);
             return; // 已经切到玻璃层，不能再往 out 写顶点
         }
         if(left!=null)
@@ -141,8 +135,6 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
             BoxMesh.cuboid(matrices,out,right,light,0xFFFFFFFF,LeafUv.slabUv(
                     LeafUv.toUv(LeafUv.leafRange(progress,true),BoxMesh.FULL_UV),
                     LeafUv.toUv(LeafUv.edgeRange(true,LeafUv.EDGE_WIDTH),BoxMesh.FULL_UV),plateAlongZ));
-        // 1.20.1 必须自己把顶点交出去（详见 BoxMesh.flush 的说明）。
-        BoxMesh.flush(buffers);
     }
 
     /**
