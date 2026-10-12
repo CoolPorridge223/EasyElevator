@@ -9,7 +9,8 @@
 > **路径约定**：本文的 `<JDK17>`、`<JDK21>` 都是占位符，请替换为**你自己机器上的对应 JDK 目录**——
 > `<JDK17>` 指编译与运行 MC 1.20.1 用的完整 JDK 17，`<JDK21>` 指用来启动 Gradle 进程的完整 JDK（21 或 17 都行）。
 >
-> **版本线约定**：本工程用分支区分 Minecraft 版本——`main` 是 **1.21.1** 线，`mc/1.20.1` 是**本文所在的 1.20.1 线**。
+> **版本线约定**：分支名一律是 `mc/<MC 版本>/<加载器>`，本分支即 **`mc/1.20.1/fabric`**（本文所在的 1.20.1 线）；
+> `main` 是最新线（当前 1.21.1 / Fabric），也是仓库默认分支。
 > 两条线共用同一份源码与同一份文档骨架，差异集中在构建配置、资源目录名与网络层收发（见第 9 节）。
 > 分支划分、backport 纪律与标签/发布约定见 [版本线与发布流程](VERSIONING.md)。
 > 产物名一律带 `+<MC 版本>` 后缀，因此两条线的 JAR 不会同名相撞。
@@ -155,56 +156,51 @@ $env:JAVA_HOME = '<JDK21>'
 
 日志与人工验收见 [TESTING.md](TESTING.md)。
 
-## 8. 已知问题：1.20.1 上自定义几何不显示（未解决）
+## 8. 移植陷阱实录：1.20.1 的 `VertexConsumer` 必须 `next()`（本线已修复）
 
-**症状**：方块模型（门框、立柱、轨道）正常，方块实体/实体的**文字**（门楣层号）正常，原版实体（生物）正常，
-碰撞箱正常——但 `BoxMesh` 画的全部自定义几何（轿厢外壳与内饰、楼层门门扇、观光玻璃）**一个都看不见**，
-日志里没有任何 ERROR/Exception。
+**根因**：`BoxMesh.quad` 的顶点链末尾少了 `.next()`。1.21 把 `VertexConsumer.next()` **删掉了**
+（写完最后一个元素即隐式收尾当前顶点），1.20.1 必须显式调用，否则顶点索引永不前进：
+`BufferBuilder` 收下全部调用、不报任何错，但缓冲里等于**一个完整顶点都没有**。
 
-**已经排除的原因**（每一条都做过对照实验，实验方法一并记下，便于以后复用）：
+```java
+// 1.20.1 必须这样结尾；1.21 线的同一行没有 .next()
+v.vertex(m.peek().getPositionMatrix(), ...).color(color).texture(u,v)
+        .overlay(OverlayTexture.DEFAULT_UV).light(light).normal(m.peek().getNormalMatrix(),nx,ny,nz)
+        .next();   // ← 移植时漏掉的就是它（本线修复提交 c401c1f）
+```
+
+**症状**（极具迷惑性，值得记住）：
+
+- `BoxMesh` 画的**全部**自定义几何（轿厢外壳与内饰、楼层门门扇、观光玻璃）一个都看不见；
+- 方块模型（门框、立柱、轨道）正常、**文字**（门楣层号）正常、原版实体（生物）正常、碰撞箱正常；
+- 日志里**没有任何 ERROR/Exception**（连 `Not building!` 都不会出现）。
+
+**为什么"文字和生物正常"反而是线索**：`TextRenderer` 与 `ModelPart` 内部都会自己调 `next()`，
+所以它们走同一条 `Immediate.getBuffer` 路径却毫无问题——**问题只在"自己手写顶点"的地方**。
+所有自定义几何都经过 `BoxMesh.quad`，因此一处补 `.next()` 就覆盖了全部模型。
+
+**排查过程里做过的对照实验**（用来把范围从"渲染路径"逼到"顶点数据"，可复用）：
 
 | 假设 | 实验 | 结论 |
 | --- | --- | --- |
-| 渲染器没被调用 | 在 `CabinRenderer.render`/`LandingDoorRenderer.render` 里打印调用日志 | 都**被调用**了，参数与方块状态正常 |
-| 矩阵/坐标算错 | 用 `Vector4f.mul(matrix)` 换算顶点，打印相机相对坐标 | 正确（轿厢在相机前方 ~11 格、包围盒 = 实际位置） |
-| 顶点颜色透明被 cutout 丢弃 | 打印写入缓冲的 `color` | `0xffffffff`（不透明） |
-| 贴图丢失/带透明 | 直接查看 `cabin.png`（128×128、4×4 图集、RGBA、完全不透明）；把测试方块换成**原版石头贴图**再画一次 | 换原版贴图一样不显示 → **与模组贴图无关** |
-| 实体渲染通道坏了 | 在同一次运行里生成 3 只**原版牛** | 牛正常显示 → 实体通道本身没问题 |
-| 图层被背面剔除 | 测试方块改用 `getEntityCutoutNoCull`（含改用**直接绘制路径**再测一次） | 一样不显示 → 与剔除无关 |
-| 写入的缓冲没人画 | ① 每次切层前显式 `drawCurrentLayer()`；② 完全绕开 `Immediate`，改成原版的直接绘制路径（`Tessellator` + `RenderLayer.draw(BufferBuilder, VertexSorter)`，内部即 `end() → startDrawing() → BufferRenderer.drawWithGlobalProgram() → endDrawing()`） | **两种都不改变症状**（改动均已回滚） |
-| 顶点数据本身坏了 | 在渲染器里写一个 **字面坐标**、**完全不用矩阵也不用 `BoxMesh`** 的 3×3 方块面 | 一样不显示 → **与 `BoxMesh`/矩阵无关**，从我们的渲染器里写出的顶点就是到不了屏幕 |
-| 图层没被预注册 | 改用原版**预注册**的图集实体层 `TexturedRenderLayers.getEntityCutout()` 画同一个测试面 | 一样不显示 |
+| 渲染器没被调用 / 矩阵算错 / 颜色透明 | 打日志、用 `Vector4f.mul(matrix)` 换算相机相对坐标、打印写入的 `color` | 全部正常 |
+| 模组贴图有问题 | 测试方块改用**原版石头贴图** | 一样不显示 → 与贴图无关 |
+| 实体渲染通道坏了 | 同一次运行里生成 3 只**原版牛** | 牛正常 → 通道没问题 |
+| 图层被背面剔除 | 改用 `getEntityCutoutNoCull` | 一样不显示 |
+| 写入的缓冲没人画 | ① 每次切层前显式 `drawCurrentLayer()`；② 完全绕开 `Immediate`，改用原版直接绘制路径（`Tessellator` + `RenderLayer.draw(BufferBuilder, VertexSorter)`） | **两种都不改变症状**（改动已回滚） |
+| 顶点数据本身坏了 | 在渲染器里写一个**字面坐标**、不用矩阵也不用 `BoxMesh`、末尾**带 `.next()`** 的方块面 | 显示正常 → 焦点回到 `BoxMesh` 的写入格式 |
 
-**源码层面的机制**（`genSources` 反编译后确认，是理解这个问题的关键）：
-
-```java
-// WorldRenderer.renderEntities（1.20.1）：实体循环结束后只画这些
-immediate.drawCurrentLayer();                                        // 只画"当前图层"
-immediate.draw(RenderLayer.getEntitySolid(BLOCK_ATLAS_TEXTURE));     // 以及 4 个预注册的图集实体层
-immediate.draw(RenderLayer.getEntityCutout(BLOCK_ATLAS_TEXTURE));
-immediate.draw(RenderLayer.getEntityCutoutNoCull(BLOCK_ATLAS_TEXTURE));
-immediate.draw(RenderLayer.getEntitySmoothCutout(BLOCK_ATLAS_TEXTURE));
-```
-
-1.21 的 `VertexConsumerProvider$Immediate` 给**每个图层**各留一个缓冲；1.20.1 只由 `BufferBuilderStorage`
-预建少数内置图层的缓冲（图集实体层、附魔光效、水罩、床/箱子/告示牌等），**自定义贴图的图层一律落在同一个
-共享 fallback 缓冲上**。按 `Immediate.getBuffer` 的源码，切到新图层时会把上一个（未预注册的）图层
-`draw` 掉，因此"一帧内混用多个自定义图层"理论上仍然能画出来——但实测从不出现。
-注意 `RenderLayer.draw()` 只在 `buffer.isBuilding()` 时才真正绘制，且 `Immediate.draw(RenderLayer)`
-对"既不是当前图层、缓冲又是 fallback"的图层会**直接返回**。
-
-**实验方法（可复用）**：临时在 `EasyelevatorClient` 的客户端刻回调里，用**集成服务端**把玩家传送到观察位
+**排查方法（可复用）**：临时在 `EasyelevatorClient` 的客户端刻回调里，用**集成服务端**把玩家传到观察位
 （`server.getPlayerManager().getPlayer(uuid).teleport(...)`；直接改客户端坐标会被服务端拉回），
 再用 `ScreenshotRecorder.saveScreenshot(client.runDirectory, "x.png", client.getFramebuffer(), t -> {})`
-（注意：截图落在 `run/screenshots/` 而不是 `run/`）自动截图，然后用图片直接看效果。
-配合"往渲染器里塞一个 16×11×16 的测试方块"可以快速区分"渲染路径坏了"还是"绘制代码坏了"。
+自动截图（注意：文件落在 `run/screenshots/`），然后直接看图。配合"往渲染器里塞一个 16×11×16 的测试方块"
+可以快速区分"渲染路径坏了"还是"绘制代码坏了"。
 
-**下一步建议（尚未执行）**：用临时 Mixin 钩住 `VertexConsumerProvider$Immediate`
-的 `getBuffer` / `drawCurrentLayer` / `draw(RenderLayer)`，打印**图层名、`buffer.isBuilding()`、顶点数、是否 fallback**，
-即可判定"我们的图层到底有没有被画、画的时候缓冲里有多少顶点"。这是目前唯一能把问题钉死的手段。
-另一条可行性更高的路线：**把轿厢/门扇改用原版模型渲染**（`ModelPart`/`TexturedModelData`，或把几何烘成方块模型
-再用 `BlockModelRenderer`）——原版牛的模型走的是同一条 `Immediate.getBuffer` 路径且**在本机实测正常**，
-说明"模型渲染"这条链路是好的；代价是要重写几何数据表，而且逐面补光（`CabinLighting`）可能无法完全保留。
+> ⚠️ **一次误判记录，避免以后重走**：排查中曾把症状归因于 1.20.1 与 1.21 的顶点缓冲语义差异
+> （1.20.1 只给内置图层预建缓冲、自定义贴图图层共用同一个 fallback 缓冲；
+> `WorldRenderer.renderEntities` 在实体循环后只调 `drawCurrentLayer()` 与 4 个预注册图集实体层）。
+> 这些**源码事实本身成立**，也值得移植时注意，但**不是**本次不显示的原因——真正的原因就是缺 `.next()`。
+> 遇到"几何完全不显示且零报错"时，先检查顶点链是否完整，再怀疑缓冲机制。
 
 
 ## 9. 1.20.1 线与 main（1.21.1）的差异清单
@@ -246,6 +242,6 @@ immediate.draw(RenderLayer.getEntitySmoothCutout(BLOCK_ATLAS_TEXTURE));
 | 客户端控件与界面 | `ClickableWidget.renderButton`；`Screen.renderBackground(DrawContext)`（无鼠标参数，且原版不再替你调用它）；`HandledScreen.render` 自己会调 `drawBackground` | `renderWidget`；四参 `renderBackground` |
 | 客户端 Mixin 注入点 | `CabinCrosshairMixin` 注入 `GameRenderer.updateTargetedEntity(float)` 的 **TAIL**，改写公开字段 `MinecraftClient.crosshairTarget`（1.20.1 没有 `findCrosshairTarget`） | 注入 `GameRenderer.findCrosshairTarget(Entity,double,double,float)` 的 **RETURN**，改写其返回值 |
 | 触及距离来源 | `MinecraftClient.interactionManager.getReachDistance()`（float） | `findCrosshairTarget` 的 `blockInteractionRange` 参数（读玩家属性） |
-| 渲染顶点 | `VertexConsumer.vertex(Matrix4f, ...)` / `normal(Matrix3f, ...)`（取 `MatrixStack.Entry.getPositionMatrix()/getNormalMatrix()`） | 直接收 `MatrixStack.Entry` |
+| 渲染顶点 | `VertexConsumer.vertex(Matrix4f, ...)` / `normal(Matrix3f, ...)`（取 `MatrixStack.Entry.getPositionMatrix()/getNormalMatrix()`），**且每个顶点必须以 `.next()` 收尾**（见第 8 节） | 直接收 `MatrixStack.Entry`，且**没有** `next()` |
 | 资源包管理器 | `getNames()` / `getEnabledNames()` | `getIds()` / `getEnabledIds()` |
 | Java 版本差异 | 不能用 Java 21 的 `List.getFirst/getLast`、`Math.clamp` | 可以用 |
