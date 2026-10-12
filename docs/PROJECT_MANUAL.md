@@ -1072,7 +1072,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 6.3 网络协议（服务端权威）
 
-本线的 payload 都是 `Payload` + `PayloadCodec<PacketByteBuf, ...>`（形状与 1.21 线的 `CustomPayload` + `PacketCodec<RegistryByteBuf, ...>` 一一对应，差异集中在 `network/Packets` 与 `client/ClientPackets`，见 [构建与打包](BUILD_AND_PACKAGING.md) 第 8 节）。**字段顺序即协议**，编解码必须严格对称。
+本线的 payload 都是 `Payload` + `PayloadCodec<PacketByteBuf, ...>`（形状与 1.21 线的 `CustomPayload` + `PacketCodec<RegistryByteBuf, ...>` 一一对应，差异集中在 `network/Packets` 与 `client/ClientPackets`，见 [构建与打包](BUILD_AND_PACKAGING.md) 第 9 节）。**字段顺序即协议**，编解码必须严格对称。
 
 **S2C（服务端 → 客户端，7 个）**
 

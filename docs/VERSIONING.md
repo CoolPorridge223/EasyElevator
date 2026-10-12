@@ -1,7 +1,7 @@
 # 版本线与发布流程
 
 EasyElevator 同时维护两条 Minecraft 版本线：用**分支**隔离源码，用**标签与产物名**隔离发布。
-本文只讲流程；代码层面的逐项差异见 [构建与打包说明书](BUILD_AND_PACKAGING.md) 第 8 节。
+本文只讲流程；代码层面的逐项差异见 [构建与打包说明书](BUILD_AND_PACKAGING.md) 第 9 节。
 
 ## 1. 分支
 
@@ -25,7 +25,7 @@ EasyElevator 同时维护两条 Minecraft 版本线：用**分支**隔离源码�
 git switch mc/1.20.1
 git cherry-pick -x <main 上的提交 sha>
 
-# 冲突只会出现在 BUILD_AND_PACKAGING.md 第 8 节列出的文件上。
+# 冲突只会出现在 BUILD_AND_PACKAGING.md 第 9 节列出的文件上。
 # cherry-pick 期间 "ours" = 当前分支（维护线），版本号文件应当保留本线的值：
 git checkout --ours -- gradle.properties
 git add gradle.properties

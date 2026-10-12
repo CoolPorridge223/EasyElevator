@@ -2,6 +2,7 @@ package org.DJB.easyelevator.client;
 
 import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Box;
 
@@ -35,6 +36,34 @@ public final class BoxMesh {
 
     /** 铺满整张贴图（0,0,1,1）；默认 UV，等价于 1.5.x 之前的固定纹理坐标。 */
     public static final float[] FULL_UV={0,0,1,1};
+
+    /**
+     * 把当前图层的顶点立刻交给原版绘制（等价于 {@code Immediate.drawCurrentLayer()}）。
+     *
+     * <p><b>1.20.1 与 1.21 的缓冲语义不同，本模组的多图层写法依赖这一点</b>：
+     * 1.21 的 {@code VertexConsumerProvider.Immediate} 给每个图层各留一个缓冲，"先写不透明层、再写文字层、
+     * 最后写玻璃层"这种混合写法天然安全；<b>1.20.1 不是</b>——{@code BufferBuilderStorage} 只给少数内置图层
+     * （图集实体层、附魔光效、水罩等）预建缓冲，<b>自定义贴图的图层一律落在同一个共享 fallback 缓冲里</b>，
+     * 顶点格式由"本帧第一次用到该缓冲的图层"决定。1.20.1 会在切换到新图层时自动画掉上一个图层
+     * （见 {@code Immediate.getBuffer}：上一个图层不在 {@code layerBuffers} 里就 {@code draw} 它），
+     * 所以混合写法本身能工作，但对"哪一层的顶点在哪一刻被提交"没有明确保证。
+     *
+     * <p>因此本模组<b>在每次切换图层之前显式提交一次</b>：不依赖"下一个图层会不会顺手画掉我"，
+     * 每层的顶点都在写完后立刻画出去，格式与状态都自洽。已有的调用点见
+     * {@code CabinRenderer.render}（不透明层 → 文字层 → 玻璃层）与 {@code LandingDoorRenderer.render}
+     * （文字层 → 不透明层 → 玻璃层）。
+     *
+     * <p>用错位置的后果：
+     * <ul>
+     *   <li>同一图层写完、提交之后又继续往同一个 {@link VertexConsumer} 写 → 缓冲已结束，抛 {@code Not building!}；</li>
+     *   <li>只调用而不重新 {@code getBuffer} 就换层 → 拿到的是别的图层的消费者。</li>
+     * </ul>
+     *
+     * @param buffers 本渲染器收到的顶点缓冲提供者
+     */
+    public static void flush(VertexConsumerProvider buffers) {
+        if(buffers instanceof VertexConsumerProvider.Immediate immediate) immediate.drawCurrentLayer();
+    }
 
     /**
      * 以两个对角点（单位：格）生成一个只有外表面的长方体，六个面共用一个颜色，整面铺满贴图。
