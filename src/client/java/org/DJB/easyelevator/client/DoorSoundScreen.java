@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.client;
 
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
@@ -186,7 +185,7 @@ public class DoorSoundScreen extends Screen {
         // 页脚：基准层长键 + 关闭键，右边缘与设置行的"试听"右边缘对齐
         addDrawableChild(new RowButton(panelLeft+X_TOGGLE,footY,BASE_W,
                 () -> baseFloor,Text.translatable("screen.easyelevator.floor_base"),
-                b -> ClientPlayNetworking.send(new ElevatorNetworking.SetBaseFloor(station,!baseFloor)),
+                b -> ClientPackets.sendClient(new ElevatorNetworking.SetBaseFloor(station,!baseFloor)),
                 () -> Text.translatable(baseFloor
                         ?"screen.easyelevator.floor_base_on":"screen.easyelevator.floor_base")));
         addDrawableChild(new RowButton(panelLeft+X_CLOSE,footY,CLOSE_W,() -> false,
@@ -247,7 +246,7 @@ public class DoorSoundScreen extends Screen {
      * @param preview 是否请求服务端当场试听
      */
     private void sendCommand(boolean enabled,int choice,boolean preview) {
-        ClientPlayNetworking.send(new ElevatorNetworking.DoorSoundCommand(station,enabled,choice,preview));
+        ClientPackets.sendClient(new ElevatorNetworking.DoorSoundCommand(station,enabled,choice,preview));
     }
 
     /**
@@ -350,7 +349,7 @@ public class DoorSoundScreen extends Screen {
                 message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
                 return;
             }
-            ClientPlayNetworking.send(new ElevatorNetworking.DoorSoundUpload(station, bytes));
+            ClientPackets.sendClient(new ElevatorNetworking.DoorSoundUpload(station, bytes));
         } catch (Exception e) {
             LOGGER.warn("Could not read the picked arrival-sound file {}", path, e);
             message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
@@ -379,7 +378,7 @@ public class DoorSoundScreen extends Screen {
     @Override
     public void render(DrawContext context,int mouseX,int mouseY,float delta) {
         if (previewFlash>0) previewFlash--; // 闪烁按帧递减，够用且不必额外挂刻事件
-        renderBackground(context,mouseX,mouseY,delta);
+        renderBackground(context);
         context.fill(panelLeft,panelTop,panelLeft+CONTENT_W,panelTop+BLOCK_H,PANEL_COLOR);
         // 标题与副标题都画在面板内部，各自占一段高度（见 TITLE_H / HEADER_H 的说明）
         context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop+PAD-2,TITLE_COLOR);
@@ -434,7 +433,7 @@ public class DoorSoundScreen extends Screen {
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(DrawContext context) {
         context.fill(0,0,width,height,0x18000000);
     }
 
@@ -492,7 +491,7 @@ public class DoorSoundScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             Text label=dynamic==null?getMessage():dynamic.get();
             if (readOnly) {
@@ -543,7 +542,7 @@ public class DoorSoundScreen extends Screen {
          * @return 恒为 false：本面板不使用键盘 Tab 导航。
          *
          * <p>为什么必须显式关掉：{@code ButtonWidget} 默认让"第一个控件"获得焦点，而焦点会走
-         * {@link #renderWidget} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
+         * {@link #renderButton} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
          * 这些键都可以用鼠标点，关掉键盘焦点对玩家没有损失。
          */
         @Override

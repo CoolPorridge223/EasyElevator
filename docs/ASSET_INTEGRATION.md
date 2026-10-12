@@ -63,7 +63,7 @@
 外壳五个长方体与 `AbstractCabinEntity.collisionBoxes()` 逐项对应，内饰件写在三张数据表里
 （`STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS`，每行 = `{x,y,z,X,Y,Z,材质格号,自发光}`，单位格、轿厢局部坐标）。
 替换为你的 Java/Blockbench 实体模型时，保留注册的 `CabinRenderer`，在其 `render` 内调用你的模型即可。
-如果将来采用 GeckoLib，需要自行增加适用于 1.21.1 的依赖及动画控制器；当前实现不依赖动画库。
+如果将来采用 GeckoLib，需要自行增加适用于 1.20.1 的依赖及动画控制器；当前实现不依赖动画库。
 
 内饰表有三条硬不变量，改表后必须让 `python tools/generate_art.py` 通过（它会解析 Java 源文件并逐条校验）：
 ① 所有件待在净空 `X ±1.3、Y 0.2..2.8、Z -1.3..门背面` 之内（允许向外壳嵌 0.002 格）；

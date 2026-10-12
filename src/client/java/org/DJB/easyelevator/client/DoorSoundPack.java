@@ -372,7 +372,7 @@ public final class DoorSoundPack {
      * @return 本包的 id；没有这个包时返回 null
      */
     private static String profileId(ResourcePackManager manager) {
-        for (String id : manager.getIds()) {
+        for (String id : manager.getNames()) {
             if (id.equals(PACK_DIR_NAME) || id.endsWith("/" + PACK_DIR_NAME)) return id;
         }
         return null;
@@ -383,7 +383,7 @@ public final class DoorSoundPack {
      * @return 本包当前是否已经在"已启用"列表里
      */
     private static boolean alreadyEnabled(ResourcePackManager manager) {
-        for (String id : manager.getEnabledIds()) {
+        for (String id : manager.getEnabledNames()) {
             if (id.equals(PACK_DIR_NAME) || id.endsWith("/" + PACK_DIR_NAME)) return true;
         }
         return false;

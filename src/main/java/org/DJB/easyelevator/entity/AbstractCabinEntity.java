@@ -206,11 +206,12 @@ public abstract class AbstractCabinEntity extends Entity {
      * @param yaw 原版追踪包给出的偏航角（单位：度）
      * @param pitch 原版追踪包给出的俯仰角（单位：度）
      * @param steps 原版要求的插值步数（单位：刻）
+     * @param interpolate 原版是否要求插值（1.20.1 的签名比 1.21 多这一个参数，原样透传父类）
      */
     @Override
-    public void updateTrackedPositionAndAngles(double x, double y, double z, float yaw, float pitch, int steps) {
+    public void updateTrackedPositionAndAngles(double x, double y, double z, float yaw, float pitch, int steps, boolean interpolate) {
         if (!getWorld().isClient || !clientMotionControlled)
-            super.updateTrackedPositionAndAngles(x, y, z, yaw, pitch, steps);
+            super.updateTrackedPositionAndAngles(x, y, z, yaw, pitch, steps, interpolate);
     }
 
     /** 读档后等待名册乘客归位的剩余刻数（刻）；0 = 本刻无需等待（名册已齐或等待窗口已用尽）。 */
@@ -309,13 +310,12 @@ public abstract class AbstractCabinEntity extends Entity {
     /**
      * 初始化 DataTracker 的默认同步值：Phase = OPEN（序号 0）、门全开 1、朝向 NORTH、无目标。
      * 这些默认值会在首个服务端 tick 后立即被 {@link #tick()} 的写回覆盖，仅用于客户端在收到首个包前的渲染兜底。
-     *
-     * @param b 原版实体构造流程传入的 DataTracker 构建器
      */
     @Override
-    protected void initDataTracker(DataTracker.Builder b) {
-        b.add(PHASE, 0); b.add(DOOR, 1f); b.add(FACING, Direction.NORTH.getId()); b.add(TARGET_Y, Integer.MIN_VALUE);
-        b.add(FLOOR, 0); // 楼层号在第 0 刻由 updateFloorNumber 算出，默认 0 表示"还不知道"
+    protected void initDataTracker() {
+        dataTracker.startTracking(PHASE, 0); dataTracker.startTracking(DOOR, 1f);
+        dataTracker.startTracking(FACING, Direction.NORTH.getId()); dataTracker.startTracking(TARGET_Y, Integer.MIN_VALUE);
+        dataTracker.startTracking(FLOOR, 0); // 楼层号在第 0 刻由 updateFloorNumber 算出，默认 0 表示"还不知道"
     }
 
     /**

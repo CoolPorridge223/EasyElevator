@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.client;
 
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
@@ -79,10 +78,10 @@ public class LandingDoorScreen extends Screen {
         int left=width/2-BUTTON/2, top=panelTop+PADDING, row=0;
         if(showUp) addDrawableChild(new SquareButton(left,top+row++*(BUTTON+GAP),"▲",() -> upPending,
                 Text.translatable("screen.easyelevator.hall_up"),
-                b->ClientPlayNetworking.send(new ElevatorNetworking.HallCallButton(station,true))));
+                b->ClientPackets.sendClient(new ElevatorNetworking.HallCallButton(station,true))));
         if(showDown) addDrawableChild(new SquareButton(left,top+row++*(BUTTON+GAP),"▼",() -> downPending,
                 Text.translatable("screen.easyelevator.hall_down"),
-                b->ClientPlayNetworking.send(new ElevatorNetworking.HallCallButton(station,false))));
+                b->ClientPackets.sendClient(new ElevatorNetworking.HallCallButton(station,false))));
         // 关闭键：与方向键完全同款同尺寸（只有一个 × 字符，不再用原版长条按钮）。
         addDrawableChild(new SquareButton(left,top+row*(BUTTON+GAP),"×",() -> false,
                 Text.translatable("screen.easyelevator.close"),b->close()));
@@ -99,7 +98,7 @@ public class LandingDoorScreen extends Screen {
      */
     @Override
     public void render(DrawContext context,int mouseX,int mouseY,float delta) {
-        renderBackground(context,mouseX,mouseY,delta);
+        renderBackground(context);
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
         context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFF);
         context.drawCenteredTextWithShadow(textRenderer,
@@ -115,7 +114,7 @@ public class LandingDoorScreen extends Screen {
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(DrawContext context) {
         context.fill(0,0,width,height,0x18000000);
     }
 
@@ -159,7 +158,7 @@ public class LandingDoorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=pending.getAsBoolean();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；配色与选站面板的楼层键同源。

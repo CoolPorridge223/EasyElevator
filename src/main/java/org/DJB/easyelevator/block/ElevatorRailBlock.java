@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.block;
 
-import com.mojang.serialization.MapCodec;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.HorizontalFacingBlock;
@@ -24,9 +23,6 @@ import net.minecraft.world.BlockView;
  */
 public class ElevatorRailBlock extends HorizontalFacingBlock {
 
-    /** 方块编解码器，仅用于数据生成与序列化；方块本身无额外构造参数。 */
-    public static final MapCodec<ElevatorRailBlock> CODEC = createCodec(ElevatorRailBlock::new);
-
     /**
      * @param settings 方块设置（硬度、是否不透明等），由注册处给出
      */
@@ -35,10 +31,6 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
         // HorizontalFacingBlock 声明了 FACING，默认状态必须显式赋值，否则读取状态属性会抛异常
         setDefaultState(getStateManager().getDefaultState().with(FACING, Direction.NORTH));
     }
-
-    /** @return 本方块对应的编解码器 */
-    @Override
-    public MapCodec<ElevatorRailBlock> getCodec() { return CODEC; }
 
     /**
      * 只注册 FACING：轨道不是原版 AbstractRailBlock，没有 shape/waterlogged/powered，
@@ -86,7 +78,7 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
      * @return 轮廓体素形状，单位为格
      */
     @Override
-    protected VoxelShape getOutlineShape(BlockState s, BlockView w, BlockPos p, ShapeContext c) {
+    public VoxelShape getOutlineShape(BlockState s, BlockView w, BlockPos p, ShapeContext c) {
         return Block.createCuboidShape(3, 0, 3, 13, 16, 13);
     }
 }

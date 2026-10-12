@@ -1,10 +1,6 @@
 package org.DJB.easyelevator.network;
 
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.DJB.easyelevator.Easyelevator;
@@ -51,18 +47,18 @@ import org.DJB.easyelevator.logic.RiderMotionHistory;
  */
 public record RiderMove(int cabinId, long tick, double x, double y, double z,
                         float yaw, float pitch, boolean ground, boolean position, boolean look)
-        implements CustomPayload {
-    /** 负载类型 id，注册与路由键：{@code easyelevator:rider_move}。 */
+        implements Payload {
+    /** 该负载的通道名（注册与路由键）：{@code easyelevator:rider_move}。 */
     public static final Id<RiderMove> ID = new Id<>(Easyelevator.id("rider_move"));
     /** 线格式编解码器：字段顺序必须与 {@link #decode}/{@link #encode} 严格一致，否则两端静默错位。 */
-    public static final PacketCodec<RegistryByteBuf, RiderMove> CODEC = new PacketCodec<>() {
+    public static final PayloadCodec<PacketByteBuf, RiderMove> CODEC = new PayloadCodec<>() {
         /** 从字节流按固定顺序读回一包移动：VarInt 实体 id、long 样本编号、3 个 double 坐标、两个 float 视角、3 个布尔标志。 */
-        @Override public RiderMove decode(RegistryByteBuf b) {
+        @Override public RiderMove decode(PacketByteBuf b) {
             return new RiderMove(b.readVarInt(), b.readLong(), b.readDouble(), b.readDouble(),
                     b.readDouble(), b.readFloat(), b.readFloat(), b.readBoolean(), b.readBoolean(), b.readBoolean());
         }
         /** 按与解码完全对称的顺序写出；顺序一旦改动即为协议不兼容。 */
-        @Override public void encode(RegistryByteBuf b, RiderMove p) {
+        @Override public void encode(PacketByteBuf b, RiderMove p) {
             b.writeVarInt(p.cabinId); b.writeLong(p.tick);
             b.writeDouble(p.x); b.writeDouble(p.y); b.writeDouble(p.z);
             b.writeFloat(p.yaw); b.writeFloat(p.pitch);
@@ -87,8 +83,9 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
                 p.getYaw(0), p.getPitch(0), p.isOnGround(), p.changesPosition(), p.changesLook());
     }
 
-    /** @return 负载类型 id，框架据此把包分发到对应接收器 */
-    @Override public Id<? extends CustomPayload> getId() { return ID; }
+    /** @return 通道名包装；收发层据此选择通道 */
+    @Override public Id<?> getId() { return ID; }
+    @Override public void write(PacketByteBuf buf) { CODEC.encode(buf, this); }
 
     /**
      * 还原成原版移动包，但 Y 换成调用方给定的值。
@@ -140,14 +137,13 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
     }
 
     /**
-     * 注册负载类型与服务端接收器；由模组初始化时调用一次（经 {@code ElevatorNetworking.register()}）。
+     * 注册服务端接收器；由模组初始化时调用一次（经 {@code ElevatorNetworking.register()}）。
      *
-     * <p>注册必须先于任何收发，否则两端会因缺少 id 而断连。接收器在网络线程被调用，故整体切回服务端主线程
-     * 再执行 {@link #apply}——实体查询与玩家位置更新都只能在主线程做。
+     * <p>1.20.1 没有负载类型注册表，通道名随包走，因此这里只需要登记 C2S 接收器。接收器在网络线程被调用，
+     * 故整体切回服务端主线程再执行 {@link #apply}——实体查询与玩家位置更新都只能在主线程做。
      */
     public static void register() {
-        PayloadTypeRegistry.playC2S().register(ID, CODEC);
-        ServerPlayNetworking.registerGlobalReceiver(ID, (packet, context) ->
+        Packets.onServer(ID, CODEC, (packet, context) ->
                 context.server().execute(() -> packet.apply(context.player())));
     }
 }

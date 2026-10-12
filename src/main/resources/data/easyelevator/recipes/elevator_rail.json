@@ -2,14 +2,11 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    " B ",
+    "I I",
     "IRI",
-    "   "
+    "I I"
   ],
   "key": {
-    "B": {
-      "item": "minecraft:stone_button"
-    },
     "I": {
       "item": "minecraft:iron_ingot"
     },
@@ -18,7 +15,7 @@
     }
   },
   "result": {
-    "id": "easyelevator:call_button",
-    "count": 2
+    "item": "easyelevator:elevator_rail",
+    "count": 8
   }
 }

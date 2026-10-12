@@ -102,6 +102,9 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      * @param delta 帧插值系数
      */
     @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // 1.20.1 的原版调用链里没有任何一环会替我们调 renderBackground（GameRenderer 只调 renderWithTooltip，
+        // HandledScreen.render 只调 drawBackground），因此遮罩必须在这里自己先铺一次。
+        renderBackground(context);
         super.render(context, mouseX, mouseY, delta);
         drawMouseoverTooltip(context, mouseX, mouseY);
         if (mouseX >= x + 8 && mouseX < x + 168 && mouseY >= y + 19 && mouseY < y + 46)
@@ -112,18 +115,14 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
     /**
      * 面板背景：只铺一层很淡的暗色遮罩，**不调用原版模糊**——与选站面板、厅外呼叫面板一致。
      *
-     * <p>为什么必须在这里也画面板底：原版的调用链是 {@code Screen.render → renderBackground →
-     * drawBackground}，{@code HandledScreen.renderBackground} 就是转调 {@code drawBackground}；
-     * 本类覆盖了 {@code renderBackground} 来换掉模糊，因此要顺手把 {@link #drawBackground} 叫上，
-     * 否则面板底与槽位凹槽根本不会被画出来（只剩槽位里的物品浮在游戏画面上）。
+     * <p>1.20.1 的调用链与 1.21 不同：{@code Screen.render} 与 {@code HandledScreen.render} 都不再调
+     * {@code renderBackground}，而 {@code HandledScreen.render} <b>自己</b>会调 {@code drawBackground}
+     * 画面板底与槽位凹槽。因此这里只负责画遮罩（由 {@link #render} 先叫一次），
+     * <b>不要再手动调 {@link #drawBackground}</b>，否则面板底会被画两遍。
      *
      * @param context 绘制上下文
-     * @param mouseX 鼠标 X
-     * @param mouseY 鼠标 Y
-     * @param delta 帧插值系数
      */
-    @Override public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+    @Override public void renderBackground(DrawContext context) {
         context.fill(0, 0, width, height, 0x18000000);
-        drawBackground(context, delta, mouseX, mouseY);
     }
 }

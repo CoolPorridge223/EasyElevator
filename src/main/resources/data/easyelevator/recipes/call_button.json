@@ -2,23 +2,23 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    "III",
+    " B ",
     "IRI",
-    "IPI"
+    "   "
   ],
   "key": {
+    "B": {
+      "item": "minecraft:stone_button"
+    },
     "I": {
       "item": "minecraft:iron_ingot"
     },
     "R": {
       "item": "minecraft:redstone"
-    },
-    "P": {
-      "item": "minecraft:piston"
     }
   },
   "result": {
-    "id": "easyelevator:cabin",
-    "count": 1
+    "item": "easyelevator:call_button",
+    "count": 2
   }
 }

@@ -3,7 +3,6 @@ package org.DJB.easyelevator.block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
@@ -244,10 +243,9 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * 把基准层标记与到站音效设置写进方块实体 NBT（随区块存档）。
      *
      * @param nbt 目标 NBT
-     * @param registries 注册表查询（本实体没有需要迁移的字段，仅透传给父类）
      */
-    @Override protected void writeNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
-        super.writeNbt(nbt,registries);
+    @Override protected void writeNbt(NbtCompound nbt) {
+        super.writeNbt(nbt);
         if (baseFloor) nbt.putBoolean("BaseFloor",true); // 只写 true：默认门不必多一个 false 字段
         arrivalSound.writeNbt(nbt); // 同理：整份默认设置不写任何字段，旧存档体积不变
     }
@@ -256,10 +254,9 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * 从方块实体 NBT 读回基准层标记与到站音效设置。
      *
      * @param nbt 存档 NBT
-     * @param registries 注册表查询（透传父类）
      */
-    @Override protected void readNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
-        super.readNbt(nbt,registries);
+    @Override public void readNbt(NbtCompound nbt) {
+        super.readNbt(nbt);
         baseFloor=nbt.getBoolean("BaseFloor");
         arrivalSound=DoorArrivalSound.readNbt(nbt); // 开关字段缺失 = 出厂默认（发声）：旧存档的门升级后照旧会响；只有玩家真的关掉才写 false
     }

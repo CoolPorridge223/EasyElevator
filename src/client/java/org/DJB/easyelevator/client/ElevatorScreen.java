@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.client;
 
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
@@ -146,14 +145,17 @@ public class ElevatorScreen extends Screen {
      *
      * <p>副作用：向屏幕添加控件；不发包、不改世界。翻页按钮只改 page 并重建控件。
      */
+    /** 把 value 夹在 [min,max] 内（1.20.1 的目标语言是 Java 17，没有 {@code Math.clamp}）。 */
+    private static int clamp(int value,int min,int max) { return value<min?min:Math.min(value,max); }
+
     @Override
     protected void init() {
         // 列数上限由窗口宽度给出、行数上限由窗口高度给出，具体排布交给 PanelLayout（纯算术，有单测）。
-        int maxColumns=Math.clamp((width-2*PADDING)/(BUTTON+GAP),1,MAX_COLUMNS);
-        int maxRows=Math.clamp((height-HEADER-FOOTER-2*PADDING-2*WELL_PAD)/(BUTTON+GAP),1,MAX_ROWS);
+        int maxColumns=clamp((width-2*PADDING)/(BUTTON+GAP),1,MAX_COLUMNS);
+        int maxRows=clamp((height-HEADER-FOOTER-2*PADDING-2*WELL_PAD)/(BUTTON+GAP),1,MAX_ROWS);
         grid=PanelLayout.grid(stops.size(),maxColumns,maxRows);
         // 窗口缩小或站点减少后可能停在空页上，这里把 page 夹回合法范围。
-        page=Math.clamp(page,0,grid.pageCount()-1);
+        page=clamp(page,0,grid.pageCount()-1);
 
         int gridWidth=grid.columns()*BUTTON+(grid.columns()-1)*GAP, gridHeight=grid.rowsPerPage()*BUTTON+(grid.rowsPerPage()-1)*GAP;
         panelWidth=Math.max(gridWidth+2*PADDING,MIN_PANEL_WIDTH);
@@ -178,7 +180,7 @@ public class ElevatorScreen extends Screen {
             String label=FloorIndicator.label(i,baseIndex); // 编号：基准层 = 1，其上 2,3…，其下 B1,B2…
             addDrawableChild(new StationButton(x,y,label,stop.getY(),stop.asLong(),
                     Text.translatable("screen.easyelevator.station",label,stop.getY()),
-                    button->ClientPlayNetworking.send(new ElevatorNetworking.SelectStop(entityId,stop))));
+                    button->ClientPackets.sendClient(new ElevatorNetworking.SelectStop(entityId,stop))));
         }
         // 页脚一行：翻页（< >）、开门、关门、完成。文案与可用状态都由原版控件机制负责，
         // 绘制统一走 FlatButton（深色扁平键），免得原版灰色长条贴图和深色面板打架。
@@ -188,9 +190,9 @@ public class ElevatorScreen extends Screen {
         pageNext=addDrawableChild(new FlatButton(left+BUTTON+GAP,footerY,BUTTON,BUTTON,Text.literal(">"),b->{page++;clearAndInit();},
                 Text.translatable("screen.easyelevator.next_page")));
         doorOpen=addDrawableChild(new FlatButton(left+56,footerY,44,BUTTON,Text.translatable("screen.easyelevator.open_door"),
-                b->ClientPlayNetworking.send(new ElevatorNetworking.DoorCommand(entityId,true))));
+                b->ClientPackets.sendClient(new ElevatorNetworking.DoorCommand(entityId,true))));
         doorClose=addDrawableChild(new FlatButton(left+104,footerY,44,BUTTON,Text.translatable("screen.easyelevator.close_door"),
-                b->ClientPlayNetworking.send(new ElevatorNetworking.DoorCommand(entityId,false))));
+                b->ClientPackets.sendClient(new ElevatorNetworking.DoorCommand(entityId,false))));
         addDrawableChild(new FlatButton(panelLeft+panelWidth-PADDING-60,footerY,60,BUTTON,Text.translatable("gui.done"),b->close()));
     }
 
@@ -308,7 +310,7 @@ public class ElevatorScreen extends Screen {
     public void render(DrawContext context,int mouseX,int mouseY,float delta) {
         var cabin=cabin();
         updateDoorButtons(cabin); // 可用性跟着轿厢状态走，因此放在 render 里每帧刷新
-        renderBackground(context,mouseX,mouseY,delta);
+        renderBackground(context);
         // 面板底：不透明深色（早先用半透明时，井道与轿厢内面板的红字会从底下透出来）+ 1 像素外框。
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
         drawFrame(context,panelLeft,panelTop,panelWidth,panelHeight,BORDER_COLOR);
@@ -375,9 +377,10 @@ public class ElevatorScreen extends Screen {
     /** 覆盖原版背景绘制。副作用：仅用一次全屏浅色叠加代替原版模糊着色器。
      * 为什么这样做：Screen.renderBackground 会应用原版模糊（blur）后处理，会把世界连同文字一起糊掉；
      * 这里只做 0x18000000 的淡黑叠加，既压暗背景又保持世界与文字清晰，也不会二次模糊已经画好的标题/状态文字。
+     * 1.20.1 的签名只有 context 一个参数（鼠标坐标与帧插值由调用方 {@link #render} 传入的版本是 1.21 才有的）。
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(DrawContext context) {
         // Screen.renderBackground applies the vanilla blur shader. A light tint keeps the world
         // and its text sharp, and cannot blur title/status text already drawn by another pass.
         context.fill(0,0,width,height,0x18000000);
@@ -432,7 +435,7 @@ public class ElevatorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=active&&(isHovered()||isFocused());
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             ctx.fill(x,y,x+w,y+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
@@ -449,7 +452,7 @@ public class ElevatorScreen extends Screen {
      * <p>配色优先级：悬停/键盘聚焦（点亮为白色）&gt; 已加入停靠计划（红色）&gt; 轿厢当前停靠层（绿色）&gt; 普通灰色。
      * 为什么不用原版 ButtonWidget 的默认外观：原版按钮是 200×20 的三段式贴图，压成 20×20 后左右边框挤在一起，
      * 看起来像被压扁的长条；这里直接画描边 + 底色 + 数字，更接近真实面板上的按键，以后想换成贴图也只需要
-     * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
+     * 改本类的 {@link #renderButton}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
      */
     private final class StationButton extends ButtonWidget {
         private final String label;  // 楼层编号文本（基准层 1、其上 2,3…、其下 B1,B2…），同时是按钮上的字
@@ -489,7 +492,7 @@ public class ElevatorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=isPlanned(), current=isCurrentFloor();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面，形成按键的立体感；配色与面板深色底协调。

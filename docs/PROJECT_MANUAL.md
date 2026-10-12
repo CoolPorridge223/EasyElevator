@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.0** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
+> 适用模组版本 **2.3.0+1.20.1** ｜ Minecraft **1.20.1** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.92.12+1.20.1** ｜ Java **17**
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -48,11 +48,11 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | --- | --- | --- |
 | Gradle | 8.14.3（wrapper） | `build.gradle` `tasks.named('wrapper')` |
 | Fabric Loom | 1.11.8 | `build.gradle` plugins |
-| Java 目标 | 21（`options.release` + toolchain） | `build.gradle` |
-| Minecraft | 1.21.1 | `gradle.properties` |
-| Yarn 映射 | 1.21.1+build.3 | `gradle.properties` |
-| Loader | 0.19.2 | `gradle.properties` |
-| Fabric API | 0.116.17+1.21.1 | `gradle.properties` |
+| Java 目标 | 17（`options.release` + toolchain；Gradle 进程可用 21） | `build.gradle` + `gradle.properties` |
+| Minecraft | 1.20.1 | `gradle.properties` |
+| Yarn 映射 | 1.20.1+build.10 | `gradle.properties` |
+| Loader | 0.19.5 | `gradle.properties` |
+| Fabric API | 0.92.12+1.20.1 | `gradle.properties` |
 | 源集拆分 | `splitEnvironmentSourceSets()`（main + client） | `build.gradle` `loom` |
 | 数据生成 | `configureDataGeneration { client = true }` | `build.gradle` |
 | 源集 | `main`（服务端/公共）+ `client`（客户端），由 `loom.splitEnvironmentSourceSets()` 拆分 | `build.gradle` |
@@ -1072,7 +1072,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 6.3 网络协议（服务端权威）
 
-所有 payload 都是 `CustomPayload` + `PacketCodec<RegistryByteBuf, ...>`。**字段顺序即协议**，编解码必须严格对称。
+本线的 payload 都是 `Payload` + `PayloadCodec<PacketByteBuf, ...>`（形状与 1.21 线的 `CustomPayload` + `PacketCodec<RegistryByteBuf, ...>` 一一对应，差异集中在 `network/Packets` 与 `client/ClientPackets`，见 [构建与打包](BUILD_AND_PACKAGING.md) 第 8 节）。**字段顺序即协议**，编解码必须严格对称。
 
 **S2C（服务端 → 客户端，7 个）**
 
@@ -1211,7 +1211,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留，以及渲染同步 |
 | 改轿厢尺寸 | 实体 `dimensions`、`localBox`/`collisionBoxes`、`containsPassenger` 边界、`doorwayBlocked`、渲染几何、`ElevatorLine.cabins` 包围盒 |
 | 改选站面板布局 | `PanelLayout` + `ElevatorScreen` 常量 + `MAX_COLUMNS/MAX_ROWS` |
-| 新增网络包 | `PayloadTypeRegistry` 注册（S2C/C2S 不能混）+ 客户端/服务端处理器 + 编解码对称 |
+| 新增网络包 | `Id` + `PayloadCodec` 定义 + `Packets.onServer` / `ClientPackets.on` 处理器 + 编解码对称（1.20.1 没有负载类型注册表） |
 | 改注册 ID | **不要改**（旧存档、旧物品、旧配方全部失效） |
 
 ---
@@ -1269,9 +1269,10 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.0.jar`） |
+| 构建 | `.\gradlew.bat build`（Gradle 进程用 JDK 21/17 均可，编译与运行 MC 1.20.1 用 toolchain 指定的 JDK 17；成品 `build/libs/easyelevator-2.3.0+1.20.1.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
+| 开发服务端（几十秒内验证 Mixin 注入、注册表与数据包加载） | `.\gradlew.bat runServer` |
 | 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |
 
 **验收方式：** 工程内没有 `src/test`，也没有常驻自动化测试；`test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关闭，
@@ -1312,11 +1313,15 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 10.6 新增网络包
 
-1. 定义 `record ... implements CustomPayload`（`ID` + `CODEC` + `getId`）。
-2. 在 `register()` 里按方向注册（`playS2C` / `playC2S`）。
-3. 服务端处理器必须`context.server().execute(...)`回到主线程，并**重新校验一切客户端输入**。
-4. 客户端处理器必须`context.client().execute(...)`回到客户端线程。
-5. 编解码顺序与上限校验（参考 `readPositions`）。
+1. 定义 `record ... implements Payload`：一个 `Id<X> ID = new Id<>(Easyelevator.id("..."))`，
+   一个 `PayloadCodec<PacketByteBuf, X> CODEC`（`decode` / `encode` 必须严格对称），
+   以及 `getId()` 与 `write()` 两个接口方法（`write` 直接转发给 `CODEC.encode`）。
+2. **不需要注册"负载类型"**：1.20.1 的通道名随包发送，只在 `ElevatorNetworking.register()` 里登记接收器。
+3. 服务端处理器用 `Packets.onServer(ID, CODEC, (payload, context) -> context.server().execute(...))`，
+   必须回到主线程，并**重新校验一切客户端输入**。
+4. 客户端处理器用 `ClientPackets.on(ID, CODEC, (payload, context) -> context.client().execute(...))` 回到客户端线程。
+5. 发送统一走 `Packets.sendServer(player, payload)` / `ClientPackets.sendClient(payload)`，业务代码不要直接碰 Fabric
+   的通道 API（那是两条版本线唯一分叉的地方）；编解码顺序与上限校验（参考 `readPositions`）与 1.21 线一致。
 
 ### 10.7 新增扩展事件
 
@@ -1445,13 +1450,13 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
   向**原版数据修复器**要这个 id 的 choice type。原版 schema 里只有原版实体，模组 id 必然查不到，
   于是每次启动都为每个实体刷一条 `No data fixer registered for easyelevator:xxx`（`Util` 里以 ERROR 记录）；
   开发环境（`SharedConstants.isDevelopment` 为真）还会把异常**原样抛出**，模组初始化直接失败。
-- Fabric API 的 `EntityTypeBuilderMixin` 额外提供了一个无参 `build()`：内部就是 `build(null)`，
-  并用 `WrapOperation` 拦下那次 `Util.getChoiceType` —— “id 为 null 就查都不查”。因此既没有报错，
-  也没有副作用。
-- **不损失任何功能**：1.21.1 的原版 `build(String)` 本来就只造对象、不注册（`build` 末尾直接 `areturn`），
+- 1.20.1 的原版 `EntityType.Builder` 没有无参 `build()`，Fabric 用 `FabricEntityTypeBuilder` 包了一层：
+  它的 `build()` 以 `null` 当 id 走同一条路径，并在 `Util.getChoiceType` 之前拦下那次查询 —— “id 为 null 就查都不查”。
+  因此既没有报错，也没有副作用。
+- **不损失任何功能**：原版 `build(String)` 本来就只造对象、不注册（`build` 末尾直接 `areturn`），
   注册一直是调用方 `Registry.register(Registries.ENTITY_TYPE, id, ...)` 的事；而模组实体本来也不在原版
   数据修复器的迁移范围内。所以那个 id 参数唯一的实际作用就是"去查一个查不到的 choice type"。
-- 新增型号时照抄 `cabinType(...)` 的写法即可，别写 `.build("easyelevator:新id")`。
+- 新增型号时照抄 `cabinType(...)` 的写法（`FabricEntityTypeBuilder.create(SpawnGroup.MISC, factory).dimensions(EntityDimensions.fixed(3,3)).trackRangeChunks(10).trackedUpdateRate(1).build()`）即可。
 - `BlockEntityType` 走的是 Fabric 的 `FabricBlockEntityTypeBuilder`（同样是无参 `build()`），本来就安全。
 
 ### 12.5 接入新设备的检查清单

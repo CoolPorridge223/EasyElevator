@@ -157,9 +157,9 @@ public final class CabinMotion {
      */
     public static void sendMovement(ClientPlayNetworkHandler handler, Packet<?> packet) {
         if (tickCabin != null && packet instanceof PlayerMoveC2SPacket move
-                && ClientPlayNetworking.canSend(RiderMove.ID)) {
+                && ClientPlayNetworking.canSend(RiderMove.ID.id())) {
             // 只包住原版自己选中的那个包：既不重复发包，也不额外制造一次传送。
-            ClientPlayNetworking.send(RiderMove.of(tickCabin.getId(), tickFrame, move));
+            ClientPackets.sendClient(RiderMove.of(tickCabin.getId(), tickFrame, move));
         } else handler.sendPacket(packet);
     }
 

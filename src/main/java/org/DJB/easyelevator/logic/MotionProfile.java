@@ -318,7 +318,7 @@ public final class MotionProfile {
             time += segment.duration();
         }
         // 浮点余量：落在最后一段之后时用末段终点兜底，绝不做外推。
-        Segment last = segments.getLast();
+        Segment last = segments.get(segments.size()-1);
         return switch (query) {
             case POSITION -> last.position(last.duration());
             case VELOCITY -> last.velocity(last.duration());

@@ -4,7 +4,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import org.DJB.easyelevator.Easyelevator;
@@ -69,30 +68,30 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 楼层门门扇是连续滑动的几何，方块模型做不到逐帧插值，因此交给方块实体渲染器绘制（门框仍由方块模型画）。
         BlockEntityRendererRegistry.register(Easyelevator.LANDING_DOOR_BE,LandingDoorRenderer::new);
         // 网络回调不在主线程：所有客户端状态修改都必须回到客户端线程（context.client().execute）执行，避免数据竞争。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.MotionFrame.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.MotionFrame.ID,ElevatorNetworking.MotionFrame.CODEC,(payload,context)->
                 context.client().execute(()->CabinMotion.receive(payload)));
         // 服务端校验过乘客身份与站点列表后才发 OpenPanel，这里直接开界面；面板内容全部来自包，不信任客户端本地状态。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenPanel.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.OpenPanel.ID,ElevatorNetworking.OpenPanel.CODEC,(payload,context)->
                 context.client().execute(()->context.client().setScreen(new ElevatorScreen(payload))));
         // 停靠计划变化（到达、取消、新请求）时服务端会推 PanelState：只刷新"已经为这辆轿厢打开的面板"，
         // 因此不会给没开面板的乘客弹出界面；面板里据此把已加入计划的站点标红。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.PanelState.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.PanelState.ID,ElevatorNetworking.PanelState.CODEC,(payload,context)->
                 context.client().execute(()->{
                     if(context.client().currentScreen instanceof ElevatorScreen screen && screen.entityId()==payload.entityId())
                         screen.applyState(payload.planned(),payload.baseFloorY());
                 }));
         // 厅外呼叫面板：右键楼层门时服务端下发 OpenHallPanel，这里直接开界面（内容全部来自包，不信任本地状态）。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenHallPanel.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.OpenHallPanel.ID,ElevatorNetworking.OpenHallPanel.CODEC,(payload,context)->
                 context.client().execute(()->context.client().setScreen(new LandingDoorScreen(payload))));
         // 点亮状态刷新（登记成功 / 轿厢到站清扫 / 门被拆）：只更新"已经为这个站点打开的面板"，绝不会主动弹界面。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.HallPanelState.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.HallPanelState.ID,ElevatorNetworking.HallPanelState.CODEC,(payload,context)->
                 context.client().execute(()->{
                     if(context.client().currentScreen instanceof LandingDoorScreen screen && screen.station().equals(payload.station()))
                         screen.applyState(payload.up(),payload.down());
                 }));
         // 门专属设置面板（潜行右键楼层门时服务端下发 OpenDoorPanel）：打开或刷新界面。
         // 面板内容全部来自包（单扇门的设置存在方块实体里），客户端不推导、不缓存，因此"别人改过的设置"也如实显示。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenDoorPanel.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.OpenDoorPanel.ID,ElevatorNetworking.OpenDoorPanel.CODEC,(payload,context)->
                 context.client().execute(()->{
                     // 已经为同一扇门开着面板时只刷新内容：避免每次点按钮都重建界面（会打断连点）。
                     if(context.client().currentScreen instanceof DoorSoundScreen screen && screen.station().equals(payload.station()))
@@ -104,7 +103,7 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 这一步让"上传者以外的玩家、以及上传之后才进服的人"也能听到同一段音频。
         // 只标记、不立刻重载：进服补齐会连着来很多条，逐条 reloadResources 会让资源管理器重建很多次
         // （每一次都弹那个红色 Mojang 画面）；真正的重载统一放在本刻末尾做一次。
-        ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.DoorSoundData.ID,(payload,context)->
+        ClientPackets.on(ElevatorNetworking.DoorSoundData.ID,ElevatorNetworking.DoorSoundData.CODEC,(payload,context)->
                 context.client().execute(()->{
                     if(payload.bytes().length==0) return; // 服务端也没有这份音频：保持静音，不做无谓重载
                     if(DoorSoundPersistence.store(payload.slot(),payload.bytes())) doorSoundReloadPending=true;
@@ -121,7 +120,7 @@ public class EasyelevatorClient implements ClientModInitializer {
                 DoorSoundPack.ensureReady(client);
                 // 请服务端把它现有的全部门槽音频发过来；服务端逐条回 DoorSoundData，本机按需存盘并重载。
                 // 这样"音频上传之后才进服的玩家"也能听到同一段音频（专用服务器同样成立）。
-                ClientPlayNetworking.send(new ElevatorNetworking.RequestDoorSound(ElevatorNetworking.RequestDoorSound.ALL_SLOTS));
+                ClientPackets.sendClient(new ElevatorNetworking.RequestDoorSound(ElevatorNetworking.RequestDoorSound.ALL_SLOTS));
             }
             // 本刻收到过新的门槽音频：一次性把它们重建进资源包并重载。
             // 放在刻末而不是收包处，是为了把"进服补齐"这种连续多条合并成一次重载。

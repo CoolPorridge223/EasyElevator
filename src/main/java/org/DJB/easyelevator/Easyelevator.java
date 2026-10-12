@@ -7,8 +7,10 @@ import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityDimensions;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -84,18 +86,19 @@ public class Easyelevator implements ModInitializer {
     /**
      * 造一台轿厢的实体类型（碰撞箱、追踪参数四种型号完全一致），由调用方负责注册。
      *
-     * <p><b>这里必须用 Fabric 的无参 {@code build()}，不能用原版的 {@code build(String id)}</b>——
-     * 后者会在 {@code saveable}（默认 true）时先向<b>原版数据修复器</b>要这个 id 的 choice type：
+     * <p><b>这里必须用 Fabric 的 {@link FabricEntityTypeBuilder}，不能用原版的
+     * {@code EntityType.Builder#build(String id)}</b>——后者会在 {@code saveable}（默认 true）时
+     * 先向<b>原版数据修复器</b>要这个 id 的 choice type：
      * <pre>
      *   if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, id);
      * </pre>
      * 原版 schema 里只有原版实体，模组 id 一定查不到，于是每次注册都会在日志里刷一条
      * <b>{@code No data fixer registered for easyelevator:xxx}</b>（开发环境里 {@code SharedConstants.isDevelopment}
-     * 为真，还会把异常直接抛出去，模组初始化直接崩）。Fabric API 的 {@code EntityTypeBuilderMixin}
-     * 提供无参 {@code build()} → 内部走 {@code build(null)}，并用 {@code WrapOperation} 拦下
-     * {@code Util.getChoiceType}："id == null 就直接不查"，因此既没有那条报错，也不会有别的副作用
-     * ——1.21.1 的原版 {@code build(String)} 本来就<b>只造对象、不注册</b>，注册一直是调用方的事，
-     * 所以丢掉那个 id 参数不损失任何功能（mod 实体本来也不在原版数据修复器的迁移范围里）。
+     * 为真，还会把异常直接抛出去，模组初始化直接崩）。1.20.1 的原版 {@code EntityType.Builder}
+     * 没有无参 {@code build()}，Fabric 用 {@link FabricEntityTypeBuilder} 包了一层：它的 {@code build()}
+     * 以 {@code null} 当 id 走同一条路径，并在 {@code Util.getChoiceType} 之前拦下"id == null 就不查"，
+     * 因此既没有那条报错，也不会有别的副作用——{@code build(String)} 本来就<b>只造对象、不注册</b>，
+     * 注册一直是调用方的事，所以丢掉那个 id 参数不损失任何功能（模组实体本来也不在原版数据修复器的迁移范围里）。
      *
      * @param factory 实体构造工厂，例如 {@code CabinEntity::new}
      * @param <T> 轿厢实体类型
@@ -103,8 +106,8 @@ public class Easyelevator implements ModInitializer {
      *         {@link Registries#ENTITY_TYPE}，并用与存档一致的 ID
      */
     private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
-        return EntityType.Builder.create(factory, SpawnGroup.MISC)
-                .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build();
+        return FabricEntityTypeBuilder.create(SpawnGroup.MISC, factory)
+                .dimensions(EntityDimensions.fixed(3.0f, 3.0f)).trackRangeChunks(10).trackedUpdateRate(1).build();
     }
 
     /**
@@ -181,7 +184,7 @@ public class Easyelevator implements ModInitializer {
      * @param path 注册路径，不含命名空间（例如 {@code "cabin"}）
      * @return {@code easyelevator:<path>} 形式的标识符
      */
-    public static Identifier id(String path) { return Identifier.of(MOD_ID, path); }
+    public static Identifier id(String path) { return new Identifier(MOD_ID, path); }
 
     /**
      * 注册一个音效事件。

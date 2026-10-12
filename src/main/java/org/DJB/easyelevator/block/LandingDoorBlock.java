@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.block;
 
-import com.mojang.serialization.MapCodec;
 import net.minecraft.block.*;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.LivingEntity;
@@ -8,7 +7,7 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import org.DJB.easyelevator.network.Packets;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.StateManager;
 import net.minecraft.state.property.BooleanProperty;
@@ -16,6 +15,7 @@ import net.minecraft.state.property.IntProperty;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -58,9 +58,6 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  */
 public final class LandingDoorBlock extends HorizontalFacingBlock implements BlockEntityProvider {
 
-    /** 方块编解码器，仅用于数据生成与序列化；方块本身无额外构造参数。 */
-    public static final MapCodec<LandingDoorBlock> CODEC = createCodec(LandingDoorBlock::new);
-
     /**
      * 门在整扇门内的横向位置，0..2（1 = 根所在中列）。
      * 轴方向为 {@code FACING.rotateYClockwise()}：列号增大即沿该水平方向 +1 格。
@@ -86,10 +83,6 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
         // 默认状态取根方块：中列、底层、关闭；FACING 必须显式赋值，否则读取状态属性会抛异常
         setDefaultState(getStateManager().getDefaultState().with(FACING,Direction.NORTH).with(COLUMN,1).with(LEVEL,0).with(OPEN,false));
     }
-
-    /** @return 本方块对应的编解码器 */
-    @Override
-    public MapCodec<LandingDoorBlock> getCodec() { return CODEC; }
 
     /**
      * 注册 4 个状态属性：朝向、列、层、开门状态。这里没有原版门的 POWERED，
@@ -257,7 +250,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param random 随机源，未使用
      */
     @Override
-    protected void scheduledTick(BlockState s,ServerWorld world,BlockPos p,Random random) {
+    public void scheduledTick(BlockState s,ServerWorld world,BlockPos p,Random random) {
         if(!isRoot(s)) return;
         refresh(world,p);
         world.scheduleBlockTick(p,this,1);
@@ -304,7 +297,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
                         && Math.abs(c.getX()-x)<=tolerance && Math.abs(c.getZ()-z)<=tolerance
                         && Math.abs(c.getY()-origin.getY())<=tolerance);
         if(cars.size()!=1) return null; // 该线路必须恰好一辆；0 辆或数据异常时保持关门
-        AbstractCabinEntity car=cars.getFirst();
+        AbstractCabinEntity car=cars.get(0);
         // 不再按相位排除"运行中 / 受阻暂停"，而是交给调用方用"轿厢门是否真的在开"来把关
         // （见 mayOpen / leafProgress 里的 doorProgress > 0）。理由有两个：
         // ① 运行时门必然全关（"门未完全关闭不得移动"），因此相位守卫对正常行程是多余的；
@@ -413,11 +406,12 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param world 世界
      * @param pos 被点击部件坐标
      * @param player 点击的玩家
+     * @param hand 点击所用的手（未使用；1.20.1 的签名比 1.21 多这一个参数）
      * @param hit 命中信息（未使用）
      * @return 恒为 SUCCESS
      */
     @Override
-    protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
+    public ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,Hand hand,BlockHitResult hit) {
         if(!world.isClient) {
             BlockPos origin=root(state,pos);
             if(player.isSneaking()) openDoorSettings(world,origin,player);
@@ -475,9 +469,9 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
                 }
             }
             var cabins=line==null?java.util.List.<AbstractCabinEntity>of():line.cabins(world);
-            if(cabins.size()==1) { up=cabins.getFirst().hasHallCall(origin,true); down=cabins.getFirst().hasHallCall(origin,false); }
+            if(cabins.size()==1) { up=cabins.get(0).hasHallCall(origin,true); down=cabins.get(0).hasHallCall(origin,false); }
         }
-        ServerPlayNetworking.send(serverPlayer,new ElevatorNetworking.OpenHallPanel(origin.toImmutable(),up,down,showUp,showDown));
+        Packets.sendServer(serverPlayer,new ElevatorNetworking.OpenHallPanel(origin.toImmutable(),up,down,showUp,showDown));
     }
 
     /**
@@ -525,15 +519,14 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param pos 被拆部件坐标
      * @param state 被拆部件状态
      * @param player 破坏者（创造模式不掉落）
-     * @return 父类结果
      */
     @Override
-    public BlockState onBreak(World world,BlockPos pos,BlockState state,PlayerEntity player) {
+    public void onBreak(World world,BlockPos pos,BlockState state,PlayerEntity player) {
         if(!world.isClient && !isRoot(state)) {
             BlockPos origin=root(state,pos);
             if(isRoot(world.getBlockState(origin))) world.breakBlock(origin,!player.isCreative(),player);
         }
-        return super.onBreak(world,pos,state,player);
+        super.onBreak(world,pos,state,player);
     }
 
     /**
@@ -552,7 +545,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param moved 是否为移动（活塞相关），未使用
      */
     @Override
-    protected void onStateReplaced(BlockState state,World world,BlockPos pos,BlockState next,boolean moved) {
+    public void onStateReplaced(BlockState state,World world,BlockPos pos,BlockState next,boolean moved) {
         if(!world.isClient && !next.isOf(this)) {
             BlockPos origin=root(state,pos);
             for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
@@ -577,7 +570,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @return 该格当前的体素形状
      */
     @Override
-    protected VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
+    public VoxelShape getOutlineShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
         return LandingDoorGeometry.shape(s.get(FACING),s.get(COLUMN),s.get(LEVEL),progressAt(s,w,p));
     }
 
@@ -596,7 +589,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @return 关闭时为门扇封住门洞加门框，开启时为纯门框，门洞处为空形状
      */
     @Override
-    protected VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
+    public VoxelShape getCollisionShape(BlockState s,BlockView w,BlockPos p,ShapeContext c) {
         return LandingDoorGeometry.shape(s.get(FACING),s.get(COLUMN),s.get(LEVEL),progressAt(s,w,p));
     }
 

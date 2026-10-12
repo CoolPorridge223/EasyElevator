@@ -4,11 +4,12 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemUsageContext;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.client.item.TooltipContext;
 import net.minecraft.util.Formatting;
 import java.util.List;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
+import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorLine;
@@ -57,12 +58,12 @@ public class CabinItem extends Item {
      * 而不是像附魔（浅紫）或警告（红）那样的"属性"。
      *
      * @param stack 本物品的物品堆
-     * @param context 提示上下文（当前未使用）
+     * @param world 世界（当前未使用）
      * @param tooltip 提示行列表，直接追加
-     * @param tooltipType 提示类型（当前未使用）
+     * @param context 提示上下文（当前未使用）
      */
-    @Override public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType tooltipType) {
-        super.appendTooltip(stack, context, tooltip, tooltipType);
+    @Override public void appendTooltip(ItemStack stack, World world, List<Text> tooltip, TooltipContext context) {
+        super.appendTooltip(stack, world, tooltip, context);
         if (type.get() == Easyelevator.POWERFUL_CABIN)
             tooltip.add(Text.translatable("item.easyelevator.cargo_hint").formatted(Formatting.GRAY));
     }

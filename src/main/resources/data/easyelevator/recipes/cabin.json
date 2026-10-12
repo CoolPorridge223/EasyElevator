@@ -2,9 +2,9 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    "I I",
+    "III",
     "IRI",
-    "I I"
+    "IPI"
   ],
   "key": {
     "I": {
@@ -12,10 +12,13 @@
     },
     "R": {
       "item": "minecraft:redstone"
+    },
+    "P": {
+      "item": "minecraft:piston"
     }
   },
   "result": {
-    "id": "easyelevator:elevator_rail",
-    "count": 8
+    "item": "easyelevator:cabin",
+    "count": 1
   }
 }

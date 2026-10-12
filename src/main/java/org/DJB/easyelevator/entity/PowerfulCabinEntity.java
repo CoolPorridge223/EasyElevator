@@ -7,10 +7,10 @@ import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.Item;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
 import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
@@ -83,12 +83,10 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
 
     /**
      * 注册同步字段：先让父类写它那五个（PHASE/DOOR/FACING/TARGET_Y/FLOOR），再加本类的件数。
-     *
-     * @param builder 原版实体构造流程传入的 DataTracker 构建器
      */
-    @Override protected void initDataTracker(DataTracker.Builder builder) {
-        super.initDataTracker(builder);
-        builder.add(CARGO_ITEMS, 0);
+    @Override protected void initDataTracker() {
+        super.initDataTracker();
+        dataTracker.startTracking(CARGO_ITEMS, 0);
     }
 
     /** @return 货舱库存（27 格）：服务端为权威副本，客户端只有打开货舱后由菜单同步的那一份 */
@@ -357,15 +355,16 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     /**
      * 存档：父类写线路/状态机/乘客名册，本类补一个 {@code Cargo} 复合标签。
      *
-     * <p>用原版 {@link Inventories#writeNbt} 的格式（{@code Items} 列表）而不是自定义结构：槽位、数量与
-     * 物品组件（自定义名称、附魔、容器内容……）都由原版负责往返，本模组不需要跟着版本更新维护一份
+     * <p>用原版 {@link SimpleInventory#toNbtList()} 的槽位列表格式（1.20.1 的原版容器存档格式：
+     * 每件物品一个 {@code Slot} 加上物品自身的 NBT）而不是自定义结构：槽位、数量与物品 NBT
+     * （自定义名称、附魔、容器内容……）都由原版负责往返，本模组不需要跟着版本更新维护一份
      * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readCustomDataFromNbt}）。
      *
      * @param nbt 待写入的实体 NBT
      */
     @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
         super.writeCustomDataToNbt(nbt);
-        nbt.put("Cargo", Inventories.writeNbt(new NbtCompound(), cargo.getHeldStacks(), getRegistryManager()));
+        nbt.put("Cargo", cargo.toNbtList());
     }
 
     /**
@@ -381,7 +380,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
         super.readCustomDataFromNbt(nbt);
         cargo.clear();
-        Inventories.readNbt(nbt.getCompound("Cargo"), cargo.getHeldStacks(), getRegistryManager());
+        cargo.readNbtList(nbt.getList("Cargo", NbtElement.COMPOUND_TYPE));
         syncCargo();
     }
 

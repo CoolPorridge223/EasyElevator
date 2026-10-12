@@ -14,7 +14,7 @@ import net.minecraft.util.Identifier;
 public final class GlassLayers {
     private GlassLayers() { }
 
-    public static final Identifier CABIN_TEXTURE=Identifier.ofVanilla("textures/block/glass.png");
+    public static final Identifier CABIN_TEXTURE=new Identifier("minecraft","textures/block/glass.png");
     public static final Identifier DOOR_TEXTURE=CABIN_TEXTURE;
     public static final RenderLayer CABIN=RenderLayer.getEntityCutout(CABIN_TEXTURE);
     public static final RenderLayer DOOR=CABIN;
