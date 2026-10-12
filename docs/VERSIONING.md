@@ -1,14 +1,22 @@
 # 版本线与发布流程
 
 EasyElevator 同时维护两条 Minecraft 版本线：用**分支**隔离源码，用**标签与产物名**隔离发布。
-本文只讲流程；代码层面的逐项差异见 [构建与打包说明书](BUILD_AND_PACKAGING.md) 第 8 节。
+本文只讲流程；代码层面的逐项差异见 1.20.1 线（`mc/1.20.1/fabric`）分支里那本构建说明书的第 9 节。
 
 ## 1. 分支
 
+分支名统一为 **`mc/<MC 版本>/<加载器>`**（加载器小写：`fabric`、`forge`…），这样同一 MC 版本的不同加载器、
+同一加载器的不同 MC 版本都能一眼分清：
+
 | 分支 | Minecraft | 定位 |
 | --- | --- | --- |
-| `main` | 1.21.1 | 主线：新功能、修复先落这里 |
-| `mc/1.20.1` | 1.20.1 | 维护线：只接受从 `main` backport 的改动 |
+| `main` | 1.21.1 | 主线（仓库默认分支）：新功能、修复先落这里 |
+| `mc/1.20.1/fabric` | 1.20.1 / Fabric | 维护线：只接受从 `main` backport 的改动 |
+
+> 以后新增版本线照这个格式命名即可（例如 1.20.1 的 Forge 线就是 `mc/1.20.1/forge`）。
+> 分支名里的点号与斜杠 git 都支持，`git switch mc/1.20.1/fabric` 可以直接用。
+> 注意 git 的服务端 ref 是文件路径：`mc/1.20.1` 与 `mc/1.20.1/fabric` **不能同时存在**，
+> 因此从旧名迁移必须先删远端旧名再推新名（本地 `git branch -m` → 推新名 → 删旧名）。
 
 两条线**共用同一份源码**（同一份 `logic/`、`entity/`、文档骨架），差异集中在构建配置、
 数据包目录名与网络层收发——也就是上面那份清单里列出的文件。
@@ -22,7 +30,7 @@ EasyElevator 同时维护两条 Minecraft 版本线：用**分支**隔离源码�
 3. backport 用 cherry-pick，并用 `-x` 在提交信息里记下来源：
 
 ```powershell
-git switch mc/1.20.1
+git switch mc/1.20.1/fabric
 git cherry-pick -x <main 上的提交 sha>
 
 # 冲突只会出现在 BUILD_AND_PACKAGING.md 第 8 节列出的文件上。
@@ -41,7 +49,7 @@ git cherry-pick --continue
 | 分支 | 标签示例 | 产物 |
 | --- | --- | --- |
 | `main` | `EasyElevator_v2.3.0+1.21.1` | `easyelevator-2.3.0+1.21.1.jar` |
-| `mc/1.20.1` | `EasyElevator_v2.3.0+1.20.1` | `easyelevator-2.3.0+1.20.1.jar` |
+| `mc/1.20.1/fabric` | `EasyElevator_v2.3.0+1.20.1` | `easyelevator-2.3.0+1.20.1.jar` |
 
 - `mod_version` 一律写成 `<逻辑版本>+<MC 版本>`：同一次逻辑改动在两条线上版本号相同、
   JAR 名不同，玩家不会下错，也不会互相覆盖 `build/libs` 里的文件。
@@ -54,7 +62,7 @@ git cherry-pick --continue
 两条线并存时建议用 git worktree，避免来回切分支让 `build/`、`run/`、`.gradle/loom-cache` 互相覆盖：
 
 ```powershell
-git worktree add ..\EasyElevator-1.20.1 mc/1.20.1
+git worktree add ..\EasyElevator-1.20.1 mc/1.20.1/fabric
 ```
 
 `run/` 里是开发用的世界，而世界格式**不可降级**：1.21.1 的存档在 1.20.1 的开发端打不开（反之亦然）。
