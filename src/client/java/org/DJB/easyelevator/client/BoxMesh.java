@@ -295,6 +295,6 @@ public final class BoxMesh {
         float u0=uv[0],v0=uv[1],u1=uv[2],v1=uv[3];
         for(int i=0;i<4;i++) v.vertex(m.peek().getPositionMatrix(),p[i*3],p[i*3+1],p[i*3+2]).color(color)
                 .texture(i==1||i==2?u1:u0,i>=2?v0:v1).overlay(OverlayTexture.DEFAULT_UV).light(light)
-                .normal(m.peek().getNormalMatrix(),nx,ny,nz);
+                .normal(m.peek().getNormalMatrix(),nx,ny,nz).next();
     }
 }
