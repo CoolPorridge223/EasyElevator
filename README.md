@@ -32,7 +32,7 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 - 门口那块顶灯**真的会照亮门口一带**：重载舱的舱内补光改用双灯采样（取两盏里更亮的一盏，上限仍是 13 级），另外三种型号的舱内观感**逐像素不变**。
 - **超载保护**：厢内玩家数超过当前限载时，轿厢进入「超载」——门保持全开、不再派发行程，轿厢内的模拟面板与选站面板状态行都显示"超载"，直到有人走出厢门。本版把普通／高速／观光三型的限载定为 **8 人**（`PASSENGER_NUM_LIMIT`，改成 0 即回到"不限载"的旧行为）。
 - 配方：5 个铁锭 + 2 个铁块 + 1 个红石块 + 1 个活塞（比普通轿厢更重）。
-- 模型与贴图生成脚本现在**同时拥有**重载轿厢的红色负载板与图标；`python tools/generate_art.py` 会额外断言"重载内饰保留普通内饰的每一件"。
+- 模型与贴图（含重载轿厢的红色负载板与图标）随本版一并产出；生成脚本当时还会额外断言"重载内饰保留普通内饰的每一件"。
 - 修复：**轿厢刚放到轨道上、还没建任何楼层门时，门一关人就出不来了**（开门键在那条线路上不可用）。现在"这条线路上一扇完整的门都没有"也算可开门的情形之一——车本来就永远不会动（没有站点可去），必须让乘客能自己走出来。
 - 修复：上面那条判据一度让**客户端的开门键永远亮着**（运行时也亮，点下去被服务端拒绝并提示"只在停在某一层时有效"）。原因是客户端拿不到线路（`railX/railZ` 不同步），判据改回"只吃同步数据 + 面板站点列表"的纯函数，运行途中按键照旧变灰。
 - 修复启动日志里的 `No data fixer registered for easyelevator:xxx`（四个轿厢各一条，开发环境还会直接崩在模组初始化）：注册实体类型时用了原版带 id 的 `EntityType.Builder.build(String)`，它会先向原版数据修复器查这个 id 的 choice type，而模组 id 不在原版 schema 里。改用 Fabric 的无参 `build()` 后该报错消失，**实体 ID、存档与行为完全不变**。
@@ -127,7 +127,7 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 - **限载与超载**：限载人数在实体构造时给出，之后每刻现问 `passengerNumLimit()`——普通／高速／观光固定 `ElevatorParameters.PASSENGER_NUM_LIMIT`（**8 人**），重载型按货量在 `1..HIGH_PASSENGER_NUM_LIMIT`（**1..20 人**）之间变化。**判据是"限载人数为正、且厢内玩家数超过它"**，所以把常量改成 0 就等于"不限载"（0/负数会被当成不限制，判据里必先看正负）。计数只数**玩家**（召唤动物不触发）；超载期间门一直是全开的，乘客可以自由进出，直到人数降到限载以下才恢复派发行程（恢复后重新计满 2 秒停留）。后壁铭牌与货舱面板显示的就是这个当前值，**改常量或装卸货物都不需要动任何贴图或几何**。
 - 观光型的玻璃是**纯客户端绘制**：四个角柱、地板、顶板、压条、中梃和操纵面板保持不透明；侧墙、后墙及两扇铁框玻璃门使用原版无色玻璃。每片玻璃为零厚度双面，正反法线相反，按朝向剔除；透明像素不写颜色或深度，不会整片遮挡后绘制的楼层门。碰撞仍按 0.2 格厚实心墙生成，井道与站点尺寸不变。
 - 重载型的重载内饰同样是**纯客户端绘制**，而且是在普通内饰表之上叠加的：`CabinRenderer.POWERFUL_PARTS` = 普通内饰前 12 行 + 10 行重载件 + 与普通型逐字相同的操纵面板 6 行。因此"看得见的强化件"不参与碰撞——井道、门口防夹与门联锁与普通型完全一致。
-- 内饰的几何全部写在 `CabinRenderer` 的三张数据表里（`STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS`，每行 = 坐标 + 材质格号 + 是否自发光），改内饰就是改那张表；三张表的最后 6 行（操纵面板）必须逐字相同，因为观光舱与重载舱同样要显示层号与呼梯键；`POWERFUL_PARTS` 的前 12 行必须与 `STANDARD_PARTS` 的前 12 行逐字相同（"保留原来样貌"）。`python tools/generate_art.py` 会解析这三张表并校验"不越界 / 不留共面 / 格号合法 / 面板三舱一致 / 重载舱保留普通内饰且至少多出一件"。
+- 内饰的几何全部写在 `CabinRenderer` 的三张数据表里（`STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS`，每行 = 坐标 + 材质格号 + 是否自发光），改内饰就是改那张表；三张表的最后 6 行（操纵面板）必须逐字相同，因为观光舱与重载舱同样要显示层号与呼梯键；`POWERFUL_PARTS` 的前 12 行必须与 `STANDARD_PARTS` 的前 12 行逐字相同（"保留原来样貌"）。改这三张表时请手工核对（原先由已移除的 `tools/generate_art.py` 自动校验）："不越界 / 不留共面 / 格号合法 / 面板三舱一致 / 重载舱保留普通内饰且至少多出一件"。
 - **灯光集中在舱内**：外壳、玻璃和导靴保持环境光；`CabinLighting.surface` 根据面中心、法线和灯位给朝向灯具的舱内表面补光，随距离衰减，上限 13 级。灯罩只有朝下的面使用 15 级方块光，侧边和背面保持环境光；天光分量不变，不修改世界光照或存档。**重载舱有两盏顶灯，因此它的舱内与外壳内面改走 `CabinLighting.surfaceTwoLamps`**（取两盏灯里更亮的一盏，而不是相加，上限仍是 13 级），门口一带因此比普通舱更亮；另外三种型号仍然只按舱顶后侧那一盏灯补光，观感与 2.2.0 逐像素相同。
 - 整舱只用一张 4×4 的**材质图集** `textures/entity/cabin.png`，`CabinRenderer.Mat` 的枚举顺序就是格号；换配色只改 PNG，不用碰代码。重载舱与普通舱共用这张图集（重载件用的还是亮钢、扶手、灯罩、铭牌那几格），只有**物品图标**额外用一张红色负载板 `blank_powerful.png`。
 - **玻璃使用原版透明材质**：`GlassLayers` 绑定 `minecraft:textures/block/glass.png`，顶点色统一 `0xFFFFFFFF`，通过原版 cutout 管线丢弃透明像素。世界玻璃不再使用有色图集格或低 alpha 覆盖层；`blank_glass.png` 仅用于物品图标。资源包可替换原版玻璃贴图，相关接口见 [材质说明](docs/ASSET_INTEGRATION.md)。
@@ -186,14 +186,9 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 - 门动画：轿厢门 `AbstractCabinEntity.doorProgress(tickDelta)`；楼层门门扇 `LandingDoorBlockEntity.openProgress(tickDelta)`，逐刻等于在站轿厢的门进度，0 关闭、1 打开。
 - 服务端扩展事件：`ElevatorEvents.PHASE_CHANGED`、`ElevatorEvents.ARRIVED`。
 
-模型与贴图不是手改的，而是由两个脚本生成（都是纯 Python 3、无第三方依赖、可重复运行且输出逐字节一致）：
+模型、贴图、方块状态、本地化、配方、掉落表与音效钩子都已作为成品文件随工程提交，直接编辑 `src/main/resources/` 下的 JSON 与 PNG 即可；工程内不再附带生成脚本。
 
-```powershell
-python tools/generate_art.py    # 方块/物品模型 + 全部贴图 + 几何校验
-python tools/generate_data.py   # 方块状态、本地化、配方、掉落表、音效钩子
-```
-
-`generate_art.py` 同时是模型与内饰的一致性检查：它会校验门框模型与 `LandingDoorGeometry` 的尺寸一致、物品模型不越出 16 格方块盒，以及轿厢内饰表的三条不变量（不越界 / 不留共面 / 格号合法）。改完模型或内饰表请先跑它。
+改模型或内饰表时请自行保证这几条不变量（原先由已移除的 `tools/generate_art.py` 自动断言）：门框模型尺寸与 `LandingDoorGeometry` 的常量一致；物品模型不越出 16 格方块盒；轿厢内饰表不越界（净空 X ±1.3、Y 0.2..2.8、Z −1.3..门背面，允许向外壳嵌 0.002 格）、相邻面不共面（错开 0.002 格以上）、材质格号合法（0..15）；门楣显示屏必须凹进且不低于 `MIN_SCREEN_HEIGHT`。需要取回生成脚本时，见 git 标签 `EasyElevator_v2.3.0`。
 
 ## 构建
 
@@ -207,23 +202,16 @@ python tools/generate_data.py   # 方块状态、本地化、配方、掉落表�
 
 完整说明见 [工程构建与打包说明书](docs/BUILD_AND_PACKAGING.md)；所有运行、精度、动画、尺寸、面板和音效参数见 [电梯参数手册](docs/PARAMETERS.md)。
 
-本机快捷构建和两种打包（把 `<JDK21>` 换成你自己机器上的 JDK 21 目录；省略 `-Jdk` 时脚本回退到 `JAVA_HOME` 与 PATH）：
+两种打包（先按上面把 `JAVA_HOME` 指向 JDK 21）：
 
 ```powershell
-.\tools\build.ps1 -Jdk '<JDK21>' -Task build
-.\tools\build.ps1 -Jdk '<JDK21>' -Task packageRelease
-.\tools\build.ps1 -Jdk '<JDK21>' -Task packageProject
+.\gradlew.bat packageRelease
+.\gradlew.bat packageProject
 ```
 
-开发启动：`./gradlew.bat runClient`。
+开发启动：`.\gradlew.bat runClient`。
 
-工程内**没有常驻自动化测试**，日常验收方式见 [人工验收清单](docs/TESTING.md)（需要真人进游戏逐项确认）。另有一套**可选开启**的服务端回归测试（`src/gametest`：37 个 `@GameTest`——12 个乘客、15 个厅呼调度、10 个货舱——外加 2 个客户端冒烟测试），加 `-PriderTests` 才会构建，永远不会进发行包：
-
-```powershell
-.\tools\build.ps1 -Jdk '<JDK21>' -Task runGameTest
-.\tools\build.ps1 -Jdk '<JDK21>' -Task runRiderClient
-.\tools\build.ps1 -Jdk '<JDK21>' -Task runCargoClient
-```
+工程内**没有常驻自动化测试**：`build.gradle` 关闭了 `test` / `testClasses`，所有验收都在真实客户端/服务器里按 [人工验收清单](docs/TESTING.md) 逐项确认（需要真人进游戏）。
 
 ## 文件组织
 

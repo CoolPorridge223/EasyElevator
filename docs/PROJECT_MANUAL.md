@@ -73,18 +73,13 @@ EasyElevator/
 │   ├─ TESTING.md               人工验收清单（需要真人进游戏的检查项）
 │   ├─ ASSET_INTEGRATION.md     模型/音效/门动画接口
 │   └─ BUILD_AND_PACKAGING.md   构建与打包说明书
-├─ tools/
-│   ├─ build.ps1                本机 Gradle 快捷构建（校验 JDK 21）
-│   ├─ generate_art.py          模型与贴图生成 + 几何自检（纯 Python 3；不含 icon.png，见 1.3 说明）
-│   └─ generate_data.py         方块状态/语言/配方/掉落表/音效钩子生成（纯 Python 3）
 ├─ src/
 │   ├─ main/java/org/DJB/easyelevator/     服务端与公共逻辑（权威侧）
 │   │   ├─ screen/                         容器菜单（目前只有货舱：CargoScreenHandler）
 │   │   └─ …（block / entity / item / logic / network / mixin / api）
 │   ├─ main/resources/                     方块状态、模型、贴图、语言、配方、战利品表、音效、mixin 配置
 │   ├─ client/java/org/DJB/easyelevator/   客户端源集（渲染、界面、运动、音效）
-│   ├─ client/resources/                   客户端 mixin 配置
-│   └─ gametest/                           可选的回归测试源集（加 -PriderTests 才构建，永不进发行包）
+│   └─ client/resources/                   客户端 mixin 配置
 └─ run/                        开发运行目录（世界、日志）
 ```
 
@@ -363,33 +358,15 @@ LandingDoorBlockEntity.openProgress(t) ──► 楼层门门扇几何
 | [mixin/client/ClientPlayerEntityMixin.java](../src/client/java/org/DJB/easyelevator/mixin/client/ClientPlayerEntityMixin.java) | 注入 `ClientPlayerEntity#tick` 的 HEAD：在玩家物理之前推进轿厢与乘客；并接管移动包发送改走 `RiderMove` | CabinMotion, network(RiderMove) |
 | [mixin/client/CabinCrosshairMixin.java](../src/client/java/org/DJB/easyelevator/mixin/client/CabinCrosshairMixin.java) | **轿厢内准星的唯一裁决者**：乘客在厢内 → 一律把准星改写为"命中本厢"，于是右键必定开面板（**与手里拿什么无关**）；站在外面的玩家不受影响。只改实体命中，不碰碰撞几何与方块射线。无跨帧状态 | `AbstractCabinEntity.containsPassenger` |
 
-**测试源集（可选开启）**
+**测试与验收**
 
-工程内**没有** `src/test`：java 插件自动创建的 `test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关掉，
+工程内**没有** `src/test`，也没有任何常驻自动化测试：java 插件自动创建的 `test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关掉，
 因此 `./gradlew.bat build` 只编译与打包，不含任何测试步骤。
 
-另有一套**可选**的乘客回归测试源集 `src/gametest/`，只在加 `-PriderTests` 时才注册与构建：
+原先的回归测试源集 `src/gametest/`（37 个 `@GameTest`——12 乘客 + 15 厅呼 + 10 货舱，外加 2 个客户端冒烟测试，以及不依赖 MC、可直接 `java` 运行的
+`HallCallRegression` 断言体）与它的运行脚本已在清理中整体移除；需要时可在 git 标签 `EasyElevator_v2.3.0` 处取回。
 
-| 文件 | 内容 |
-| --- | --- |
-| `java/org/DJB/easyelevator/RiderMovementTests.java` | **12 个** `@GameTest`：乘客移动与历史补偿（延时/速度组合、过期样本）这类可自动化的回归 |
-| `java/org/DJB/easyelevator/HallCallTests.java` | **15 个** `@GameTest`：同层双向呼叫的用户场景矩阵（8 组参数 × 36 种时序/门阶段/保存时机组合）、反向接客顺路扫描、车内选站优先级，以及真实实体 + NBT 往返的整线路回归 |
-| `java/org/DJB/easyelevator/HallCallRegression.java` | 上面那些用例的纯 Java 断言体（不依赖 MC，可 `java HallCallRegression` 直接跑，末尾打印覆盖组合数） |
-| `java/org/DJB/easyelevator/CargoTests.java` | **10 个** `@GameTest`：货量档位边界、单格上限、拖放/双人取放、Shift 搬运不丢货、货箱碰撞几何（四种朝向）、装卸保持开门、超载随卸货恢复、满载双向运行 |
-| `java/org/DJB/easyelevator/RiderClientSmoke.java` | 乘客客户端冒烟测试（`loom.runs.riderClient`：vmArg `-Deasyelevator.riderSmoke=true`、`--quickPlaySingleplayer RiderSmoke`） |
-| `java/org/DJB/easyelevator/CargoClientSmoke.java` | 货舱客户端冒烟测试（`loom.runs.cargoClient`：vmArg `-Deasyelevator.cargoSmoke=true`、`--quickPlaySingleplayer CargoSmoke`）：真实开容器、点击同步、网络搬运、卸空恢复与四张模型截图 |
-| `resources/fabric.mod.json` | 测试模组声明：`id = easyelevator-test`（`fabric-gametest` + `client` 入口点，入口点列出上面两个冒烟测试类）；**永不进发行包** |
-
-`build.gradle` 侧：`fabricApi { if (project.hasProperty('riderTests')) { configureTests { createSourceSet = true; modId = 'easyelevator-test'; enableGameTests = true; eula = true } } }`，另有 `loom.runs.riderClient` 与 `loom.runs.cargoClient`。
-
-运行方式：
-
-- `.\tools\build.ps1 -Jdk <JDK21> -Task runGameTest`（或 `-Task runRiderClient` / `-Task runCargoClient`）——脚本会自动补上 `-PriderTests`；
-- 或直接 `.\gradlew.bat -PriderTests runGameTest`（同族任务：`runGameTest`、`runClientGameTest`、`runRiderClient`、`runCargoClient`）。
-
-当前 `runGameTest` 是 **37 项**（12 乘客 + 15 厅呼 + 10 货舱），全部通过时日志里会出现 `All 37 required tests passed :)`。
-
-日常验收仍以 [TESTING.md](TESTING.md) 的人工清单为准；GameTest 覆盖乘客移动、历史补偿和厅呼调度等可自动化的回归。
+日常验收一律按 [TESTING.md](TESTING.md) 的人工清单进游戏逐项确认；改调度、改门时序、改货舱常量之后尤其要完整走一遍。
 
 ### 3.3 可脱离 Minecraft 的「叶子」类
 
@@ -1154,7 +1131,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | 想替换 | 改哪里 | 详见 |
 | --- | --- | --- |
 | 轨道模型 | `assets/easyelevator/models/block/elevator_rail.json` + `ElevatorRailBlock.getOutlineShape`（轮廓必须覆盖模型可见范围，右键才点得到） | [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) |
-| 楼层门**门框**（常驻） | `assets/easyelevator/models/block/landing_door_frame_*.json`（底行 `*_bottom`）+ `blockstates/call_button.json` + `tools/generate_data.py` 的 `FRAME_MODELS` | 同上 |
+| 楼层门**门框**（常驻） | `assets/easyelevator/models/block/landing_door_frame_*.json`（底行 `*_bottom`）+ `blockstates/call_button.json` （原先由已移除的 `tools/generate_data.py` 的 `FRAME_MODELS` 列表生成） | 同上 |
 | 楼层门**门扇**（可动） | `LandingDoorRenderer` + `LandingDoorGeometry`（几何与碰撞同源） | 同上 |
 | 轿厢模型（三种外观） | `CabinRenderer`：`drawStandardShell`（普通/高速/重载共用外壳） / `drawObservationShell` / `drawDoorway` / `drawLeaves` / `drawObservationGlass` + 内饰表 `STANDARD_PARTS` / `POWERFUL_PARTS` / `OBSERVATION_PARTS` + 重载舱铭牌红字 `drawCapacityPlate` | 同上 |
 | 轿厢材质 | `textures/entity/cabin.png`（4×4 图集）+ `CabinRenderer.Mat` / `MATERIAL_UV`；方块贴图见 `textures/block/` | 同上 |
@@ -1229,7 +1206,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 | --- | --- |
 | 提高 `HIGH_SPEED`、改 `LOW_SPEED` | 确认 `speed + POSITION_EPSILON ≤ 1`（否则单刻可能跨过整格站点），并进游戏复核加/减速手感与到站对齐 |
 | 改 `CRUISE_RAMP_TICKS` / `MAX_ACCELERATION` | 加/减速段的时长（`1.5·T`）、距离（`0.75·v·T`）与加速度峰值（`v/T`）都由它和巡航速度推出（`MAX_ACCELERATION` 只是硬上限）；注意"舒服"与"快"是此消彼长：T 越长，段越长、加速度峰值越低、每趟越慢。文档里的数字口径见 PARAMETERS.md 1.1 |
-| 改货舱常量（`CargoLoad`） | `CargoLoad` 的五个常量 + `docs/CARGO.md` 的档位表 + 两条界面文案（`screen.easyelevator.cargo_rule` / `cargo_count`，在 `tools/generate_data.py` 里）+ `CargoTests.quantityBoundaries` 的期望值 |
+| 改货舱常量（`CargoLoad`） | `CargoLoad` 的五个常量 + `docs/CARGO.md` 的档位表 + 两条界面文案（`screen.easyelevator.cargo_rule` / `cargo_count`，在 `src/main/resources/assets/easyelevator/lang/*.json` 里） |
 | 改限载人数 | `PASSENGER_NUM_LIMIT`（普通三型）或 `HIGH_PASSENGER_NUM_LIMIT`（重载空舱基准）。判超载的语义是"限载为正且人数超过它"，**0/负数 = 不限载**；重载的上限还会被 `CargoLoad.passengers` 按货量下调，改这两个数时一并看后壁铭牌与货舱面板是否同步 |
 | 改门尺寸 | `LandingDoorGeometry` 常量、`blockstates/call_button.json`、门框模型、`collisionBoxes`、`doorwayBlocked` 区域、`spaceClear` 几何、`RAIL_DISTANCE` 与井道预留，以及渲染同步 |
 | 改轿厢尺寸 | 实体 `dimensions`、`localBox`/`collisionBoxes`、`containsPassenger` 边界、`doorwayBlocked`、渲染几何、`ElevatorLine.cabins` 包围盒 |
@@ -1292,17 +1269,14 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `./gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.0.jar`） |
-| 本机快捷构建 | `./tools/build.ps1 -Jdk <JDK21> -Task build` |
-| 发布包 / 工程包 | `packageRelease` / `packageProject`（`build/distributions/`） |
-| 开发启动 | `./gradlew.bat runClient` |
-| 可选回归测试 | `./tools/build.ps1 -Jdk <JDK21> -Task runGameTest`（脚本自动补 `-PriderTests`；等价于 `./gradlew.bat -PriderTests runGameTest`） |
+| 构建 | `.\gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.0.jar`） |
+| 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
+| 开发启动 | `.\gradlew.bat runClient` |
+| 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |
 
-**验收方式：** 工程内没有 `src/test`；`test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关闭，
-因此 `./gradlew.bat build` 只编译与打包。改完代码后按 [TESTING.md](TESTING.md) 的人工清单进游戏逐项确认——
-重点是乘坐手感、到站对齐、门联锁与防夹、多人同时乘坐、以及装卸货物时的门联锁。另有一套用 `-PriderTests` 可选开启的 GameTest 源集
-`src/gametest/`（37 个 `@GameTest`：12 乘客 + 15 厅呼 + 10 货舱，外加 2 个客户端冒烟测试；测试模组永不进发行包），覆盖乘客移动、历史补偿、厅呼调度与货舱等
-可自动化的回归，详见 3.2。
+**验收方式：** 工程内没有 `src/test`，也没有常驻自动化测试；`test` / `testClasses` 任务在 `build.gradle` 里被 `enabled = false` 关闭，
+因此 `.\gradlew.bat build` 只编译与打包。改完代码后按 [TESTING.md](TESTING.md) 的人工清单进游戏逐项确认——
+重点是乘坐手感、到站对齐、门联锁与防夹、多人同时乘坐、以及装卸货物时的门联锁，详见 3.2。
 
 ---
 
@@ -1310,13 +1284,13 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 ### 10.1 新增第五种轿厢型号
 
-1. 新建 `entity/XxxCabinEntity extends AbstractCabinEntity`，构造传速度与**限载人数**（不限载就传 `PASSENGER_NUM_LIMIT` 的 0），覆写 `cabinItem()`；需要玻璃墙覆写 `glassWalls()`，需要另一套内饰覆写 `heavyDuty()` 并在 `CabinRenderer` 里加一张 PARTS 表（照 `POWERFUL_PARTS` 的写法：保留普通内饰的行 + 自己的件 + 末尾同一块面板，然后让 `check_cabin_parts` 的断言认识它）；限载要随状态变化就覆写 `passengerNumLimit()`（照 `PowerfulCabinEntity` 的写法，并保证**永不返回 0**——0 会被解释成"不限载"）。
+1. 新建 `entity/XxxCabinEntity extends AbstractCabinEntity`，构造传速度与**限载人数**（不限载就传 `PASSENGER_NUM_LIMIT` 的 0），覆写 `cabinItem()`；需要玻璃墙覆写 `glassWalls()`，需要另一套内饰覆写 `heavyDuty()` 并在 `CabinRenderer` 里加一张 PARTS 表（照 `POWERFUL_PARTS` 的写法：保留普通内饰的行 + 自己的件 + 末尾同一块面板，并手工核对这些行仍满足内饰三条不变量）；限载要随状态变化就覆写 `passengerNumLimit()`（照 `PowerfulCabinEntity` 的写法，并保证**永不返回 0**——0 会被解释成"不限载"）。
 2. 在 `Easyelevator` 注册 `EntityType`（照抄现有维度/追踪参数，**并且照抄 `cabinType(...)` 的无参 `build()`**——
    用原版带 id 的 `build(String)` 会让每条实体在日志里刷一条 `No data fixer registered for …`，
    开发环境甚至直接崩，见 12.4）与 `CabinItem`，并加入物品栏 `entries`。
 3. 需要新外观时在 `CabinRenderer` 分支里加绘制方法（**外壳与碰撞沿用 `collisionBoxes()`，不要为新型号改井道**）。带容器的新型号还要：注册一个 `ScreenHandlerType`、写 `ScreenHandler` 子类与 `Screen` 子类、在 `EasyelevatorClient` 里 `HandledScreens.register`（照货舱那套，见 10.8）。
 4. `EasyelevatorClient` 加一行 `EntityRendererRegistry.register(...)`。
-5. 加模型/物品图标/语言键/配方（模型与贴图**改 `tools/generate_art.py`、数据改 `tools/generate_data.py`**，别手改成品文件），再跑两个脚本，并按人工清单进游戏验收。
+5. 加模型/物品图标/语言键/配方（直接编辑 `src/main/resources/` 下的模型 JSON、贴图 PNG 与 `data/` 数据文件；生成脚本已随清理移除，取回方式见 3.2），并按人工清单进游戏验收。
 
 ### 10.2 调速度或限载人数
 
@@ -1330,11 +1304,11 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md)。要点：门框走方块模型，门扇走方块实体渲染器；轿厢是硬编码的几何数据表（`BoxMesh` + `CabinRenderer` 的三张 PARTS 表），换模型即改那三张表或换 `CabinRenderer`。
 
-**模型与贴图都由脚本生成，别手改单个文件**：`python tools/generate_art.py` 写全部模型与贴图（并做几何自检），`python tools/generate_data.py` 写方块状态/语言/配方/掉落表/音效钩子。只换外观时改脚本再跑，两个脚本都可重复运行。**唯一的例外是模组列表图标 `assets/easyelevator/icon.png`**：发布版是手工准备的 1254×1254 图，脚本里的 `build_icon()` 只是 128×128 占位图，因此它已从生成清单里移出（详见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) 第 1 节）——改图标请直接替换那个文件。
+**模型与贴图现在都是工程内的成品文件，直接编辑即可**：模型 JSON、贴图 PNG 与方块状态在 `src/main/resources/assets/easyelevator/`，语言、配方、掉落表与音效钩子在 `src/main/resources/data/` 与 `assets/easyelevator/sounds.json`。原先的生成脚本（`tools/generate_art.py` / `tools/generate_data.py`）已在清理中移除，需要时从 git 标签 `EasyElevator_v2.3.0` 取回。**模组列表图标 `assets/easyelevator/icon.png`** 一直是手工准备的 1254×1254 图（详见 [ASSET_INTEGRATION.md](ASSET_INTEGRATION.md) 第 1 节）。
 
 ### 10.5 改调度策略
 
-只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景。**先跑 `HallCallRegression`**：它是不依赖 Minecraft 的断言体（`src/gametest/.../HallCallRegression.java`，可直接 `java HallCallRegression`），覆盖 288 种同层双向呼叫组合、反向接客顺路扫描、车内选站优先级与旧存档恢复；改完调度先让它通过，再跑 `-PriderTests runGameTest` 的整线路/NBT 用例。重点函数：`select / retarget / insertOrdered / nearest / furthestReverseHallCall / arriveAtStation / prepareDeparture / take`。
+只在 `logic/ElevatorController` 内改，保持「纯 Java」与确定性，并在 `docs/TESTING.md` 增补对应的人工验收场景。原先覆盖 288 种同层双向呼叫组合、反向接客顺路扫描、车内选站优先级与旧存档恢复的 `HallCallRegression` 断言体已随测试源集移除；改完调度后必须按 TESTING.md 的厅外呼叫与选站场景在游戏里逐项回归，并确认旧存档（含未知遗留目的地）恢复行为不变。重点函数：`select / retarget / insertOrdered / nearest / furthestReverseHallCall / arriveAtStation / prepareDeparture / take`。
 
 ### 10.6 新增网络包
 
@@ -1355,7 +1329,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 3. **客户端**：`EasyelevatorClient.onInitializeClient()` 里 `HandledScreens.register(类型, Screen::new)`；`Screen` 只负责画，数字一律问 `ScreenHandler`。覆写 `renderBackground` 去掉原版模糊时，**记得自己调 `drawBackground`**。
 4. **交互**：在子类 `interact` 里只吃掉"专属手势"（货舱是"主手 + 潜行 + 乘客"），其余手势交回父类，否则会抢掉回收与选站面板。
 5. **同步与存档**：槽位走原版容器同步即可，**不要再加自定义包**；库存用 `Inventories.writeNbt/readNbt` 写进实体 NBT（照 `Cargo`），并想清楚哪些 `RemovalReason` 该掉货（货舱只对 `KILLED`/`DISCARDED` 掉，其余视为"换个地方继续存在"）。
-6. **测试**：`src/gametest` 加一个用例类，至少覆盖"档位边界、单格上限、Shift 搬运不丢货、双人取放不复制、可开性随离开失效"；需要看画面时再照 `CargoClientSmoke` 加一个客户端冒烟 run。
+6. **验收**：至少手工确认"档位边界、单格上限、Shift 搬运不丢货、双人取放不复制、可开性随离开失效"，并把场景补进 `docs/TESTING.md`（原先对应的 GameTest 用例已随测试源集移除）。
 
 ---
 
@@ -1490,7 +1464,7 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
 - [ ] 新增容器时：`ScreenHandlerType` 两端都注册（服务端 `Easyelevator`、客户端 `HandledScreens.register`），
       `ScreenHandler.canUse` 转发实体的可开性判定，且**不新增自定义包**（走原版容器同步）
 - [ ] 不新增区块加载
-- [ ] `./gradlew.bat build` 成功；改了调度/货舱再跑 `tools/build.ps1 -Task runGameTest`（37 项）
+- [ ] `.\gradlew.bat build` 成功；改了调度/货舱再按 `docs/TESTING.md` 的厅呼与货舱场景进游戏完整回归一遍
 - [ ] 按 `docs/TESTING.md` 人工清单验收（上下各一次、运行中存档重进、防夹、观光玻璃视角、重载装卸）
 - [ ] 文档同步：`PARAMETERS.md`（改常量）、`CARGO.md`（改货舱）、`ASSET_INTEGRATION.md`（改素材）、`README.md`（改玩法）
 

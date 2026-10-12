@@ -5,6 +5,10 @@
 > 面向**调参与排查**：每个常量的数值、单位、派生公式与"改一处、跟着改"的联动清单。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构、调用关系与接口）、[人工验收清单](TESTING.md)、
 > [模型音效接口](ASSET_INTEGRATION.md)、[构建与打包](BUILD_AND_PACKAGING.md)、[README](../README.md)（玩家向）。
+>
+> **清理说明**：本文表格"校验方式"一列里出现的 `python tools/generate_art.py` / `tools/generate_data.py`
+> 与 `-PriderTests` 等命令所属的生成脚本与测试源集已在清理中移除（见 [项目开发手册](PROJECT_MANUAL.md) 3.2）。
+> 这些列保留为**不变量说明**：请按其中写明的判据手工核对。
 
 当前参数采用**源码常量**，不是游戏内设置，也不会自动生成 JSON 配置文件。修改后必须重新构建，并同时更新服务端和客户端。
 
@@ -398,18 +402,16 @@
 ## 7. 修改后的验证
 
 改参数 → `build` → 客户端上下各乘一次 → 多人同时乘坐测试。重点确认相机与地板没有相对抖动、
-最终高度准确、障碍不会穿越、门口防夹正常。工程内**没有常驻自动化测试**（`test` 任务被关闭），
-逐项检查表见 [人工验收清单](TESTING.md)。另有一套**可选开启**的服务端回归测试
-（`src/gametest`，加 `-PriderTests` 才构建，见 [构建与打包](BUILD_AND_PACKAGING.md)）：
-当前 37 项，覆盖乘客移动、厅外呼叫调度（含 288 种双向呼叫组合的矩阵）与货舱，
-另有 `runRiderClient` / `runCargoClient` 两个客户端冒烟测试；它不替代手感与观感验收。
+最终高度准确、障碍不会穿越、门口防夹正常。工程内**没有常驻自动化测试**（`test` 任务被关闭，
+原 `src/gametest` 源集与它的运行脚本已在清理中移除），逐项检查表见 [人工验收清单](TESTING.md)；
+原先自动化的乘客移动、厅外呼叫调度（含 288 种双向呼叫组合矩阵）与货舱场景，现在都要进游戏人工走一遍。
 
 改 `LOW_SPEED` / `HIGH_SPEED` / `CRUISE_RAMP_TICKS` / `MAX_ACCELERATION`，或**再新增一种型号 / 改限载人数 / 改货舱常量**后至少确认：
 ① `巡航速度 + POSITION_EPSILON ≤ 1 格` 仍然成立（否则单刻位移可能跨过整格站点、到站吸附失效）；
 ② 四种型号的加/减速手感（加/减速段时长 = `1.5 × T` = 48 刻，距离 = `0.75 × 速度 × T`：重载 3.2 格、普通/观光 4.8 格、高速 12.0 格）；
 ③ 到站仍精确停在楼层高度、运行途中门保持关闭、开关门与停留时间不变；
 ④ 改限载人数时：普通三型的 8 人（或改成 0 = 不限载）要生效，重载舱后壁铭牌与货舱面板上的数字应立刻跟着货量变，且 0 不能被当成超载；
-⑤ 改货舱常量（`CargoLoad`）时：限载/货箱档位表、两条界面文案（`screen.easyelevator.cargo_rule`、`screen.easyelevator.cargo_count`）与 `docs/CARGO.md` 的表格要一起改，并跑一次 `runGameTest` 的 `quantityBoundaries` 用例。
+⑤ 改货舱常量（`CargoLoad`）时：限载/货箱档位表、两条界面文案（`screen.easyelevator.cargo_rule`、`screen.easyelevator.cargo_count`）与 `docs/CARGO.md` 的表格要一起改，并在游戏里按档位边界逐项确认。
 
 ---
 

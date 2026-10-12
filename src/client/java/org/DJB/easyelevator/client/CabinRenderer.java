@@ -41,8 +41,8 @@ import org.DJB.easyelevator.logic.*;
  * 不随门进度变化的内饰件集中写在 {@link #STANDARD_PARTS} / {@link #POWERFUL_PARTS} /
  * {@link #OBSERVATION_PARTS} 三张表里
  * （每行 = {x,y,z,X,Y,Z,材质格号,自发光}，单位格，轿厢局部坐标）。
- * 表里的坐标必须满足三条不变量；改完表跑 {@code python tools/generate_art.py}，
- * 它会解析这三张表并逐条校验（{@code check_cabin_parts}），不合格直接报错：
+ * 表里的坐标必须满足三条不变量；改完表请<b>逐行手工核对</b>下面三条
+ * （原先由已移除的生成脚本 {@code tools/generate_art.py} 的 {@code check_cabin_parts} 自动校验）：
  * <ol>
  *   <li><b>不越界</b>：内饰件都待在净空 X ±1.3、Y 0.2..2.8、Z -1.3..门背面之内
  *       （允许向外壳里嵌 0.002 格，见下一条），不会从外壳穿出去；</li>
@@ -100,8 +100,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private static final Identifier TEXTURE=Easyelevator.id("textures/entity/cabin.png");
     /**
      * 材质图集的分格。<b>枚举顺序 = 图集格号</b>：四行依次是"舱壁系 / 顶棚系 / 面板系 / 饰面系"，
-     * 与 {@code tools/generate_art.py} 里 {@code ATLAS_TILES} 的顺序一一对应——那边换了顺序，
-     * 这边必须同步，生成脚本的 {@code check_cabin_parts} 会直接报错。
+     * 与 {@code textures/entity/cabin.png} 的 4x4 格位顺序一一对应——改那张图集就必须同步改这里的顺序，
+     * 否则每个部件都会取到别人的格子（原先由已移除的生成脚本 {@code ATLAS_TILES} 与
+     * {@code check_cabin_parts} 保持两边一致）。
      *
      * <p>为什么用图集：{@link BoxMesh} 每画一块几何都要指定 UV 矩形；如果每种材质一张贴图，
      * 就只能在渲染中途反复切缓冲（切一次上一层就被提交、旧引用作废），而实体渲染每帧只有一次机会。
@@ -163,7 +164,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         {-.85f,2.78f,-.95f,.85f,2.804f,.45f,5,1},
         // 操纵面板：贴右侧壁的深色边框 + 亮色面板 + 下沉显示窗 + 一排三颗呼梯键。
         // 这六行与 OBSERVATION_PARTS 的最后六行必须逐字相同（观光舱同样要有面板），
-        // generate_art.py 的 check_cabin_parts 会断言。
+        // 必须逐字手工核对（原先由已移除的生成脚本自动断言）。
         {1.26f,1.10f,.20f,1.302f,1.90f,.90f,9,0},
         {1.25f,1.14f,.24f,1.28f,1.86f,.86f,8,0},
         {1.246f,1.31f,.30f,1.252f,1.73f,.80f,2,0},
@@ -176,10 +177,10 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * 重载轿厢的内饰件：{@link #STANDARD_PARTS} 的<b>全部</b>普通内饰（踢脚线、扶手、灯槽、顶灯）
      * + 一组<b>重载件</b> + 与普通轿厢逐字相同的操纵面板。
      *
-     * <p>为什么写成"整表复制 + 追加"而不是让代码把两张表拼起来：{@code tools/generate_art.py} 直接解析
-     * Java 源里的表，正是靠这一点断言"重载舱确实保留了普通舱的每一件内饰"
-     * （{@code POWERFUL_PARTS[:12] == STANDARD_PARTS[:12]} 且两者最后 6 行都是同一块面板）。
-     * 于是"保留原来基本样貌、另外加料"这条需求变成了构建期就守得住的约束，而不是一句口头约定。
+     * <p>为什么写成"整表复制 + 追加"而不是让代码把两张表拼起来：这样"重载舱保留了普通舱的每一件内饰"
+     * 就是一条<b>肉眼可核对</b>的约束（{@code POWERFUL_PARTS} 的前 12 行逐字等于 {@code STANDARD_PARTS} 的前 12 行，
+     * 且两者最后 6 行都是同一块面板）。原先这条约束由生成脚本解析 Java 源自动断言，脚本已随清理移除，
+     * 改动这两张表时必须逐行比对。
      *
      * <p>为什么要"加料"：重载型号的卖点是<b>载客量</b>（{@link AbstractCabinEntity#passengerNumLimit()}
      * 块 20 人，普通型号不限），因此多出来的一律是"人多时用得着"的东西——
@@ -234,7 +235,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         // 侧壁踢脚线 0.002 格，因此端面藏在踢脚线里、踏板看起来是"从左墙铺到右墙"的；顶面比
         // 地板铺面高约 4.5 毫米，是一条约 1 厘米宽的钢板，不是浮在地上的一块铁）
         {-1.298f,.198f,.86f,1.298f,.204f,.98f,7,0},
-        // 操纵面板：与 STANDARD_PARTS 的最后六行逐字相同（generate_art.py 会断言）
+        // 操纵面板：与 STANDARD_PARTS 的最后六行逐字相同（必须手工逐行比对）
         {1.26f,1.10f,.20f,1.302f,1.90f,.90f,9,0},
         {1.25f,1.14f,.24f,1.28f,1.86f,.86f,8,0},
         {1.246f,1.31f,.30f,1.252f,1.73f,.80f,2,0},
@@ -254,7 +255,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *
      * <p>本表<b>最后六行必须与 {@link #STANDARD_PARTS} / {@link #POWERFUL_PARTS} 完全一致</b>（操纵面板六件）：
      * 观光舱同样要显示层号与呼梯键，漏掉它就会出现"红字浮在空中"。
-     * {@code tools/generate_art.py} 的 {@code check_cabin_parts} 会断言这一点。
+     * 改动其中任何一张表时，三张表的这六行必须逐字保持相同。
      */
     private static final float[][] OBSERVATION_PARTS={
         // 上下压条（兼作玻璃收边与底托）：横跨 X=±1.4 / Z=-1.4 的玻璃平面

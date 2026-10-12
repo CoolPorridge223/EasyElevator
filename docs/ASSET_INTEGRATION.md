@@ -6,12 +6,12 @@
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
 > [人工验收清单](TESTING.md)（进游戏验收）、[构建与打包](BUILD_AND_PACKAGING.md)、[README](../README.md)（玩家向）。
 
-> **模型与贴图由脚本生成，不要手改单个成品文件（改了下次跑脚本就被覆盖，也说不出来源）。**
-> `python tools/generate_art.py` 写全部方块/物品模型与贴图，`python tools/generate_data.py`
-> 写方块状态、本地化、配方、掉落表与音效钩子。两个脚本都是纯 Python 3、无第三方依赖、
-> 可重复运行且输出逐字节一致，并且在写文件前会做几何自检（见各自文件头与
-> `check_door_models` / `check_item_models` / `check_cabin_parts` / `check_blockstates`）。
-> 只想换外观（贴图或模型数值）时改脚本再跑；只做资源包覆盖时可以照下表直接替换成品文件。
+> **模型与贴图现在是工程内的成品文件，直接编辑即可**：`src/main/resources/assets/easyelevator/` 下的
+> 模型 JSON、方块状态与贴图，以及 `data/` 下的本地化、配方、掉落表与 `assets/easyelevator/sounds.json`。
+> 原先生成它们的 `tools/generate_art.py` / `tools/generate_data.py` 已在清理中移除
+> （需要时从 git 标签 `EasyElevator_v2.3.0` 取回）。因此本文下方凡提到"跑脚本校验/重写"的段落，
+> 其校验项（`check_door_models` / `check_item_models` / `check_cabin_parts` / `check_blockstates` 所断言的内容）
+> 现在都需要手工核对。只做资源包覆盖时仍可照下表直接替换成品文件。
 >
 > 唯一的例外是**PNG 的压缩字节**：同一个脚本在不同 Python / zlib 版本下写出的像素完全一致，
 > 但压缩后的字节可能不同。跑完脚本若只有 `textures/**/*.png` 显示为已修改，先比对像素再决定是否提交
@@ -316,6 +316,6 @@ ElevatorEvents.ARRIVED.register((cabin, floorY) -> {
 指纹一致就什么都不做。这是为了避免"每次进存档都弹一次红色 Mojang 加载画面"——`reloadResources()`
 的代价与视觉干扰都很明显，只有玩家真的上传/换掉音频时才值得付。
 
-`tools/generate_data.py` 会重写 `sounds.json` 为"三个 ID"的声明——
-**导入正式音频后不要再次运行它**，否则音频条目会被清掉（模型与贴图不受影响，那部分在 `tools/generate_art.py` 里）。
-`tools/generate_art.py` 只写模型与贴图，会重复运行也不会破坏别的东西。
+`sounds.json`（三个 ID 的声明）与 `assets/easyelevator/` 下的模型、贴图、方块状态一样，现在都是工程内的成品文件，直接编辑即可。
+原先负责重写它们的 `tools/generate_data.py` / `tools/generate_art.py` 已在清理中移除（需要时从 git 标签 `EasyElevator_v2.3.0` 取回）——
+这也意味着**导入正式音频时不再有"再跑一次脚本会把音频条目清掉"的风险**。

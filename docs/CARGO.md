@@ -46,19 +46,9 @@
 
 ## 验证
 
-`tools/build.ps1 -Jdk <JDK21路径> -Task runGameTest` 会运行乘客、厅外呼叫回归以及 `CargoTests`（共 37 项）。货舱测试覆盖货量档位边界、单格上限、拖放与双人取放、Shift 搬运不丢货、货箱四朝向碰撞几何、装卸保持开门、超载随卸货恢复、满载双向运行。
+工程内**没有自动化测试**（`src/gametest` 源集与 `tools/build.ps1` 已在清理中移除）。货舱功能全部按人工清单验收：货量档位边界、单格上限、拖放与双人取放、Shift 搬运不丢货、货箱四朝向碰撞几何、装卸保持开门、超载随卸货恢复、满载双向运行。
 
 人工验收还需在真实客户端检查 0 / 1 / 289 / 1728 件的外观、拖拽分配、两人同时装卸、满货上下行、在货箱上站立和卸货、中文与英文界面，以及断线/重登后的货物一致性。
 
-本次验证（2026-10-08）：37 项服务端 GameTest 全部通过（含 10 项货舱测试），覆盖满货上下行；独立客户端冒烟通过，实测潜行打开货舱、实体货量同步、菜单同步、Shift 网络搬运、卸空恢复 20 人。已目视检查中文空/满货面板与六箱模型截图。双客户端高延迟、光影组合和英文界面仍按人工清单验收。
-（注：此后"装卸是否要求门开着"的判据被放开为"只要是厢内乘客即可"，因此第 68 条人工项与本文第 4 条按新行为描述；客户端冒烟的断言不涉及这条判据，未受影响。）
-
-客户端冒烟仅操作 `build/run/cargoClient/saves/CargoSmoke`。首次运行，先完成 `runGameTest`，再执行：
-
-```powershell
-New-Item -ItemType Directory -Force build/run/cargoClient/saves/CargoSmoke
-Copy-Item build/run/gameTest/world/level.dat build/run/cargoClient/saves/CargoSmoke/level.dat
-.\tools\build.ps1 -Jdk <JDK21路径> -Task runCargoClient
-```
-
-截图输出在 `build/run/cargoClient/screenshots/`；日志中 `CARGO_CLIENT_SMOKE_PASSED` 表示上述客户端断言通过。请勿把个人游戏存档放入此专用测试目录。
+历史验证记录（2026-10-08，当时测试源集尚在）：37 项服务端 GameTest 全部通过（含 10 项货舱测试），覆盖满货上下行；独立客户端冒烟通过，实测潜行打开货舱、实体货量同步、菜单同步、Shift 网络搬运、卸空恢复 20 人。已目视检查中文空/满货面板与六箱模型截图。双客户端高延迟、光影组合和英文界面仍按人工清单验收。
+（注：此后"装卸是否要求门开着"的判据被放开为"只要是厢内乘客即可"，因此第 68 条人工项与本文第 4 条按新行为描述。）

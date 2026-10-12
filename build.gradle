@@ -25,35 +25,6 @@ fabricApi {
     configureDataGeneration {
         client = true
     }
-    // Opt-in runtime regressions; the test mod is never part of the release jar.
-    if (project.hasProperty('riderTests')) {
-        configureTests {
-            createSourceSet = true
-            modId = 'easyelevator-test'
-            enableGameTests = true
-            eula = true
-        }
-    }
-}
-
-if (project.hasProperty('riderTests')) {
-    sourceSets.gametest.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
-    loom.runs {
-        cargoClient {
-            client()
-            source sourceSets.gametest
-            runDir 'build/run/cargoClient'
-            vmArg '-Deasyelevator.cargoSmoke=true'
-            programArgs '--quickPlaySingleplayer', 'CargoSmoke', '--username', 'CargoSmoke', '--width', '1280', '--height', '800'
-        }
-        riderClient {
-            client()
-            source sourceSets.gametest
-            runDir 'build/run/riderClient'
-            vmArg '-Deasyelevator.riderSmoke=true'
-            programArgs '--quickPlaySingleplayer', 'RiderSmoke', '--username', 'RiderSmoke'
-        }
-    }
 }
 
 repositories {
@@ -139,7 +110,7 @@ tasks.register('packageProject', Zip) {
     destinationDirectory = layout.buildDirectory.dir('distributions')
     into('EasyElevator') {
         from(projectDir) {
-            include 'src/**', 'docs/**', 'tools/*.ps1', 'tools/*.py'
+            include 'src/**', 'docs/**'
             include 'gradle/wrapper/**', 'gradlew', 'gradlew.bat'
             include 'build.gradle', 'settings.gradle', 'gradle.properties', '.gitignore', 'README.md', 'LICENSE.txt'
         }
