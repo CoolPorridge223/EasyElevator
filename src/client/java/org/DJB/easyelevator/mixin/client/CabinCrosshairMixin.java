@@ -3,6 +3,7 @@ package org.DJB.easyelevator.mixin.client;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.render.GameRenderer;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -16,7 +17,7 @@ import org.DJB.easyelevator.logic.ElevatorController;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * 轿厢里的乘客：<b>点轿厢开面板</b>，同时<b>门开着时准星能从门洞穿出去</b>。
@@ -45,25 +46,33 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p><b>不要引入跨帧状态</b>：曾经用"客户端每帧刷新、限时若干刻的看面板标记"通知服务端，
  * 结果"看过一眼面板后转身点别处"被残留标记误判（实机反馈：手里拿着东西点哪都能唤出面板）。
+ *
+ * <p><b>1.20.1 的注入点与 1.21 不同</b>：1.21 把准星求值抽成了
+ * {@code GameRenderer.findCrosshairTarget(Entity, double, double, float)}，可以直接在它的 RETURN 改写返回值；
+ * 1.20.1 没有这个方法，整段逻辑内联在 {@code GameRenderer.updateTargetedEntity(float)} 里，
+ * 结果写进 {@link MinecraftClient#crosshairTarget} 这个公开字段（该方法内共写入三次：先空、再方块命中、最后实体命中）。
+ * 因此这里注入 TAIL，读改写后的最终字段值——语义与 1.21 侧完全等价（都在同一帧、同一处裁决）。
  */
 @Mixin(GameRenderer.class)
 public abstract class CabinCrosshairMixin {
     /**
      * 准星求值返回后统一裁决：先按"门开着就让射线穿出轿厢"改写，否则一律命中本厢。
      *
-     * @param camera 相机跟随的实体（参数类型是 {@code Entity}，不是 {@code Camera}——写错类型会让
-     *               Mixin 在 APPLY 阶段抛 InvalidInjectionException 并使客户端启动崩溃）
-     * @param blockInteractionRange 方块交互距离（格）：穿透时用它做方块射线长度
-     * @param cir 原版返回值回调
+     * @param tickDelta 本帧的插值系数；原版就是用它算视角射线与相机位置的，必须原样沿用，
+     *                  自己拿 1.0f 会让准星与画面差一帧（快速转身时表现为"打不中看得见的东西"）
+     * @param ci 原版回调信息；本方法不取消调用，只改写 {@link MinecraftClient#crosshairTarget}
      */
-    @Inject(method = "findCrosshairTarget", at = @At("RETURN"), cancellable = true)
-    private void easyelevator$resolveCabinCrosshair(net.minecraft.entity.Entity camera, double blockInteractionRange,
-                                                    double entityInteractionRange, float tickDelta,
-                                                    CallbackInfoReturnable<HitResult> cir) {
+    @Inject(method = "updateTargetedEntity", at = @At("TAIL"))
+    private void easyelevator$resolveCabinCrosshair(float tickDelta, CallbackInfo ci) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client.player;
         if (player == null || client.world == null) return;
         if (player.isSpectator()) return;
+        // 相机实体：原版 updateTargetedEntity 若拿不到它就直接返回、根本不会写 crosshairTarget，
+        // 这里跟着一起早退，避免在空值上取眼睛位置。
+        Entity camera = client.getCameraEntity();
+        if (camera == null) return;
+        HitResult original = client.crosshairTarget;
         // 找到"自己正坐在里面"的那辆轿厢（正常至多一辆）；站在外面的玩家完全不受影响，
         // 因此"空手右键开门面板、潜行右键回收"照旧由原版准星决定。
         Box around = player.getBoundingBox().expand(4);
@@ -80,10 +89,11 @@ public abstract class CabinCrosshairMixin {
         // 楼层门的方块坐标就落在轿厢 3×3×3 的包围盒**里面**（轿厢盒跨 ±1.5 格、门在正面 1.3~1.5 那一带），
         // 于是那条判据恒为假、穿透永远取消，表现为"从轿厢里怎么都打不到电梯门"。
         // 用"距离"就没有这个问题：门框/门楣在轿厢外壳之外，天然更近或更远都算得清楚。
-        if (doorsOpen(own) && cir.getReturnValue() instanceof EntityHitResult hit && hit.getEntity() == own) {
+        if (doorsOpen(own) && original instanceof EntityHitResult hit && hit.getEntity() == own) {
             Vec3d eye = camera.getEyePos();
             Vec3d look = player.getRotationVec(tickDelta);
-            Vec3d end = eye.add(look.multiply(blockInteractionRange));
+            // 射线长度取原版的方块交互距离（1.20.1 由交互管理器提供，1.21 是从属性里读出来的同一个量）。
+            Vec3d end = eye.add(look.multiply(client.interactionManager.getReachDistance()));
             HitResult through = client.world.raycast(new RaycastContext(eye, end,
                     RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, player));
             if (through instanceof BlockHitResult blockHit) {
@@ -96,13 +106,13 @@ public abstract class CabinCrosshairMixin {
                     if (shellHit.isPresent()) shellDist = Math.min(shellDist, eye.distanceTo(shellHit.get()));
                 }
                 if (eye.distanceTo(blockHit.getPos()) < shellDist) {
-                    cir.setReturnValue(blockHit); // 方块在舱壁之前 → 射线确实穿出去了
+                    client.crosshairTarget = blockHit; // 方块在舱壁之前 → 射线确实穿出去了
                     return;
                 }
             }
         }
         // 默认：乘客点轿厢的任何地方都算命中本厢 → 右键必定走实体交互 → 服务端为乘客无条件开面板。
-        cir.setReturnValue(new EntityHitResult(own, own.getBoundingBox().getCenter()));
+        client.crosshairTarget = new EntityHitResult(own, own.getBoundingBox().getCenter());
     }
 
     /**

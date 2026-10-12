@@ -160,6 +160,23 @@ $env:JAVA_HOME = '<JDK21>'
 两条线共享同一份源码，只有下面这些位置按 MC 版本分叉。**从 `main` cherry-pick 逻辑改动到本分支时，先看这份清单**——
 冲突只会出现在这里，其余文件应当逐字相同。
 
+> ⚠️ **移植时最容易漏的一类错误：Mixin 里的字符串选择器**。
+> `@Inject(method = "名字")` 与 `@Redirect(target = "Lnet/...;方法(描述符)")` 都是**字符串**，
+> 目标版本里若没有这个名字（或它被改名/搬家），**编译期与 Mixin 注解处理器都不会报错**——
+> 注解处理器只是查不到映射、于是 refmap 里少一条，运行到 APPLY 阶段才抛
+> `InvalidInjectionException: could not find any targets matching '...'`，客户端直接启动崩溃。
+> 本线移植时 `CabinCrosshairMixin` 就是这样崩的：1.21 的 `GameRenderer.findCrosshairTarget` 在 1.20.1 并不存在。
+>
+> **自查办法**（每次移植完、打包后各做一次，几秒钟）：
+> ```powershell
+> # 编译产物里每个 mixin 选择器都必须有对应的 method_xxxx 条目，缺条目就是名字不存在
+> & jar xf build/libs/easyelevator-2.3.0+1.20.1.jar easyelevator-refmap.json client-easyelevator-refmap.json
+> Get-Content client-easyelevator-refmap.json, easyelevator-refmap.json -Raw
+> ```
+> 更可靠的验证是真正把客户端跑起来：**通用 Mixin 只在服务端跑 `runServer` 就能覆盖，
+> 而客户端 Mixin（`easyelevator.client.mixins.json`）必须启动客户端才会应用**——
+> 服务端冒烟通过不代表客户端那份配置没问题。
+
 | 位置 | 1.20.1 线 | 1.21.1 线（main） |
 | --- | --- | --- |
 | `gradle.properties` | MC 1.20.1 / yarn build.10 / loader 0.19.5 / FAPI 0.92.12 / `mod_version=2.3.0+1.20.1` / JDK 17 工具链路径 | MC 1.21.1 / 对应 yarn / loader 0.19.2 / FAPI 0.116.17 / `mod_version=2.3.0` |
@@ -175,6 +192,8 @@ $env:JAVA_HOME = '<JDK21>'
 | 实体 | `updateTrackedPositionAndAngles(..., int, boolean)` 多一个插值参数；`initDataTracker()` 无参 + `dataTracker.startTracking`；实体类型经 `FabricEntityTypeBuilder` 构建 | 签名不同（`DataTracker.Builder`、无参 `build()`） |
 | 物品提示 | `appendTooltip(ItemStack, World, List, TooltipContext)` | `appendTooltip(ItemStack, TooltipContext, List, TooltipType)` |
 | 客户端控件与界面 | `ClickableWidget.renderButton`；`Screen.renderBackground(DrawContext)`（无鼠标参数，且原版不再替你调用它）；`HandledScreen.render` 自己会调 `drawBackground` | `renderWidget`；四参 `renderBackground` |
+| 客户端 Mixin 注入点 | `CabinCrosshairMixin` 注入 `GameRenderer.updateTargetedEntity(float)` 的 **TAIL**，改写公开字段 `MinecraftClient.crosshairTarget`（1.20.1 没有 `findCrosshairTarget`） | 注入 `GameRenderer.findCrosshairTarget(Entity,double,double,float)` 的 **RETURN**，改写其返回值 |
+| 触及距离来源 | `MinecraftClient.interactionManager.getReachDistance()`（float） | `findCrosshairTarget` 的 `blockInteractionRange` 参数（读玩家属性） |
 | 渲染顶点 | `VertexConsumer.vertex(Matrix4f, ...)` / `normal(Matrix3f, ...)`（取 `MatrixStack.Entry.getPositionMatrix()/getNormalMatrix()`） | 直接收 `MatrixStack.Entry` |
 | 资源包管理器 | `getNames()` / `getEnabledNames()` | `getIds()` / `getEnabledIds()` |
 | Java 版本差异 | 不能用 Java 21 的 `List.getFirst/getLast`、`Math.clamp` | 可以用 |
