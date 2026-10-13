@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.11.8'
+    id 'fabric-loom' version '1.17.21'
     id 'maven-publish'
 }
 
@@ -96,10 +96,10 @@ tasks.withType(AbstractArchiveTask).configureEach {
 }
 
 tasks.named('wrapper') {
-    gradleVersion = '8.14.3'
+    gradleVersion = '9.6.0'
     distributionType = Wrapper.DistributionType.BIN
     networkTimeout = 120000
-    distributionSha256Sum = 'bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531'
+    distributionSha256Sum = 'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01'
 }
 
 // Allowlisted portable project: no local paths, caches, credentials, test worlds or downloaded tools.
