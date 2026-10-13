@@ -245,4 +245,29 @@ submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEX
 | `net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup` | **模块被移除**，替代是 `fabric-creative-tab-api-v1`：`net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab` |
 | `PayloadTypeRegistry.playS2C()` / `playC2S()` | `clientboundPlay()` / `serverboundPlay()` |
 
+## 10. 26.3 的 GUI 也是 extract 架构（客户端迁移的第二处结构性变化）
+
+26.3 不止改了世界渲染器：**GUI 控件也从"直接画"改成了"先抽取再提交"**。本线迁移时踩到的原始报错：
+
+```
+错误: 找不到符号  符号: 类 GuiGraphics
+        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) { … }
+错误: ElevatorScreen.FlatButton 不是抽象的, 并且未覆盖 AbstractButton 中的抽象方法
+        extractContents(GuiGraphicsExtractor,int,int,float)
+```
+
+结论与做法：
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `GuiGraphics`（控件与屏幕都用它直接画） | **`GuiGraphicsExtractor`**（抽取阶段），真正的绘制在后面的提交阶段 |
+| 覆写 `renderWidget(GuiGraphics, int, int, float)` | 实现 `AbstractButton.extractContents(GuiGraphicsExtractor, int, int, float)`（抽象方法，不实现就无法编译） |
+| `Screen.renderBackground(DrawContext)` / `AbstractContainerScreen.renderBg(...)` | 同样按"抽取 → 提交"改写，签名以编译报错为准 |
+
+**迁移建议**：不要试图把旧调用逐个改名，**直接读 26.3 里同类原版实现照抄结构**——解包
+`minecraft-clientOnly-<hash>-26.3-sources.jar` 后看 `net/minecraft/client/gui/screens/`、
+`net/minecraft/client/gui/components/`（例如 `AbstractButton`、`Button`、`AbstractContainerScreen`
+及其子类），把"控件怎么抽取内容"这一段骨架抄过来，再把本模组原来的绘制内容填进去。
+这与第 8 节的渲染器改写是同一个思路：**先把数据抽进状态/抽取器，再统一提交**。
+
 日志与人工验收见 [TESTING.md](TESTING.md)。
