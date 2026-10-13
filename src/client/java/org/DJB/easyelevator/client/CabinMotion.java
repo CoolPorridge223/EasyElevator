@@ -140,7 +140,29 @@ public final class CabinMotion {
                 tickFrame = track.serverTick;
                 AbstractCabinEntity.carryPassenger(player, dy);
             }
+            // 抬回支撑面（见 liftRidersToSupport）：本刻玩家物理可能又把自己按进地板/箱顶，这里先兜一次。
+            cabin.liftRiderToSupport(player);
         }
+    }
+
+    /**
+     * 把还在轿厢里的乘客抬回<b>脚下那块支撑面</b>（地板面，重载舱还可能是货箱顶面；<b>只抬不压</b>）。
+     * 由 {@code ClientPlayerEntityMixin} 在 {@code ClientPlayerEntity#sendMovementPackets} 开头、也就是移动包被真正
+     * 拼出来之前调用一次；{@link #beginPlayerTick} 每刻也兜一次。
+     *
+     * <p><b>为什么必须在下发移动包之前做</b>：支撑面是 {@code mixin/EntityViewMixin} 注入的<b>实体</b>碰撞，
+     * 而"脚底恰好贴在面上"时 {@link net.minecraft.util.math.Box#intersects(net.minecraft.util.math.Box)} 的
+     * 严格不等号会让这一次碰撞查询<b>查不到那块面</b>，于是玩家本刻会整段掉一格重力（实测 0.0784 格，
+     * 约 8% 的刻发生一次）。本线上后果是"偶尔陷进地板/箱顶"的一帧抖动；26.3 线里同一处会被放大成
+     * "服务端静默传送 → 模组自己的闸门把轿厢按成 BLOCKED → 上行一顿一顿"，因此三条线一起修掉。
+     *
+     * <p>把乘客夹在支撑面以上就断掉了整条链：报给服务端的 Y 与它自己算出的位置一致，位移为零。
+     * 只做抬升，因此不影响乘客在厢内跳跃、站在更高一层货箱上或正常下落（那些情形脚底都在支撑面之上）。
+     *
+     * @param player 本机客户端玩家；只应在客户端主线程调用
+     */
+    public static void liftRidersToSupport(ClientPlayerEntity player) {
+        for (AbstractCabinEntity cabin : TRACKS.keySet()) cabin.liftRiderToSupport(player);
     }
 
     /**

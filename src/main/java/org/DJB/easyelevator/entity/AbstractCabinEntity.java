@@ -516,6 +516,79 @@ public abstract class AbstractCabinEntity extends Entity {
         return containsPassenger(e) && Math.abs(e.getY() - getY() - .2) < .025;
     }
 
+    /**
+     * 单刻最多会把乘客"掉穿"支撑面多少格：轿厢地板（与货箱顶面）是 {@code mixin/EntityViewMixin} 注入的
+     * <b>实体</b>碰撞，脚底恰好贴面时那一次碰撞查询会漏掉它，于是玩家本刻整段掉一格重力（实测 0.0784 格）。
+     * 这里取 0.12 留一点余量，同时远小于相邻两层支撑面的间距（地板 0.2 → 箱顶 0.6 → 上层箱顶 1.0），
+     * 因此不会把"站在地板上"的人误认成"站在箱子上"。
+     */
+    private static final double MAX_SUPPORT_SINK = .12;
+
+    /**
+     * 把已经陷进<b>脚下那块支撑面</b>的乘客抬回该面（只抬不压；脚底已经在面上时什么都不做）。
+     *
+     * <p>支撑面取自 {@link #collisionBoxes()}：普通舱是地板面，重载舱还会包含已经长出来的货箱顶面
+     * （见 {@code PowerfulCabinEntity#collisionBoxesStatic()}），因此"站在箱顶"与"站在地板"走同一套复位逻辑。
+     *
+     * <p><b>为什么需要这一手</b>：支撑面是 {@code mixin/EntityViewMixin} 注入的<b>实体</b>碰撞，而
+     * "脚底恰好贴面"时 {@link Box#intersects(Box)} 的严格不等号会让那一次碰撞查询查不到这块面，于是玩家本刻
+     * 整段掉一格重力（实测 0.0784 格，约 8% 的刻发生一次）。本线上它只表现为"偶尔陷进去一点、下一刻被顶回来"
+     * 的一帧抖动（服务端的"是否撞进新碰撞"判定在本线只看方块碰撞，不会因此发传送），但抖动本身是缺陷：
+     * 26.3 线里同一处会被放大成"静默传送 → 轿厢被自己的闸门按成 BLOCKED"，所以三条线一起修掉。
+     *
+     * <p>判据用 {@link #containsRiderLoosely}（宽版本）而不是 {@link #containsPassenger}：人已经陷进去时
+     * 严格判据（下限 0.14 格）会判 false，宽判据仍能把人认出来并复位。
+     *
+     * @param e 候选乘客
+     * @return 真的把对方抬起来了时 true（已经站在支撑面上、或不在厢内时 false）
+     */
+    public boolean liftRiderToSupport(Entity e) {
+        if (!containsRiderLoosely(e)) return false;
+        double surface = supportSurfaceUnder(e);
+        if (Double.isNaN(surface) || surface <= e.getY()) return false;
+        e.setPosition(e.getX(), surface, e.getZ());
+        return true;
+    }
+
+    /**
+     * 乘客脚下最高的那块轿厢碰撞面（世界 Y）；没有面落在脚下、或脚底没有陷进去时返回 {@code NaN}。
+     *
+     * <p>"脚下"三条判据缺一不可：<b>水平投影确实相交</b>（站在箱子旁边不算站在箱子上）、
+     * <b>面就在脚底附近</b>（{@code ≤ 脚底 + MAX_SUPPORT_SINK}，因此头顶、侧壁、门扇都不会被当成支撑面）、
+     * <b>面高于脚底</b>（脚底已经陷进去了才需要复位）。取其中最高的那一块，于是"地板 + 叠了两层的货箱"
+     * 自然给出人正踩着的那一层。
+     *
+     * @param e 候选乘客
+     * @return 支撑面世界 Y；无支撑面时为 {@code NaN}
+     */
+    private double supportSurfaceUnder(Entity e) {
+        Box feet = e.getBoundingBox();
+        double limit = e.getY() + MAX_SUPPORT_SINK;
+        double best = Double.NaN;
+        for (Box part : collisionBoxes()) {
+            if (part.maxY <= e.getY() || part.maxY > limit) continue;
+            if (feet.maxX <= part.minX || feet.minX >= part.maxX) continue;
+            if (feet.maxZ <= part.minZ || feet.minZ >= part.maxZ) continue;
+            if (Double.isNaN(best) || part.maxY > best) best = part.maxY;
+        }
+        return best;
+    }
+
+    /**
+     * 乘客判据的<b>宽版本</b>：只要求"人在轿厢脚印内、高度落在『地板以下 0.5 格 ~ 净高』之间"。
+     *
+     * <p>与 {@link #containsPassenger} 的分工：后者下限 0.14 格，是"身份/权限"判据——随厢平移、障碍豁免、
+     * 乘客名册与网络校验都用它，写宽了等于放宽权限；本判据<b>只用于把陷进支撑面的乘客抬回来</b>，
+     * 因此下限放到地板以下 0.5 格（再多就说明人其实在井道里，不该动他）。
+     *
+     * @param e 待判定实体
+     * @return 位于脚印内且脚部高度落在 [-0.5, 2.7) 格时为 true
+     */
+    public boolean containsRiderLoosely(Entity e) {
+        return !e.isSpectator() && !e.hasVehicle() && insideFootprint(e)
+                && e.getY() >= getY() - .5 && e.getY() < getY() + 2.7;
+    }
+
     /** Translate the platform frame without teleport acknowledgements or changing input velocity. */
     public static void carryPassenger(Entity rider, double dy) {
         PlatformMovement connection = rider instanceof ServerPlayerEntity p && p.networkHandler != null

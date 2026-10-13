@@ -53,6 +53,21 @@ public abstract class ClientPlayerEntityMixin {
     }
 
     /**
+     * 移动包被真正拼出来之前，把乘客抬回脚下那块支撑面（见 {@link CabinMotion#liftRidersToSupport}）。
+     *
+     * <p>为什么必须卡在这个位置：本刻玩家物理可能让他掉了一格重力、陷进支撑面（脚底恰好贴面时，
+     * 碰撞查询会因为 {@code Box#intersects} 的严格不等号而漏掉轿厢地板/货箱顶这个实体碰撞），
+     * 而这条路径紧接着就要把绝对 Y 变成移动包。放 HEAD 是为了让下面读到的 {@code getY()}
+     * 已经是抬回后的值。
+     *
+     * @param ci 原版回调信息；本方法不取消调用
+     */
+    @Inject(method = "sendMovementPackets", at = @At("HEAD"))
+    private void easyelevator$liftRiderToSupport(CallbackInfo ci) {
+        CabinMotion.liftRidersToSupport((ClientPlayerEntity) (Object) this);
+    }
+
+    /**
      * 接管 {@code sendPacket} 这一个调用点：随厢时改发 {@link org.DJB.easyelevator.network.RiderMove}，
      * 否则原样转发给原版连接处理器。
      *
