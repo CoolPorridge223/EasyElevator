@@ -1,11 +1,15 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.GuiGraphics;
+// 26.3：GuiGraphics 变成 GuiGraphicsExtractor（屏幕先抽取绘制状态，再由渲染层统一绘制）。
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+// 26.3：按键回调改为传 KeyEvent 记录（key=SDL 扫描码、keycode=SDL 键码、modifiers=修饰键），
+// 不再传 (keyCode, scanCode, modifiers) 三个 int；GLFW 也已不在编译期类路径上。
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
@@ -15,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -169,8 +174,8 @@ public class DoorSoundScreen extends Screen {
         panelLeft=(width-CONTENT_W)/2;
         panelTop=(height-BLOCK_H)/2;
         rowTop=panelTop+ROW_TOP;
-        // 登记为拖拽目标：把 .ogg 拖进窗口就是上传，不依赖任何文件对话框（见 FileDropHandler）
-        FileDropHandler.setTarget(this);
+        // 拖拽上传不需要再登记"当前拖拽目标"：26.3 起原版把窗口拖入的文件直接交给当前打开的屏幕
+        // （MouseHandler.onDrop -> Screen.onFilesDrop），本类就地处理即可（见 onFilesDrop / FileDropHandler）。
         addRow(rowTop);
         // 路径输入框：最后一道保险——不依赖拖拽、不依赖对话框，复制粘贴路径就能上传。
         // 宽度与上面的工具键同宽，多出来的部分往右让给"上传"键。
@@ -256,19 +261,21 @@ public class DoorSoundScreen extends Screen {
      * <p>为什么需要它：对话框与拖拽都可能受启动器环境影响，而"把路径粘贴进来按回车"不依赖任何
      * 系统集成，是最后一道保险。顺手支持 Ctrl+V 粘贴（原版输入框本身就处理，这里不必重复实现）。
      *
-     * @param keyCode 键码
-     * @param scanCode 扫描码（未使用）
-     * @param modifiers 修饰键（未使用）
+     * <p>26.3：签名从 {@code keyPressed(int keyCode,int scanCode,int modifiers)} 换成
+     * {@code keyPressed(KeyEvent)}；判断"回车"改用 {@link KeyEvent#isConfirmation()}
+     * （它匹配主键盘回车与数字小键盘回车，正是旧版那两个 GLFW 常量），
+     * 不再直接引用 {@code org.lwjgl.glfw.GLFW}——26.3 的编译期类路径里已经没有 LWJGL。
+     *
+     * @param event 按键事件
      * @return 已消费时为 true
      */
     @Override
-    public boolean keyPressed(int keyCode,int scanCode,int modifiers) {
-        if ((keyCode==org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER||keyCode==org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER)
-                && pathInput!=null && pathInput.isFocused()) {
+    public boolean keyPressed(KeyEvent event) {
+        if (event.isConfirmation() && pathInput!=null && pathInput.isFocused()) {
             submitTypedPath();
             return true;
         }
-        return super.keyPressed(keyCode,scanCode,modifiers);
+        return super.keyPressed(event);
     }
 
     /**
@@ -360,15 +367,27 @@ public class DoorSoundScreen extends Screen {
     /**
      * 给本地玩家发一条 actionbar 提示（界面里唯一的即时反馈通道）。
      *
+     * <p>26.3：{@code Player.displayClientMessage(Component,boolean)} 在客户端侧不存在了
+     * （保留 actionbar 标志的那个实现只在 {@code ServerPlayer} 上，本机玩家拿不到）。
+     * 这里改走原版同一条通道：{@code ChatListener.handleOverlay(Component)}——原版收到
+     * actionbar 包时做的就是这件事（{@code gui.hud.setOverlayMessage} + 朗读），
+     * 因此提示仍显示在物品栏上方，既不刷聊天栏，也不丢掉屏幕朗读。
+     *
      * @param text 提示文本
      */
     private void message(Component text) {
-        // client 是 Screen 持有的 MinecraftClient 引用；玩家可能还没进世界（理论上到不了这里），故判空。
-        if (minecraft!=null && minecraft.player!=null) minecraft.player.displayClientMessage(text,true);
+        // minecraft 可能为 null（理论上到不了这里），故判空；玩家本身不必再看，HUD 一定在。
+        if (minecraft!=null) minecraft.gui.chatListener().handleOverlay(text);
     }
 
     /**
      * 绘制面板：一块不透明深色底 + 标题 + 副标题 + 设置区与动作区之间的分隔线。
+     *
+     * <p>26.3：Screen.render 改名为 extractRenderState、renderBackground 改名为 extractBackground、
+     * drawCenteredString 改名为 centeredText（同样的阴影与"x 为文字中心"的语义）；
+     * 调用顺序一字未改——仍然是"先背景、再面板底与文字、最后 super 画控件"。
+     * 背景在这里显式调用的原因与旧版相同：原版那条链也会先调一次 extractBackground
+     * （26.3 是 extractRenderStateWithTooltipAndSubtitles），本类覆盖它只是为了把模糊换成淡色叠加。
      *
      * @param context 绘制上下文
      * @param mouseX 鼠标 X（像素）
@@ -377,23 +396,23 @@ public class DoorSoundScreen extends Screen {
      * 副作用：仅绘制；每帧递减试听闪烁计数。
      */
     @Override
-    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
         if (previewFlash>0) previewFlash--; // 闪烁按帧递减，够用且不必额外挂刻事件
-        renderBackground(context,mouseX,mouseY,delta);
+        extractBackground(context,mouseX,mouseY,delta);
         context.fill(panelLeft,panelTop,panelLeft+CONTENT_W,panelTop+BLOCK_H,PANEL_COLOR);
         // 标题与副标题都画在面板内部，各自占一段高度（见 TITLE_H / HEADER_H 的说明）
-        context.drawCenteredString(font,title,width/2,panelTop+PAD-2,TITLE_COLOR);
-        context.drawCenteredString(font,
+        context.centeredText(font,title,width/2,panelTop+PAD-2,TITLE_COLOR);
+        context.centeredText(font,
                 Component.translatable("screen.easyelevator.door_sound_station_floor",stationY,floorLabel),
                 panelLeft+CONTENT_W/2,panelTop+PAD+TITLE_H+GAP+4,HINT_COLOR);
         // 设置区与动作区之间的分隔线：一条浅线即可，不必画整圈边框
         int lineY=panelTop+DIVIDER_TOP;
         context.fill(panelLeft+PAD,lineY,panelLeft+CONTENT_W-PAD,lineY+1,DIVIDER);
         // 上传提示：拖拽与粘贴两条路都写出来，玩家不必猜（按钮只是第三种备选）
-        context.drawCenteredString(font,
+        context.centeredText(font,
                 Component.translatable("screen.easyelevator.door_sound_drop"),
                 panelLeft+CONTENT_W/2,lineY+GAP_SMALL,HINT_COLOR);
-        super.render(context,mouseX,mouseY,delta);
+        super.extractRenderState(context,mouseX,mouseY,delta);
     }
 
     /**
@@ -427,14 +446,15 @@ public class DoorSoundScreen extends Screen {
         return name;
     }
 
-    /** 覆盖原版背景绘制：只用一次淡黑叠加代替模糊着色器，保持世界画面清晰（与另两个面板一致）。
+    /** 覆盖原版背景绘制（26.3：renderBackground -> extractBackground）：只用一次淡黑叠加代替模糊着色器，
+     * 保持世界画面清晰（与另两个面板一致）。
      * @param context 绘制上下文
      * @param mouseX 鼠标 X（像素）
      * @param mouseY 鼠标 Y（像素）
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
+    public void extractBackground(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
         context.fill(0,0,width,height,0x18000000);
     }
 
@@ -442,11 +462,18 @@ public class DoorSoundScreen extends Screen {
     @Override
     public boolean isPauseScreen() { return false; }
 
-    /** 关闭面板时取消拖拽登记：别的界面不该继承"拖文件上传"这个语义。 */
+    /**
+     * 接收原版交给"当前打开的屏幕"的拖入文件（26.3：MouseHandler.onDrop -> Screen.onFilesDrop）。
+     *
+     * <p>旧版是自己挂 GLFW 的 drop 回调、并用 {@code FileDropHandler.setTarget} 记住"哪个面板是拖拽目标"；
+     * 26.3 的原版只把拖拽交给当前屏幕，因此"只有本面板打开时才响应"由原版保证，
+     * 不再需要登记/注销目标，{@code removed()} 里的注销也随之删掉（见 {@link FileDropHandler}）。
+     *
+     * @param files 原版输入层解析出的文件路径列表
+     */
     @Override
-    public void removed() {
-        FileDropHandler.setTarget(null);
-        super.removed();
+    public void onFilesDrop(List<Path> files) {
+        FileDropHandler.onDrop(this,files);
     }
 
     /**
@@ -486,13 +513,17 @@ public class DoorSoundScreen extends Screen {
         /**
          * 画控件本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>26.3：子类钩子从 {@code AbstractWidget.renderWidget} 改成
+         * {@code AbstractButton.extractContents}——原 {@code renderWidget} 那条链已被 final 的
+         * {@code extractWidgetRenderState} 接管（它先调本方法、再处理鼠标指针），参数含义不变。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
+        protected void extractContents(GuiGraphicsExtractor ctx,int mouseX,int mouseY,float delta) {
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             Component label=dynamic==null?getMessage():dynamic.get();
             if (readOnly) {
@@ -500,7 +531,7 @@ public class DoorSoundScreen extends Screen {
                 boolean on=toggled.getAsBoolean();
                 ctx.fill(x,y,x+w,y+h,VALUE_BG);
                 ctx.fill(x,y,x+w-1,y,VALUE_INNER);
-                ctx.drawCenteredString(font,trim(label,w-8),x+w/2,y+(h-8)/2,
+                ctx.centeredText(font,trim(label,w-8),x+w/2,y+(h-8)/2,
                         on?VALUE_COLOR:0x77828F);
                 return;
             }
@@ -509,7 +540,7 @@ public class DoorSoundScreen extends Screen {
             ctx.fill(x,y,x+w,y+h, lit?0xFFE8F1F8:on?0xFF5FA898:0xFF5C6B7A);
             ctx.fill(x+1,y+1,x+w-1,y+h-1, lit?0xFF54697F:0xFF2A3543);
             ctx.fill(x+2,y+2,x+w-2,y+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
-            ctx.drawCenteredString(font,trim(label,w-6),x+w/2,y+(h-8)/2,
+            ctx.centeredText(font,trim(label,w-6),x+w/2,y+(h-8)/2,
                     lit?0xFFFFFF:on?0xFFD9FFF4:0xD2DEE9);
         }
 
@@ -543,7 +574,7 @@ public class DoorSoundScreen extends Screen {
          * @return 恒为 false：本面板不使用键盘 Tab 导航。
          *
          * <p>为什么必须显式关掉：{@code ButtonWidget} 默认让"第一个控件"获得焦点，而焦点会走
-         * {@link #renderWidget} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
+         * {@link #extractContents} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
          * 这些键都可以用鼠标点，关掉键盘焦点对玩家没有损失。
          */
         @Override

@@ -1,0 +1,1083 @@
+﻿
+> Configure project :
+Fabric Loom: 1.17.21
+
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileClientJava UP-TO-DATE
+> Task :processClientResources UP-TO-DATE
+> Task :clientClasses UP-TO-DATE
+> Task :generateLog4jConfig UP-TO-DATE
+> Task :generateDLIConfig UP-TO-DATE
+> Task :configureLaunch UP-TO-DATE
+> Task :downloadAssets UP-TO-DATE
+> Task :configureClientLaunch UP-TO-DATE
+
+> Task :runClient
+.\gradlew.bat : 2026-10-13T03:25:16.893670600Z main ERROR Unable to delete file E:\Codel\Documents\GitHub\EasyElevator\
+run\logs\latest.log: java.nio.file.FileSystemException E:\Codel\Documents\GitHub\EasyElevator\run\logs\latest.log: ��һ�
+���������ʹ�ô��ļ��������޷����ʡ�
+所在位置 行:1 字符: 129
++ ... g]::new($false); .\gradlew.bat runClient --console=plain 2>&1 | Out-F ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-10-13T03:2...��������޷����ʡ�:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-10-13T03:25:16.907386900Z main ERROR Unable to delete file E:\Codel\Documents\GitHub\EasyElevator\run\logs\debug.l
+og: java.nio.file.FileSystemException E:\Codel\Documents\GitHub\EasyElevator\run\logs\debug.log: ��һ����������ʹ�ô��ļ���
+�����޷����ʡ�
+[11:25:16] [main/INFO] (FabricLoader/GameProvider) Loading Minecraft 26.3 with Fabric Loader 0.19.5
+[11:25:16] [main/INFO] (FabricLoader/Mappings) Mappings not present!
+[11:25:17] [main/INFO] (FabricLoader) Loading 52 mods:
+	- easyelevator 2.3.0+26.3
+	- fabric-advancement-api-v1 1.0.0+38c7a2d55d
+	- fabric-api 0.162.0+26.3
+	- fabric-api-base 2.0.6+fcdff87f5d
+	- fabric-api-lookup-api-v1 2.0.24+3434d6d95d
+	- fabric-biome-api-v1 20.1.0+c6aa69a85d
+	- fabric-block-api-v1 3.1.0+0ae6f9115d
+	- fabric-block-getter-api-v2 2.0.9+3434d6d95d
+	- fabric-client-gametest-api-v1 6.0.8+4be74c3f5d
+	- fabric-command-api-v2 3.1.2+fcdff87f5d
+	- fabric-content-registries-v0 15.0.4+74ed1ea55d
+	- fabric-convention-tags-v2 4.10.3+6b5b47fd5d
+	- fabric-crash-report-info-v1 1.0.7+fcdff87f5d
+	- fabric-creative-tab-api-v1 5.0.21+fcdff87f5d
+	- fabric-data-attachment-api-v1 2.2.31+b9b88df45d
+	- fabric-data-generation-api-v1 27.3.0+5be2453c5d
+	- fabric-debug-api-v1 1.0.4+3434d6d95d
+	- fabric-dimensions-v1 5.1.19+47f74c985d
+	- fabric-entity-events-v1 6.0.4+3434d6d95d
+	- fabric-events-interaction-v0 5.3.7+b9b88df45d
+	- fabric-game-rule-api-v1 4.0.10+3434d6d95d
+	- fabric-gametest-api-v1 4.0.33+3434d6d95d
+	- fabric-item-api-v1 14.7.0+cf6bc2db5d
+	- fabric-key-mapping-api-v1 2.0.8+3434d6d95d
+	- fabric-lifecycle-events-v1 4.1.9+ffef5f675d
+	- fabric-loot-api-v3 4.0.8+4068fd645d
+	- fabric-menu-api-v1 2.0.28+ed66f0a35d
+	- fabric-message-api-v1 7.0.10+3434d6d95d
+	- fabric-model-loading-api-v1 8.0.35+fcdff87f5d
+	- fabric-networking-api-v1 6.3.9+b9b88df45d
+	- fabric-object-builder-api-v1 24.1.10+3434d6d95d
+	- fabric-particles-v1 5.0.25+3434d6d95d
+	- fabric-permission-api-v1 1.0.8+fcdff87f5d
+	- fabric-recipe-api-v1 10.0.9+b9b88df45d
+	- fabric-registry-sync-v0 8.0.2+1ca9f6365d
+	- fabric-renderer-api-v1 17.0.15+79385d0b5d
+	- fabric-renderer-indigo 9.1.23+b9d63e335d
+	- fabric-rendering-fluids-v1 6.0.6+3434d6d95d
+	- fabric-rendering-v1 27.0.14+901a437c5d
+	- fabric-resource-conditions-api-v1 6.2.0+0d124ae85d
+	- fabric-resource-loader-v0 3.3.26+4fc5413f5d
+	- fabric-resource-loader-v1 3.0.4+fcdff87f5d
+	- fabric-screen-api-v1 5.2.4+48607d035d
+	- fabric-serialization-api-v1 2.0.7+74ed1ea55d
+	- fabric-sound-api-v1 2.0.7+3434d6d95d
+	- fabric-tag-api-v1 2.1.10+fcdff87f5d
+	- fabric-transfer-api-v1 8.0.25+fcdff87f5d
+	- fabric-transitive-access-wideners-v1 8.1.16+52268a0e5d
+	- fabricloader 0.19.5
+	- java 25
+	- minecraft 26.3
+	- mixinextras 0.5.5
+[11:25:17] [main/INFO] (FabricLoader/Mixin) SpongePowered MIXIN Subsystem Version=0.8.7 Source=file:/E:/Android/.gradle/caches/modules-2/files-2.1/net.fabricmc/sponge-mixin/0.17.4+mixin.0.8.7/5f66cc9f59b8efaa942155a3d5a30599bf6640dd/sponge-mixin-0.17.4+mixin.0.8.7.jar Service=Knot/Fabric Env=CLIENT
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                                                                           SpongePowered MIXIN (Verbo
+se debugging enabled)                                                                                           */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                         Code source : file:/E:/Android/.gradle/caches/modules-2/files-2.1/net.fabric
+mc/sponge-mixin/0.17.4+mixin.0.8.7/5f66cc9f59b8efaa942155a3d5a30599bf6640dd/sponge-mixin-0.17.4+mixin.0.8.7.jar */
+/*                                    Internal Version : 0.8.7                                                         
+                                                                                                                */
+/*                                        Java Version : 25.0 (supports compatibility 6-25)                            
+                                                                                                                */
+/*                         Default Compatibility Level : JAVA_8                                                        
+                                                                                                                */
+/*                   Max Effective Compatibility Level : JAVA_13                                                       
+                                                                                                                */
+/*                                Detected ASM Version : ASM 9.10.1 (ASM10_EXPERIMENTAL)                               
+                                                                                                                */
+/*                          Detected ASM Supports Java : Up to Java 27 (class file version 71.0)                       
+                                                                                                                */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                        Service Name : Knot/Fabric                                                   
+                                                                                                                */
+/*                                 Mixin Service Class : net.fabricmc.loader.impl.launch.knot.MixinServiceKnot         
+                                                                                                                */
+/*                       Global Property Service Class : net.fabricmc.loader.impl.launch.knot.FabricGlobalPropertyServi
+ce                                                                                                              */
+/*                                 Logger Adapter Type : Fabric Mixin Logger                                           
+                                                                                                                */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                         mixin.debug : <false>                                                       
+                                                                                                                */
+/*                                  mixin.debug.export : - <false>                                                     
+                                                                                                                */
+/*                           mixin.debug.export.filter : - - <null>                                                    
+                                                                                                                */
+/*                        mixin.debug.export.decompile : - - <false>                                                   
+                                                                                                                */
+/*                  mixin.debug.export.decompile.async : - - - <false>                                                 
+                                                                                                                */
+/* mixin.debug.export.decompile.mergeGenericSignatures : - - - <false>                                                 
+                                                                                                                */
+/*                                  mixin.debug.verify : - <false>                                                     
+                                                                                                                */
+/*                                 mixin.debug.verbose : - <true>                                                      
+                                                                                                                */
+/*                         mixin.debug.countInjections : - <false>                                                     
+                                                                                                                */
+/*                                  mixin.debug.strict : - <false>                                                     
+                                                                                                                */
+/*                           mixin.debug.strict.unique : - - <false>                                                   
+                                                                                                                */
+/*                          mixin.debug.strict.targets : - - <false>                                                   
+                                                                                                                */
+/*                                mixin.debug.profiler : - <false>                                                     
+                                                                                                                */
+/*                           mixin.dumpTargetOnFailure : <false>                                                       
+                                                                                                                */
+/*                                        mixin.checks : <false>                                                       
+                                                                                                                */
+/*                             mixin.checks.interfaces : - <false>                                                     
+                                                                                                                */
+/*                      mixin.checks.interfaces.strict : - - <false>                                                   
+                                                                                                                */
+/*                             mixin.ignoreConstraints : <false>                                                       
+                                                                                                                */
+/*                                       mixin.hotSwap : <false>                                                       
+                                                                                                                */
+/*                                       mixin.env.obf : - <false>                                                     
+                                                                                                                */
+/*                             mixin.env.disableRefMap : - <false>                                                     
+                                                                                                                */
+/*                               mixin.env.remapRefMap : - <false>                                                     
+                                                                                                                */
+/*                       mixin.env.refMapRemappingFile : - <>                                                          
+                                                                                                                */
+/*                        mixin.env.refMapRemappingEnv : - <searge>                                                    
+                                                                                                                */
+/*                      mixin.env.allowPermissiveMatch : - <false>                                                     
+                                                                                                                */
+/*                            mixin.env.ignoreRequired : - <false>                                                     
+                                                                                                                */
+/*                               mixin.env.compatLevel : - <false>                                                     
+                                                                                                                */
+/*                          mixin.env.shiftByViolation : - <warn>                                                      
+                                                                                                                */
+/*                      mixin.initialiserInjectionMode : <default>                                                     
+                                                                                                                */
+/*               mixin.tunable.classReaderExpandFrames : - <false>                                                     
+                                                                                                                */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                    UNSAFE_INJECTION : available=<true> enabled=<true>                               
+                                                                                                                */
+/*                       INJECTORS_IN_INTERFACE_MIXINS : available=<true> enabled=<true>                               
+                                                                                                                */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+/*                                       Detected Side : CLIENT                                                        
+                                                                                                                */
+/**********************************************************************************************************************
+*****************************************************************************************************************/
+[11:25:17] [main/WARN] (FabricLoader/Mixin) Compatibility level JAVA_25 specified by fabric-lifecycle-events-v1.mixins.json is higher than the maximum level supported by this version of mixin (JAVA_13).
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing mixins for MixinEnvironment[DEFAULT]
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-lifecycle-events-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-lifecycle-events-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-advancement-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-model-loading-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-gametest-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-biome-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-debug-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-debug-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-serialization-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-block-getter-api-v2.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-block-getter-api-v2.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-resource-loader-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-resource-loader-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-transfer-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-command-api-v2.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-command-api-v2.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-networking-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-networking-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-loot-api-v3.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-screen-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-item-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-item-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-renderer-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-particles-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-particles-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-key-mapping-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-message-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-message-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-data-generation-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-data-generation-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-registry-sync-v0.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-registry-sync-v0.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-block-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-recipe-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-recipe-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-sound-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-rendering-fluids-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-crash-report-info-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-resource-conditions-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-rendering-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-client-gametest-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-object-builder-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-object-builder-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-convention-tags-api-v2.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-tag-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-entity-events-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-events-interaction-v0.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-events-interaction-v0.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-dimensions-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-content-registries-v0.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-content-registries-v0.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config mixinextras.init.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-game-rule-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-game-rule-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-permission-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-renderer-indigo.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-creative-tab-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-creative-tab-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-data-attachment-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-data-attachment-api-v1.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config easyelevator.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config easyelevator.client.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-menu-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Selecting config fabric-api-lookup-api-v1.mixins.json
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-lifecycle-events-v1.mixins.json (16)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-lifecycle-events-v1.client.mixins.json (7)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-advancement-api-v1.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-model-loading-api-v1.mixins.json (6)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-gametest-api-v1.mixins.json (4)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-biome-api-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-debug-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-debug-api-v1.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-serialization-api-v1.mixins.json (4)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-block-getter-api-v2.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-block-getter-api-v2.client.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-resource-loader-v1.mixins.json (15)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-resource-loader-v1.client.mixins.json (10)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-transfer-api-v1.mixins.json (18)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-command-api-v2.mixins.json (5)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-command-api-v2.client.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-networking-api-v1.mixins.json (27)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-networking-api-v1.client.mixins.json (10)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-loot-api-v3.mixins.json (7)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-screen-api-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-item-api-v1.mixins.json (20)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-item-api-v1.client.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-renderer-api-v1.mixins.json (26)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-particles-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-particles-v1.client.mixins.json (4)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-key-mapping-api-v1.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-message-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-message-api-v1.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-data-generation-api-v1.mixins.json (23)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-data-generation-api-v1.client.mixins.json (4)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-registry-sync-v0.mixins.json (19)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-registry-sync-v0.client.mixins.json (6)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-block-api-v1.mixins.json (10)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-recipe-api-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-recipe-api-v1.client.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-sound-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-rendering-fluids-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-crash-report-info-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-resource-conditions-api-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-rendering-v1.mixins.json (57)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-client-gametest-api-v1.mixins.json (25)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-object-builder-v1.mixins.json (12)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-object-builder-v1.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-convention-tags-api-v2.mixins.json (1)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-tag-api-v1.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-entity-events-v1.mixins.json (13)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-events-interaction-v0.mixins.json (8)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-events-interaction-v0.client.mixins.json (4)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-dimensions-v1.mixins.json (7)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-content-registries-v0.mixins.json (18)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-content-registries-v0.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing mixinextras.init.mixins.json (0)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-game-rule-api-v1.mixins.json (5)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-game-rule-api-v1.client.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-permission-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-renderer-indigo.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-creative-tab-api-v1.mixins.json (3)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-creative-tab-api-v1.client.mixins.json (1)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-data-attachment-api-v1.mixins.json (18)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-data-attachment-api-v1.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing easyelevator.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing easyelevator.client.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-menu-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Preparing fabric-api-lookup-api-v1.mixins.json (2)
+[11:25:17] [main/INFO] (FabricLoader/Mixin) Prepared 485 mixins in 0.347 sec (0.7ms avg) (0ms load, 0ms transform, 0ms plugin)
+[11:25:18] [main/INFO] (FabricLoader/MixinExtras|Service) Initializing MixinExtras via com.llamalad7.mixinextras.service.MixinExtrasServiceImpl(version=0.5.5).
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing DimensionStorageFileFixMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.util.filefix.fixes.DimensionStorageFileFix
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing TaggedChoiceMixin from fabric-dimensions-v1.mixins.json into com.mojang.datafixers.types.templates.TaggedChoice
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing TaggedChoiceTaggedChoiceTypeMixin from fabric-dimensions-v1.mixins.json into com.mojang.datafixers.types.templates.TaggedChoice$TaggedChoiceType
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing RegistriesMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.registries.Registries
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing V2832Mixin from fabric-dimensions-v1.mixins.json into net.minecraft.util.datafix.schemas.V2832
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Mixing SystemReportMixin from fabric-crash-report-info-v1.mixins.json into net.minecraft.SystemReport
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$appendMods$0(Lnet/fabricmc/loader/api/ModContainer;)Ljava/lang/String; to mda3b84f$fabric-crash-report-info-v1$lambda$appendMods$0$0 in fabric-crash-report-info-v1.mixins.json:SystemReportMixin from mod fabric-crash-report-info-v1
+[11:25:18] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fillSystemDetails$0()Ljava/lang/Object; to mda3b84f$fabric-crash-report-info-v1$lambda$fillSystemDetails$0$1 in fabric-crash-report-info-v1.mixins.json:SystemReportMixin from mod fabric-crash-report-info-v1
+[11:25:18] [Datafixer Bootstrap #0/INFO] (Minecraft) 307 Datafixer optimizations took 175 milliseconds
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BootstrapMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.server.Bootstrap
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$afterInitialize$1(Lnet/minecraft/world/level/material/Fluid;)Ljava/util/Collection; to mda3b84f$fabric-registry-sync-v0$lambda$afterInitialize$1$0 in fabric-registry-sync-v0.mixins.json:BootstrapMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$afterInitialize$0(Lnet/minecraft/world/level/block/Block;)Ljava/util/Collection; to mda3b84f$fabric-registry-sync-v0$lambda$afterInitialize$0$1 in fabric-registry-sync-v0.mixins.json:BootstrapMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing RegistryMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.Registry
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BuiltInRegistriesMixin from fabric-item-api-v1.mixins.json into net.minecraft.core.registries.BuiltInRegistries
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BuiltInRegistriesAccessor from fabric-registry-sync-v0.mixins.json into net.minecraft.core.registries.BuiltInRegistries
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method getWRITABLE_REGISTRY()Lnet/minecraft/core/WritableRegistry; to getWRITABLE_REGISTRY$fabric-registry-sync-v0_$md$a3b84f$0 in fabric-registry-sync-v0.mixins.json:BuiltInRegistriesAccessor from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BuiltInRegistriesMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.registries.BuiltInRegistries
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BuiltInRegistriesMixin from fabric-object-builder-v1.mixins.json into net.minecraft.core.registries.BuiltInRegistries
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MappedRegistryAccessor from fabric-registry-sync-v0.mixins.json into net.minecraft.core.MappedRegistry
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MappedRegistryMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.MappedRegistry
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$remap$0()Lnet/fabricmc/fabric/impl/registry/sync/RemapException; to mda3b84f$fabric-registry-sync-v0$lambda$remap$0$0 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$3([Lnet/fabricmc/fabric/api/event/registry/RegistryIdRemapCallback;)Lnet/fabricmc/fabric/api/event/registry/RegistryIdRemapCallback; to mda3b84f$fabric-registry-sync-v0$lambda$init$3$1 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$4([Lnet/fabricmc/fabric/api/event/registry/RegistryIdRemapCallback;Lnet/fabricmc/fabric/api/event/registry/RegistryIdRemapCallback$RemapState;)V to mda3b84f$fabric-registry-sync-v0$lambda$init$4$2 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$2(ILnet/minecraft/resources/Identifier;Ljava/lang/Object;)V to mda3b84f$fabric-registry-sync-v0$lambda$init$2$3 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0([Lnet/fabricmc/fabric/api/event/registry/RegistryEntryAddedCallback;)Lnet/fabricmc/fabric/api/event/registry/RegistryEntryAddedCallback; to mda3b84f$fabric-registry-sync-v0$lambda$init$0$4 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$1([Lnet/fabricmc/fabric/api/event/registry/RegistryEntryAddedCallback;ILnet/minecraft/resources/Identifier;Ljava/lang/Object;)V to mda3b84f$fabric-registry-sync-v0$lambda$init$1$5 in fabric-registry-sync-v0.mixins.json:MappedRegistryMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MappedRegistryMixin from fabric-tag-api-v1.mixins.json into net.minecraft.core.MappedRegistry
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MappedRegistryAccessor from fabric-dimensions-v1.mixins.json into net.minecraft.core.MappedRegistry
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing DataComponentInitializersMixin from fabric-item-api-v1.mixins.json into net.minecraft.core.component.DataComponentInitializers
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$captureLookup$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/core/HolderLookup$Provider;Lnet/minecraft/core/component/DataComponentInitializers$PendingComponentBuilders;)Lnet/minecraft/core/component/DataComponentInitializers$PendingComponents; to mda3b84f$fabric-item-api-v1$lambda$captureLookup$0$0 in fabric-item-api-v1.mixins.json:DataComponentInitializersMixin from mod fabric-item-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing effect.MobEffectMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.effect.MobEffect
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ArgumentTypeInfosAccessor from fabric-command-api-v2.mixins.json into net.minecraft.commands.synchronization.ArgumentTypeInfos
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method fabric_getClassMap()Ljava/util/Map; to fabric_getClassMap$fabric-command-api-v2_$md$a3b84f$0 in fabric-command-api-v2.mixins.json:ArgumentTypeInfosAccessor from mod fabric-command-api-v2
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing CreativeModeTabsMixin from fabric-creative-tab-api-v1.mixins.json into net.minecraft.world.item.CreativeModeTabs
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$paginateTabs$0(Lnet/minecraft/core/Holder$Reference;Lnet/minecraft/core/Holder$Reference;)I to mda3b84f$fabric-creative-tab-api-v1$lambda$paginateTabs$0$0 in fabric-creative-tab-api-v1.mixins.json:CreativeModeTabsMixin from mod fabric-creative-tab-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing CreativeModeTabAccessor from fabric-creative-tab-api-v1.mixins.json into net.minecraft.world.item.CreativeModeTab
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing CreativeModeTabMixin from fabric-creative-tab-api-v1.mixins.json into net.minecraft.world.item.CreativeModeTab
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$getStacks$0(Lnet/minecraft/world/item/CreativeModeTab;)Ljava/lang/IllegalStateException; to mda3b84f$fabric-creative-tab-api-v1$lambda$getStacks$0$0 in fabric-creative-tab-api-v1.mixins.json:CreativeModeTabMixin from mod fabric-creative-tab-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing GameRuleMixin from fabric-game-rule-api-v1.mixins.json into net.minecraft.world.level.gamerules.GameRule
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$deserializeEnum$1(Ljava/lang/String;)Ljava/lang/String; to mda3b84f$fabric-game-rule-api-v1$lambda$deserializeEnum$1$0 in fabric-game-rule-api-v1.mixins.json:GameRuleMixin from mod fabric-game-rule-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$deserializeEnum$0(Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/String; to mda3b84f$fabric-game-rule-api-v1$lambda$deserializeEnum$0$1 in fabric-game-rule-api-v1.mixins.json:GameRuleMixin from mod fabric-game-rule-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing FireBlockMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.block.FireBlock
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.block.Block
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockBehaviourAccessor from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.block.state.BlockBehaviour
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockGetterMixin from fabric-block-getter-api-v2.mixins.json into net.minecraft.world.level.BlockGetter
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockStateMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.block.state.BlockState
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockBehaviourBlockStateBaseMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockBehaviourBlockStateBaseMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-debug-api-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-particles-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing fluid.EntityAccessor from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing fluid.EntityMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-permission-api-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AttachmentTargetsMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_updateSyncTarget$0(Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentTargetInfo;Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentTargetInfo;Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange;)Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange; to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_updateSyncTarget$0$0 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_sendAndClearDeferredSyncChanges$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;)Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange; to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_sendAndClearDeferredSyncChanges$0$1 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_readAttachmentsFromNbt$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;Ljava/lang/Object;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_readAttachmentsFromNbt$0$2 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onAttachedSet$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;)Lnet/fabricmc/fabric/api/event/Event; to mda3b84f$fabric-data-attachment-api-v1$lambda$onAttachedSet$0$3 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onAttachedSet$1([Lnet/fabricmc/fabric/api/attachment/v1/AttachmentTarget$OnAttachedSet;)Lnet/fabricmc/fabric/api/attachment/v1/AttachmentTarget$OnAttachedSet; to mda3b84f$fabric-data-attachment-api-v1$lambda$onAttachedSet$1$4 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onAttachedSet$2([Lnet/fabricmc/fabric/api/attachment/v1/AttachmentTarget$OnAttachedSet;Ljava/lang/Object;Ljava/lang/Object;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$onAttachedSet$2$5 in fabric-data-attachment-api-v1.mixins.json:AttachmentTargetsMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.entity.Entity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_syncChange$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentSyncPredicate;Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange;Lnet/minecraft/server/level/ServerPlayer;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_syncChange$0$6 in fabric-data-attachment-api-v1.mixins.json:EntityMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing PlayerMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.player.Player
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing PlayerMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.world.entity.player.Player
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LivingEntityMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LivingEntityMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LivingEntityMixin from fabric-particles-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LivingEntityMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LivingEntityMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing effect.LivingEntityMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing elytra.LivingEntityMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing fluid.LivingEntityAccessor from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing fluid.LivingEntityMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.LivingEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LevelMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.level.Level
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AttachmentTargetsMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.Level
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LevelMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.Level
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LevelReaderMixin from fabric-block-getter-api-v2.mixins.json into net.minecraft.world.level.LevelReader
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityViewMixin from easyelevator.mixins.json into net.minecraft.world.level.EntityGetter
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$easyelevator$collisions$0(Lorg/DJB/easyelevator/entity/AbstractCabinEntity;)Z to mda3b84f$easyelevator$lambda$easyelevator$collisions$0$0 in easyelevator.mixins.json:EntityViewMixin from mod easyelevator
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerLevelMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.level.ServerLevel
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerLevelMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.level.ServerLevel
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_syncChange$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange;Lnet/minecraft/server/level/ServerPlayer;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_syncChange$0$0 in fabric-data-attachment-api-v1.mixins.json:ServerLevelMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$createAttachmentsPersistentState$0(Lnet/minecraft/server/level/ServerLevel;)Lnet/fabricmc/fabric/impl/attachment/AttachmentSavedData; to mda3b84f$fabric-data-attachment-api-v1$lambda$createAttachmentsPersistentState$0$1 in fabric-data-attachment-api-v1.mixins.json:ServerLevelMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerLevelMixin from fabric-api-lookup-api-v1.mixins.json into net.minecraft.server.level.ServerLevel
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_invalidateCache$2(Ljava/util/Map$Entry;)Z to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_invalidateCache$2$2 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_invalidateCache$3(Ljava/lang/ref/WeakReference;)Z to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_invalidateCache$3$3 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_invalidateCache$1(Ljava/lang/ref/WeakReference;)V to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_invalidateCache$1$4 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_invalidateCache$0(Ljava/lang/ref/WeakReference;)Z to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_invalidateCache$0$5 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_registerCache$1(Ljava/lang/ref/WeakReference;)Z to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_registerCache$1$6 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_registerCache$0(Lnet/minecraft/core/BlockPos;)Ljava/util/List; to mda3b84f$fabric-api-lookup-api-v1$lambda$fabric_registerCache$0$7 in fabric-api-lookup-api-v1.mixins.json:ServerLevelMixin from mod fabric-api-lookup-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerPlayerMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.level.ServerPlayer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerPlayerMixin from fabric-particles-v1.mixins.json into net.minecraft.server.level.ServerPlayer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerPlayerMixin from fabric-entity-events-v1.mixins.json into net.minecraft.server.level.ServerPlayer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerPlayerMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.server.level.ServerPlayer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ServerPlayerMixin from fabric-menu-api-v1.mixins.json into net.minecraft.server.level.ServerPlayer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing IdMapperMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.IdMapper
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_remapIds$0(Lit/unimi/dsi/fastutil/ints/Int2IntMap;Ljava/lang/Object;Ljava/lang/Integer;)Ljava/lang/Integer; to mda3b84f$fabric-registry-sync-v0$lambda$fabric_remapIds$0$0 in fabric-registry-sync-v0.mixins.json:IdMapperMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing RegistryFriendlyByteBufMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.RegistryFriendlyByteBuf
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlocksMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.world.level.block.Blocks
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$initShapeCache$0(ILnet/minecraft/resources/Identifier;Lnet/minecraft/world/level/block/Block;)V to mda3b84f$fabric-registry-sync-v0$lambda$initShapeCache$0$0 in fabric-registry-sync-v0.mixins.json:BlocksMixin from mod fabric-registry-sync-v0
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LiquidBlockMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.block.LiquidBlock
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing WeatheringCopperMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.block.WeatheringCopper
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockBehaviourPropertiesMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.block.state.BlockBehaviour$Properties
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityTypeMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.entity.EntityType
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityTypeMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.EntityType
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing FluidMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.material.Fluid
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing FlowingFluidMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.material.FlowingFluid
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing LavaFluidMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.material.LavaFluid
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing DataComponentMapBuilderMixin from fabric-item-api-v1.mixins.json into net.minecraft.core.component.DataComponentMap$Builder
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockEntityMixin from fabric-block-getter-api-v2.mixins.json into net.minecraft.world.level.block.entity.BlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AttachmentTargetsMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.block.entity.BlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockEntityMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.block.entity.BlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_markChanged$2(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_markChanged$2$0 in fabric-data-attachment-api-v1.mixins.json:BlockEntityMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_markChanged$0(Lnet/minecraft/server/level/ChunkResult;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_markChanged$0$1 in fabric-data-attachment-api-v1.mixins.json:BlockEntityMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_markChanged$1(Lnet/minecraft/world/level/chunk/LevelChunk;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_markChanged$1$2 in fabric-data-attachment-api-v1.mixins.json:BlockEntityMixin from mod fabric-data-attachment-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing TagKeyMixin from fabric-convention-tags-api-v2.mixins.json into net.minecraft.tags.TagKey
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockParticleOptionMixin from fabric-particles-v1.mixins.json into net.minecraft.core.particles.BlockParticleOption
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MenuProviderMixin from fabric-menu-api-v1.mixins.json into net.minecraft.world.MenuProvider
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BaseContainerBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.BaseContainerBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing DetectorRailBlockMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.level.block.DetectorRailBlock
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$getCustomComparatorOutput$0(Lnet/minecraft/world/entity/Entity;)Z to mda3b84f$fabric-object-builder-api-v1$lambda$getCustomComparatorOutput$0$0 in fabric-object-builder-v1.mixins.json:DetectorRailBlockMixin from mod fabric-object-builder-api-v1
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EntityMixin from fabric-debug-api-v1.mixins.json into net.minecraft.world.entity.Mob
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing MobMixin from fabric-entity-events-v1.mixins.json into net.minecraft.world.entity.Mob
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ChiseledBookShelfBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.ChiseledBookShelfBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ListBackedContainerMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.ListBackedContainer
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing ShelfBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.ShelfBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockEntityTypeMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.level.block.entity.BlockEntityType
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BlockEntityTypeAccessor from fabric-api-lookup-api-v1.mixins.json into net.minecraft.world.level.block.entity.BlockEntityType
+[11:25:19] [main/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field validBlocks:Ljava/util/Set; in fabric-object-builder-v1.mixins.json:BlockEntityTypeMixin from mod fabric-object-builder-api-v1::handler$baa000$fabric-object-builder-api-v1$mutableBlocks
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AbstractContainerMenuMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.inventory.AbstractContainerMenu
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AbstractFurnaceBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing AbstractFurnaceBlockEntityMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing JukeboxBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.JukeboxBlockEntity
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing EnchantmentMenuMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.inventory.EnchantmentMenu
+[11:25:19] [main/INFO] (FabricLoader/Mixin) Mixing BrewingStandBlockEntityMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.level.block.entity.BrewingStandBlockEntity
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing AnvilMenuMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.inventory.AnvilMenu
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing HopperBlockEntityMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.entity.HopperBlockEntity
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookExtract$0(Lnet/fabricmc/fabric/api/transfer/v1/item/ItemVariant;)Z to mda3b84f$fabric-transfer-api-v1$lambda$hookExtract$0$0 in fabric-transfer-api-v1.mixins.json:HopperBlockEntityMixin from mod fabric-transfer-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookInsert$0(Lnet/fabricmc/fabric/api/transfer/v1/item/ItemVariant;)Z to mda3b84f$fabric-transfer-api-v1$lambda$hookInsert$0$1 in fabric-transfer-api-v1.mixins.json:HopperBlockEntityMixin from mod fabric-transfer-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing DropperBlockMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.DropperBlock
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookDispense$0(Lnet/fabricmc/fabric/api/transfer/v1/item/ItemVariant;)Z to mda3b84f$fabric-transfer-api-v1$lambda$hookDispense$0$0 in fabric-transfer-api-v1.mixins.json:DropperBlockMixin from mod fabric-transfer-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BannerBlockEntityMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.block.entity.BannerBlockEntity
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing CrafterBlockMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.level.block.CrafterBlock
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemStackAccessor from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.ItemStack
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming @Invoker method validateComponents(Lnet/minecraft/core/component/DataComponentMap;)Lcom/mojang/serialization/DataResult; to validateComponents$fabric-transfer-api-v1_$md$a3b84f$0 in fabric-transfer-api-v1.mixins.json:ItemStackAccessor from mod fabric-transfer-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemStackMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.ItemStack
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookDamage$0(Lorg/apache/commons/lang3/mutable/MutableBoolean;Ljava/util/function/Consumer;)V to mda3b84f$fabric-item-api-v1$lambda$hookDamage$0$1 in fabric-item-api-v1.mixins.json:ItemStackMixin from mod fabric-item-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemStackMixin from fabric-item-api-v1.client.mixins.json into net.minecraft.world.item.ItemStack
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemStackMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.world.item.ItemStack
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ValueOutputMixin from fabric-serialization-api-v1.mixins.json into net.minecraft.world.level.storage.ValueOutput
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.Item
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.Item
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BucketItemAccessor from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.BucketItem
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BucketItemMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.BucketItem
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemPropertiesMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.Item$Properties
+[11:25:20] [main/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field model:Lnet/minecraft/resources/DependantName; in fabric-item-api-v1.mixins.json:ItemPropertiesMixin from mod fabric-item-api-v1::modelId
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BlockTransformerMixin from fabric-item-api-v1.mixins.json into net.minecraft.core.component.BlockTransformer
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing LootTableAccessor from fabric-loot-api-v3.mixins.json into net.minecraft.world.level.storage.loot.LootTable
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing LootTableMixin from fabric-loot-api-v3.mixins.json into net.minecraft.world.level.storage.loot.LootTable
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BundleContentsAccessor from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.component.BundleContents
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming @Invoker method getWeight(Lnet/minecraft/world/item/ItemInstance;)Lcom/mojang/serialization/DataResult; to getWeight$fabric-transfer-api-v1_$md$a3b84f$0 in fabric-transfer-api-v1.mixins.json:BundleContentsAccessor from mod fabric-transfer-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing AttachmentTargetsMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.chunk.ChunkAccess
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ChunkAccessMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.chunk.ChunkAccess
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing LevelChunkMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.world.level.chunk.LevelChunk
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing LevelChunkMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.chunk.LevelChunk
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_syncChange$0(Lnet/fabricmc/fabric/api/attachment/v1/AttachmentType;Lnet/fabricmc/fabric/impl/attachment/sync/AttachmentChange;Lnet/minecraft/server/level/ServerPlayer;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$fabric_syncChange$0$0 in fabric-data-attachment-api-v1.mixins.json:LevelChunkMixin from mod fabric-data-attachment-api-v1
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing ItemContainerContentsAccessor from fabric-transfer-api-v1.mixins.json into net.minecraft.world.item.component.ItemContainerContents
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing fluid.AbstractBoatMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.vehicle.boat.AbstractBoat
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing EntityTypeBuilderMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.EntityType$Builder
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing fluid.FloatGoalMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.ai.goal.FloatGoal
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing BreezeMixin from fabric-particles-v1.mixins.json into net.minecraft.world.entity.monster.breeze.Breeze
+[11:25:20] [main/INFO] (FabricLoader/Mixin) Mixing VillagerMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.entity.npc.villager.Villager
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing EntityDataSerializersAccessor from fabric-object-builder-v1.mixins.json into net.minecraft.network.syncher.EntityDataSerializers
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method fabric_getDataHandlers()Lnet/minecraft/util/CrudeIncrementalIntIdentityHashBiMap; to fabric_getDataHandlers$fabric-object-builder-api-v1_$md$a3b84f$0 in fabric-object-builder-v1.mixins.json:EntityDataSerializersAccessor from mod fabric-object-builder-api-v1
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing EntityDataSerializersMixin from fabric-object-builder-v1.mixins.json into net.minecraft.network.syncher.EntityDataSerializers
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing WardenMixin from fabric-particles-v1.mixins.json into net.minecraft.world.entity.monster.warden.Warden
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing HoneycombItemMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.item.HoneycombItem
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing BrushItemMixin from fabric-particles-v1.mixins.json into net.minecraft.world.item.BrushItem
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing EntitySelectorOptionsAccessor from fabric-command-api-v2.mixins.json into net.minecraft.commands.arguments.selector.options.EntitySelectorOptions
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming @Invoker method callPutOption(Ljava/lang/String;Lnet/minecraft/commands/arguments/selector/options/EntitySelectorOptions$Modifier;Ljava/util/function/Predicate;Lnet/minecraft/network/chat/Component;)V to callPutOption$fabric-command-api-v2_$md$a3b84f$0 in fabric-command-api-v2.mixins.json:EntitySelectorOptionsAccessor from mod fabric-command-api-v2
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing EntitySelectorParserMixin from fabric-command-api-v2.mixins.json into net.minecraft.commands.arguments.selector.EntitySelectorParser
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing SimpleContainerMixin from fabric-transfer-api-v1.mixins.json into net.minecraft.world.SimpleContainer
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing CraftingRecipeMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.crafting.CraftingRecipe
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing ingredient.IngredientMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.Ingredient
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectCodec$2(Lnet/minecraft/world/item/crafting/Ingredient;)Lcom/mojang/datafixers/util/Either; to mda3b84f$fabric-recipe-api-v1$lambda$injectCodec$2$0 in fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin from mod fabric-recipe-api-v1
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectCodec$0(Lcom/mojang/datafixers/util/Either;)Lnet/minecraft/world/item/crafting/Ingredient; to mda3b84f$fabric-recipe-api-v1$lambda$injectCodec$0$1 in fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin from mod fabric-recipe-api-v1
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectCodec$1(Lnet/minecraft/world/item/crafting/Ingredient;)Lnet/minecraft/world/item/crafting/Ingredient; to mda3b84f$fabric-recipe-api-v1$lambda$injectCodec$1$2 in fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin from mod fabric-recipe-api-v1
+[11:25:21] [main/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field CODEC:Lcom/mojang/serialization/Codec; in fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin from mod fabric-recipe-api-v1::handler$zmg000$fabric-recipe-api-v1$injectCodec
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing ingredient.ShapelessRecipeMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.ShapelessRecipe
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing EnchantRandomlyFunctionMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.level.storage.loot.functions.EnchantRandomlyFunction
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing DimensionTypeAccessor from fabric-dimensions-v1.mixins.json into net.minecraft.world.level.dimension.DimensionType
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing StructureTemplateManagerMixin from fabric-gametest-api-v1.mixins.json into net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing BiomeSourceMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.biome.BiomeSource
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing MultiNoiseBiomeSourceMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.biome.MultiNoiseBiomeSource
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing NetherBiomePresetMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset$1
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing RegistryOpsAccessor from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.resources.RegistryOps
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing TheEndBiomeSourceMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.biome.TheEndBiomeSource
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0(Lnet/minecraft/core/HolderGetter;)Lnet/fabricmc/fabric/impl/biome/TheEndBiomeData$Overrides; to mda3b84f$fabric-biome-api-v1$lambda$init$0$0 in fabric-biome-api-v1.mixins.json:TheEndBiomeSourceMixin from mod fabric-biome-api-v1
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyCodec$0(Lcom/mojang/serialization/codecs/RecordCodecBuilder$Instance;)Lcom/mojang/datafixers/kinds/App; to mda3b84f$fabric-biome-api-v1$lambda$modifyCodec$0$1 in fabric-biome-api-v1.mixins.json:TheEndBiomeSourceMixin from mod fabric-biome-api-v1
+[11:25:21] [main/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field CODEC:Lcom/mojang/serialization/MapCodec; in fabric-biome-api-v1.mixins.json:TheEndBiomeSourceMixin from mod fabric-biome-api-v1::handler$zbp000$fabric-biome-api-v1$modifyCodec
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Mixing DebugLevelSourceAccessor from fabric-registry-sync-v0.mixins.json into net.minecraft.world.level.levelgen.DebugLevelSource
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method setALL_BLOCKS(Ljava/util/List;)V to setALL_BLOCKS$fabric-registry-sync-v0_$md$a3b84f$0 in fabric-registry-sync-v0.mixins.json:DebugLevelSourceAccessor from mod fabric-registry-sync-v0
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method setGRID_WIDTH(I)V to setGRID_WIDTH$fabric-registry-sync-v0_$md$a3b84f$1 in fabric-registry-sync-v0.mixins.json:DebugLevelSourceAccessor from mod fabric-registry-sync-v0
+[11:25:21] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method setGRID_HEIGHT(I)V to setGRID_HEIGHT$fabric-registry-sync-v0_$md$a3b84f$2 in fabric-registry-sync-v0.mixins.json:DebugLevelSourceAccessor from mod fabric-registry-sync-v0
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing GameRulesServiceGameRuleUpdateMixin from fabric-game-rule-api-v1.mixins.json into net.minecraft.server.jsonrpc.methods.GameRulesService$GameRuleUpdate
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_createTypedCodec$0(Lnet/minecraft/world/level/gamerules/GameRule;Lcom/mojang/serialization/codecs/RecordCodecBuilder$Instance;)Lcom/mojang/datafixers/kinds/App; to mda3b84f$fabric-game-rule-api-v1$lambda$fabric_createTypedCodec$0$0 in fabric-game-rule-api-v1.mixins.json:GameRulesServiceGameRuleUpdateMixin from mod fabric-game-rule-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_createTypedCodec$2(Lnet/minecraft/world/level/gamerules/GameRule;Lnet/fabricmc/fabric/impl/gamerule/rpc/FabricGameRuleType;Ljava/lang/Object;)Lnet/minecraft/server/jsonrpc/methods/GameRulesService$GameRuleUpdate; to mda3b84f$fabric-game-rule-api-v1$lambda$fabric_createTypedCodec$2$1 in fabric-game-rule-api-v1.mixins.json:GameRulesServiceGameRuleUpdateMixin from mod fabric-game-rule-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_createTypedCodec$1(Lnet/minecraft/server/jsonrpc/methods/GameRulesService$GameRuleUpdate;)Lnet/fabricmc/fabric/impl/gamerule/rpc/FabricGameRuleType; to mda3b84f$fabric-game-rule-api-v1$lambda$fabric_createTypedCodec$1$2 in fabric-game-rule-api-v1.mixins.json:GameRulesServiceGameRuleUpdateMixin from mod fabric-game-rule-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$getValueAndFabricTypeCodec$1(Lnet/minecraft/server/jsonrpc/methods/GameRulesService$GameRuleUpdate;)Lcom/mojang/datafixers/util/Either; to mda3b84f$fabric-game-rule-api-v1$lambda$getValueAndFabricTypeCodec$1$3 in fabric-game-rule-api-v1.mixins.json:GameRulesServiceGameRuleUpdateMixin from mod fabric-game-rule-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$getValueAndFabricTypeCodec$0(Lcom/mojang/datafixers/util/Either;)Lnet/minecraft/server/jsonrpc/methods/GameRulesService$GameRuleUpdate; to mda3b84f$fabric-game-rule-api-v1$lambda$getValueAndFabricTypeCodec$0$4 in fabric-game-rule-api-v1.mixins.json:GameRulesServiceGameRuleUpdateMixin from mod fabric-game-rule-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing item.CuboidItemModelWrapperMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.item.CuboidItemModelWrapper
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ModelMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.model.Model
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$copyTransforms$0(Ljava/lang/String;Lnet/minecraft/client/model/geom/ModelPart;)V to mda3b84f$fabric-rendering-v1$lambda$copyTransforms$0$0 in fabric-rendering-v1.mixins.json:ModelMixin from mod fabric-rendering-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing KeyMappingAccessor from fabric-key-mapping-api-v1.mixins.json into net.minecraft.client.KeyMapping
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing KeyMappingAccessor from fabric-events-interaction-v0.client.mixins.json into net.minecraft.client.KeyMapping
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing SpriteSourcesAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.texture.atlas.SpriteSources
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method getSpriteSourceCodecs()Lnet/minecraft/util/ExtraCodecs$LateBoundIdMapper; to getSpriteSourceCodecs$fabric-rendering-v1_$md$a3b84f$0 in fabric-rendering-v1.mixins.json:SpriteSourcesAccessor from mod fabric-rendering-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ScreenAccessor from fabric-screen-api-v1.mixins.json into net.minecraft.client.gui.screens.Screen
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ScreenMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.gui.screens.Screen
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ClientLevelMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientLevel
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ClientLevelMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.multiplayer.ClientLevel
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$new$0(Lnet/minecraft/world/level/ColorResolver;)Lnet/minecraft/client/color/block/BlockTintCache; to mda3b84f$fabric-rendering-v1$lambda$new$0$0 in fabric-rendering-v1.mixins.json:ClientLevelMixin from mod fabric-rendering-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$new$1(Lnet/minecraft/world/level/ColorResolver;Lnet/minecraft/core/BlockPos;)I to mda3b84f$fabric-rendering-v1$lambda$new$1$1 in fabric-rendering-v1.mixins.json:ClientLevelMixin from mod fabric-rendering-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ClientLevelMixin from fabric-data-attachment-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientLevel
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing LocalPlayerMixin from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.player.LocalPlayer
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing LocalPlayerMixin from fabric-content-registries-v0.client.mixins.json into net.minecraft.client.player.LocalPlayer
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing ClientPlayerEntityMixin from easyelevator.client.mixins.json into net.minecraft.client.player.LocalPlayer
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing CabinCrosshairMixin from easyelevator.client.mixins.json into net.minecraft.client.player.LocalPlayer
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$easyelevator$resolveCabinCrosshair$0(Lorg/DJB/easyelevator/entity/AbstractCabinEntity;)Z to mda3b84f$easyelevator$lambda$easyelevator$resolveCabinCrosshair$0$0 in easyelevator.client.mixins.json:CabinCrosshairMixin from mod easyelevator
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing DefaultAttributesAccessor from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.ai.attributes.DefaultAttributes
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Renaming @Accessor method getRegistry()Ljava/util/Map; to getRegistry$fabric-object-builder-api-v1_$md$a3b84f$0 in fabric-object-builder-v1.mixins.json:DefaultAttributesAccessor from mod fabric-object-builder-api-v1
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing DefaultAttributesMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.ai.attributes.DefaultAttributes
+[11:25:22] [main/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field SUPPLIERS:Ljava/util/Map; in fabric-object-builder-v1.mixins.json:DefaultAttributesMixin from mod fabric-object-builder-api-v1::handler$bac000$fabric-object-builder-api-v1$injectAttributes
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing AttributeSupplierAccessor from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.ai.attributes.AttributeSupplier
+[11:25:22] [main/INFO] (FabricLoader/Mixin) Mixing AttributeSupplierBuilderAccessor from fabric-object-builder-v1.mixins.json into net.minecraft.world.entity.ai.attributes.AttributeSupplier$Builder
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.MinecraftAccessor from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftMixin from fabric-data-generation-api-v1.client.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftMixin from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftMixin from fabric-events-interaction-v0.client.mixins.json into net.minecraft.client.Minecraft
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing AbstractRecipeBookScreenMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.gui.screens.inventory.AbstractRecipeBookScreen
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing AbstractContainerScreenMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.PeriodicNotificationManager
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing BuiltInPackSourceMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.server.packs.repository.BuiltInPackSource
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing PackRepositoryMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.packs.repository.PackRepository
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$handleAutoDisable$0(Ljava/util/Set;Lnet/minecraft/server/packs/repository/Pack;)Z to mda3b84f$fabric-resource-loader-v1$lambda$handleAutoDisable$0$0 in fabric-resource-loader-v1.mixins.json:PackRepositoryMixin from mod fabric-resource-loader-v1
+[11:25:22] [Render thread/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field sources:Ljava/util/Set; in fabric-resource-loader-v1.mixins.json:PackRepositoryMixin from mod fabric-resource-loader-v1::handler$zcm000$fabric-resource-loader-v1$construct
+[11:25:22] [Render thread/INFO] (Minecraft) Environment: Environment[discoveryUrl=https://discovery.minecraftservices.com/minecraft/client, name=PROD]
+[11:25:22] [Render thread/INFO] (Minecraft) Setting user: Player726
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$endResourceReload$0(Ljava/lang/Void;Ljava/lang/Throwable;)Ljava/lang/Void; to mda3b84f$fabric-lifecycle-events-v1$lambda$endResourceReload$0$0 in fabric-lifecycle-events-v1.mixins.json:MinecraftServerMixin from mod fabric-lifecycle-events-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing modification.MinecraftServerMixin from fabric-biome-api-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0(Lnet/minecraft/server/packs/PackResources;)Ljava/util/stream/Stream; to mda3b84f$fabric-resource-loader-v1$lambda$init$0$1 in fabric-resource-loader-v1.mixins.json:MinecraftServerMixin from mod fabric-resource-loader-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-message-api-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onGetChatDecorator$0(Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/network/chat/Component;)Lnet/minecraft/network/chat/Component; to mda3b84f$fabric-message-api-v1$lambda$onGetChatDecorator$0$2 in fabric-message-api-v1.mixins.json:MinecraftServerMixin from mod fabric-message-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-game-rule-api-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MinecraftServerMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.MinecraftServer
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$initGlobalAttachments$0()Lnet/fabricmc/fabric/impl/attachment/AttachmentSavedData; to mda3b84f$fabric-data-attachment-api-v1$lambda$initGlobalAttachments$0$3 in fabric-data-attachment-api-v1.mixins.json:MinecraftServerMixin from mod fabric-data-attachment-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing FileToIdConverterAccessor from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.resources.FileToIdConverter
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerConfigurationPacketListenerImplMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$bindChannelInfo$0(Lnet/minecraft/network/RegistryFriendlyByteBuf;)Lnet/minecraft/network/RegistryFriendlyByteBuf; to mda3b84f$fabric-networking-api-v1$lambda$bindChannelInfo$0$0 in fabric-networking-api-v1.mixins.json:ServerConfigurationPacketListenerImplMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerConfigurationPacketListenerImplMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.network.ServerConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerCommonPacketListenerImplMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerCommonPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.ServerCommonPacketListenerImplAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerCommonPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing sync.ServerCommonPacketListenerImplAccessor from fabric-recipe-api-v1.mixins.json into net.minecraft.server.network.ServerCommonPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing VarIntAccessor from fabric-data-attachment-api-v1.mixins.json into net.minecraft.network.VarInt
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Accessor method getMaxByteSize()I to getMaxByteSize$fabric-data-attachment-api-v1_$md$a3b84f$0 in fabric-data-attachment-api-v1.mixins.json:VarIntAccessor from mod fabric-data-attachment-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientboundCustomPayloadPacketMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapConfigCodec$0(Lnet/minecraft/network/FriendlyByteBuf;Lnet/minecraft/resources/Identifier;)Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload$TypeAndCodec; to mda3b84f$fabric-networking-api-v1$lambda$wrapConfigCodec$0$0 in fabric-networking-api-v1.mixins.json:ClientboundCustomPayloadPacketMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapPlayCodec$0(Lnet/minecraft/network/RegistryFriendlyByteBuf;Lnet/minecraft/resources/Identifier;)Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload$TypeAndCodec; to mda3b84f$fabric-networking-api-v1$lambda$wrapPlayCodec$0$1 in fabric-networking-api-v1.mixins.json:ClientboundCustomPayloadPacketMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientboundCustomPayloadPacketAccessor from fabric-data-attachment-api-v1.mixins.json into net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing CustomPayloadStreamCodecMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.common.custom.CustomPacketPayload$1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing BlockStateModelUnbakedMixin from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.BlockStateModel$Unbaked
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.model.BlockStateModelMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.BlockStateModel
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.model.SingleVariantMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.SingleVariant
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$emitQuads$0(Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/MutableQuadView;)Z to mda3b84f$fabric-renderer-api-v1$lambda$emitQuads$0$0 in fabric-renderer-api-v1.mixins.json:block.model.SingleVariantMixin from mod fabric-renderer-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerMixin from fabric-message-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerMixin from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerAccessor from fabric-command-api-v2.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Invoker method invokeIsValidCommand(Lcom/mojang/brigadier/ParseResults;)Z to invokeIsValidCommand$fabric-command-api-v2_$md$a3b84f$0 in fabric-command-api-v2.client.mixins.json:ClientPacketListenerAccessor from mod fabric-command-api-v2
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerMixin from fabric-command-api-v2.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing sync.ClientPacketListenerMixin from fabric-recipe-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientPacketListenerMixin from fabric-data-attachment-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientPacketListener
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.ClientCommonPacketListenerImplAccessor from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientCommonPacketListenerImplMixin from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.ClientHandshakePacketListenerImplAccessor from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientHandshakePacketListenerImplMixin from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$handleQueryRequest$0(Lnet/minecraft/network/protocol/login/ClientboundCustomQueryPacket;)Ljava/lang/Boolean; to mda3b84f$fabric-networking-api-v1$lambda$handleQueryRequest$0$0 in fabric-networking-api-v1.client.mixins.json:ClientHandshakePacketListenerImplMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientConfigurationPacketListenerImplMixin from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientConfigurationPacketListenerImplMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.ClientConfigurationPacketListenerImplAccessor from fabric-networking-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing sync.ClientConfigurationPacketListenerImplMixin from fabric-recipe-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing ConnectionMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.Connection
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_getPendingChannelsNames$0(Lnet/minecraft/network/ConnectionProtocol;)Ljava/util/Collection; to mda3b84f$fabric-networking-api-v1$lambda$fabric_getPendingChannelsNames$0$0 in fabric-networking-api-v1.mixins.json:ConnectionMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectFabricPacketSlitterHandlerOutbound$1(Lnet/fabricmc/fabric/impl/networking/PayloadTypeRegistryImpl;Lio/netty/channel/ChannelHandlerContext;)V to mda3b84f$fabric-networking-api-v1$lambda$injectFabricPacketSlitterHandlerOutbound$1$1 in fabric-networking-api-v1.mixins.json:ConnectionMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectFabricPacketSlitterHandlerOutbound$0(Lio/netty/channel/ChannelHandlerContext;)V to mda3b84f$fabric-networking-api-v1$lambda$injectFabricPacketSlitterHandlerOutbound$0$2 in fabric-networking-api-v1.mixins.json:ConnectionMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectFabricPacketSlitterHandlerInbound$1(Lnet/fabricmc/fabric/impl/networking/PayloadTypeRegistryImpl;Lnet/minecraft/network/ProtocolInfo;Lio/netty/channel/ChannelHandlerContext;)V to mda3b84f$fabric-networking-api-v1$lambda$injectFabricPacketSlitterHandlerInbound$1$3 in fabric-networking-api-v1.mixins.json:ConnectionMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$injectFabricPacketSlitterHandlerInbound$0(Lio/netty/channel/ChannelHandlerContext;)V to mda3b84f$fabric-networking-api-v1$lambda$injectFabricPacketSlitterHandlerInbound$0$4 in fabric-networking-api-v1.mixins.json:ConnectionMixin from mod fabric-networking-api-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing sync.ConnectionMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.network.Connection
+[11:25:22] [Render thread/INFO] (Indigo) [Indigo] Registering Indigo renderer!
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing SoundInstanceMixin from fabric-sound-api-v1.mixins.json into net.minecraft.client.resources.sounds.SoundInstance
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.state.EntityRenderState
+[11:25:22] [Render thread/INFO] (easyelevator/client) File dialog backend: native (AWT is headless)
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing MappedRegistryTagSet2Accessor from fabric-tag-api-v1.mixins.json into net.minecraft.core.MappedRegistry$TagSet$2
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing OptionsMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.Options
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing OptionsMixin from fabric-key-mapping-api-v1.mixins.json into net.minecraft.client.Options
+[11:25:22] [Render thread/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field keyMappings:[Lnet/minecraft/client/KeyMapping; in fabric-key-mapping-api-v1.mixins.json:OptionsMixin from mod fabric-key-mapping-api-v1::handler$zjf000$fabric-key-mapping-api-v1$loadHook
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyMappingCategoryMixin from fabric-key-mapping-api-v1.mixins.json into net.minecraft.client.KeyMapping$Category
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing PackMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.packs.repository.Pack
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onCreateResourcePack$0(Lnet/minecraft/server/packs/PackResources;)V to mda3b84f$fabric-resource-loader-v1$lambda$onCreateResourcePack$0$0 in fabric-resource-loader-v1.mixins.json:PackMixin from mod fabric-resource-loader-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$static$0(Ljava/util/Set;)Z to mda3b84f$fabric-resource-loader-v1$lambda$static$0$1 in fabric-resource-loader-v1.mixins.json:PackMixin from mod fabric-resource-loader-v1
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing PackMixin from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.server.packs.repository.Pack
+[11:25:22] [Render thread/INFO] (FabricLoader/Mixin) Mixing GameOptionsWriteVisitorMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.Options$3
+[11:25:23] [Render thread/INFO] (Minecraft) Backend library: LWJGL version 3.4.3-snapshot
+[11:25:23] [Render thread/INFO] (Minecraft) SDL [SYSTEM]: App name: Minecraft
+[11:25:23] [Render thread/INFO] (Minecraft) SDL [SYSTEM]: App version: 26.3
+[11:25:23] [Render thread/INFO] (Minecraft) SDL [SYSTEM]: App ID: com.mojang.minecraft
+[11:25:23] [Render thread/INFO] (Minecraft) SDL [SYSTEM]: SDL revision: SDL-3.4.14-62f10da
+[11:25:23] [Render thread/INFO] (Minecraft) Using graphics backend OpenGL, using drivers: 3.3.0 NVIDIA 595.71
+[11:25:23] [Render thread/INFO] (Minecraft) Using graphics device: NVIDIA GeForce RTX 5080/PCIe/SSE2 (NVIDIA Corporation)
+[11:25:23] [Render thread/INFO] (Minecraft) Using graphics device extensions: GL_ARB_multi_draw_indirect, GL_ARB_shader_draw_parameters, GL_ARB_base_instance, GL_KHR_debug, GL_ARB_draw_indirect, GL_ARB_clip_control, GL_ARB_vertex_attrib_binding, GL_ARB_direct_state_access, GL_EXT_texture_filter_anisotropic
+[11:25:23] [Render thread/INFO] (Minecraft) Created window using SDL video driver: windows
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing MouseHandlerMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.MouseHandler
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing MouseHandlerMixin from fabric-events-interaction-v0.client.mixins.json into net.minecraft.client.MouseHandler
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyboardHandlerMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.KeyboardHandler
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing MultiPackResourceManagerMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.packs.resources.MultiPackResourceManager
+[11:25:23] [Render thread/WARN] (Minecraft) Removed resource pack fabric from options because it doesn't seem to exist anymore
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.language.LanguageManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientLanguageMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.language.ClientLanguage
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.texture.TextureManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.ShaderManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.sounds.SoundManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing SoundEngineMixin from fabric-sound-api-v1.mixins.json into net.minecraft.client.sounds.SoundEngine
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.model.sprite.AtlasManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing AtlasManagerAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.resources.model.sprite.AtlasManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Accessor method getKnownAtlases()Ljava/util/List; to getKnownAtlases$fabric-rendering-v1_$md$a3b84f$0 in fabric-rendering-v1.mixins.json:AtlasManagerAccessor from mod fabric-rendering-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing AtlasManagerMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.resources.model.sprite.AtlasManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing sprite.TextureAtlasMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.texture.TextureAtlas
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing RenderPipelineSnippetMixin from fabric-rendering-v1.mixins.json into com.mojang.renderpearl.api.pipeline.RenderPipeline$Snippet
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing RenderPipelineMixin from fabric-rendering-v1.mixins.json into com.mojang.renderpearl.api.pipeline.RenderPipeline
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing RenderPipelineBuilderMixin from fabric-rendering-v1.mixins.json into com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$copyUsePipelineDrawModeForGuiToSnippet$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Ljava/util/Map;Ljava/util/Optional;Ljava/util/Optional;[Lcom/mojang/renderpearl/api/pipeline/ColorTargetState;ILjava/util/Optional;Ljava/util/Optional;Ljava/util/Optional;[Lcom/mojang/renderpearl/api/vertex/VertexFormat;Ljava/util/Optional;I)Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Snippet; to mda3b84f$fabric-rendering-v1$lambda$copyUsePipelineDrawModeForGuiToSnippet$0$0 in fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin from mod fabric-rendering-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$copyUsePipelineDrawModeForGuiFromSnippet$0(Ljava/lang/Boolean;)V to mda3b84f$fabric-rendering-v1$lambda$copyUsePipelineDrawModeForGuiFromSnippet$0$1 in fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin from mod fabric-rendering-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.render.LevelRendererMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.LevelRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitBreakingBlockModelProxy$0(Lnet/minecraft/core/Direction;)Z to mda3b84f$fabric-renderer-api-v1$lambda$submitBreakingBlockModelProxy$0$0 in fabric-renderer-api-v1.mixins.json:block.render.LevelRendererMixin from mod fabric-renderer-api-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing LevelRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.LevelRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing submit.OrderedSubmitNodeCollectorMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.OrderedSubmitNodeCollector
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ItemFeatureRendererAccessor from fabric-renderer-indigo.mixins.json into net.minecraft.client.renderer.feature.ItemFeatureRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Invoker method fabric_computeFoilDecalPose(Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack$Pose;)Lcom/mojang/blaze3d/vertex/PoseStack$Pose; to fabric_computeFoilDecalPose$fabric-renderer-indigo_$md$a3b84f$0 in fabric-renderer-indigo.mixins.json:ItemFeatureRendererAccessor from mod fabric-renderer-indigo
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.gui.font.FontManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.GrassColorReloadListener
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.FoliageColorReloadListener
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.DryFoliageColorReloadListener
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing BlockColorsMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.color.block.BlockColors
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ModelManagerMixin from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.resources.model.ModelManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$withModelDispatcher$0(Ljava/util/concurrent/CompletableFuture;Ljava/util/function/Function;Ljava/lang/Object;)Ljava/lang/Object; to mda3b84f$fabric-model-loading-api-v1$lambda$withModelDispatcher$0$0 in fabric-model-loading-api-v1.mixins.json:ModelManagerMixin from mod fabric-model-loading-api-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookBlockStateModels$0(Lnet/minecraft/client/resources/model/BlockStateModelLoader$LoadedModels;Lnet/fabricmc/fabric/impl/client/model/loading/ModelLoadingEventDispatcher;)Lnet/minecraft/client/resources/model/BlockStateModelLoader$LoadedModels; to mda3b84f$fabric-model-loading-api-v1$lambda$hookBlockStateModels$0$1 in fabric-model-loading-api-v1.mixins.json:ModelManagerMixin from mod fabric-model-loading-api-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookModels$0(Ljava/util/Map;Lnet/fabricmc/fabric/impl/client/model/loading/ModelLoadingEventDispatcher;)Ljava/util/Map; to mda3b84f$fabric-model-loading-api-v1$lambda$hookModels$0$2 in fabric-model-loading-api-v1.mixins.json:ModelManagerMixin from mod fabric-model-loading-api-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$resetEventDispatcherFuture$0(Ljava/lang/Void;)Ljava/lang/Void; to mda3b84f$fabric-model-loading-api-v1$lambda$resetEventDispatcherFuture$0$3 in fabric-model-loading-api-v1.mixins.json:ModelManagerMixin from mod fabric-model-loading-api-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.model.ModelManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.model.EquipmentAssetManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing SimpleJsonResourceReloadListenerMixin from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.palette.PalettedTextureManager
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.entity.EntityRenderDispatcher
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing EntityRenderDispatcherMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.EntityRenderDispatcher
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing LivingEntityRendererAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.LivingEntityRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing LivingEntityRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.LivingEntityRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.particle.ParticleResources
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ParticleResourcesMixin from fabric-particles-v1.client.mixins.json into net.minecraft.client.particle.ParticleResources
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ParticleResourcesMixin from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.particle.ParticleResources
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.particle.BlockMarkerMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.particle.BlockMarker
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.particle.TerrainParticleMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.particle.TerrainParticle
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing TerrainParticleMixin from fabric-particles-v1.client.mixins.json into net.minecraft.client.particle.TerrainParticle
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing item.ItemStackRenderStateMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.ItemStackRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing item.ItemStackRenderStateLayerRenderStateMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.ItemStackRenderStateLayerRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ParticleEngineAccessor from fabric-particles-v1.client.mixins.json into net.minecraft.client.particle.ParticleEngine
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Accessor method getParticleRenderTypes()Ljava/util/List; to getParticleRenderTypes$fabric-particles-v1_$md$a3b84f$0 in fabric-particles-v1.client.mixins.json:ParticleEngineAccessor from mod fabric-particles-v1
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing ParticleEngineMixin from fabric-particles-v1.client.mixins.json into net.minecraft.client.particle.ParticleEngine
+[11:25:23] [Render thread/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field RENDER_ORDER:Ljava/util/List; in fabric-particles-v1.client.mixins.json:ParticleEngineMixin from mod fabric-particles-v1::handler$zjd000$fabric-particles-v1$classInit
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing GameRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.GameRenderer
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.GameRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.LevelRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.LevelRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.LevelRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.CameraRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.fog.FogData
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.CameraEntityRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.PlayerRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.PlayerRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.PlayerRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.FirstPersonHandsAndItemsRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.MapRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.WeatherRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.WeatherRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.WeatherRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.WorldBorderRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.WorldBorderRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.WorldBorderRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.SkyRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.SkyRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.SkyRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.ParticlesRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.ParticlesRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.ParticlesRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.LightmapRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.GuiRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.gui.GuiRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.gui.GuiRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.OptionsRenderState
+[11:25:23] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.WindowRenderState
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing submit.SubmitNodeStorageMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.SubmitNodeStorage
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing SubmitNodeStorageMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.SubmitNodeStorage
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing FeatureRenderDispatcherMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.feature.FeatureRenderDispatcher
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.render.MovingBlockFeatureRendererMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.feature.MovingBlockFeatureRenderer
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method access$000(Lnet/minecraft/client/renderer/feature/MovingBlockFeatureRenderer;Lnet/minecraft/client/renderer/rendertype/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer; to mda3b84f$fabric-renderer-api-v1$access$000$0 in fabric-renderer-api-v1.mixins.json:block.render.MovingBlockFeatureRendererMixin from mod fabric-renderer-api-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method access$100(Lnet/minecraft/client/renderer/feature/MovingBlockFeatureRenderer;Lnet/minecraft/client/renderer/rendertype/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer; to mda3b84f$fabric-renderer-api-v1$access$100$1 in fabric-renderer-api-v1.mixins.json:block.render.MovingBlockFeatureRendererMixin from mod fabric-renderer-api-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing GuiRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.render.GuiRenderer
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$substituteSpecialElementRenderer$0(Ljava/lang/Class;)Lnet/fabricmc/fabric/impl/client/rendering/PictureInPictureRendererPool; to mda3b84f$fabric-rendering-v1$lambda$substituteSpecialElementRenderer$0$0 in fabric-rendering-v1.mixins.json:GuiRendererMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field pictureInPictureRenderers:Ljava/util/Map; in fabric-rendering-v1.mixins.json:GuiRendererMixin from mod fabric-rendering-v1::handler$zof000$fabric-rendering-v1$mutableSpecialElementRenderers
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.CloudRenderer
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.extract.LevelExtractor
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.particle.LevelExtractorMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.extract.LevelExtractor
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.render.LevelExtractorMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.extract.LevelExtractor
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing LevelExtractorMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.extract.LevelExtractor
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing DebugRendererMixin from fabric-debug-api-v1.client.mixins.json into net.minecraft.client.renderer.debug.DebugRenderer
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.renderer.GpuWarnlistManager
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing GuiMixin from fabric-screen-api-v1.mixins.json into net.minecraft.client.gui.Gui
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming @Unique field LOGGERLorg/slf4j/Logger; to fda3b84f$fabric-screen-api-v1$LOGGER$0 in fabric-screen-api-v1.mixins.json:GuiMixin from mod fabric-screen-api-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing advancement.AdvancementsScreenMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.screens.advancements.AdvancementsScreen
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapDrawIcon$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/screens/advancements/AdvancementTab;Lnet/minecraft/client/gui/GuiGraphicsExtractor;II)Ljava/lang/Void; to mda3b84f$fabric-rendering-v1$lambda$wrapDrawIcon$0$0 in fabric-rendering-v1.mixins.json:advancement.AdvancementsScreenMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing HudAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.Hud
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing HudMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.Hud
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapPlayerList$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapPlayerList$0$0 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapChat$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapChat$0$1 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapTitleAndSubtitle$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapTitleAndSubtitle$0$2 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapOverlayMessage$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapOverlayMessage$0$3 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapScoreboardSidebar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapScoreboardSidebar$0$4 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapDemoTimer$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapDemoTimer$0$5 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapSleepOverlay$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapSleepOverlay$0$6 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapBossHealthOverlay$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapBossHealthOverlay$0$7 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapMobEffectOverlay$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapMobEffectOverlay$0$8 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapExtractSpectatorGui$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/components/spectator/SpectatorGui;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapExtractSpectatorGui$0$9 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapHeldItemTooltip$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapHeldItemTooltip$0$a in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapExperienceLevel$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Font;ILnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapExperienceLevel$0$b in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapExtractInfoBar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/contextualbar/ContextualBar;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapExtractInfoBar$0$c in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapMountHealth$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapMountHealth$0$d in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapAirBar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/world/entity/player/Player;IIILnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapAirBar$0$e in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapFoodBar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/world/entity/player/Player;IILnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapFoodBar$0$f in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapHealthBar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/world/entity/player/Player;IIIIFIIIZLnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapHealthBar$0$10 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapArmorBar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/entity/player/Player;IIIILnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapArmorBar$0$11 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapHotbar$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapHotbar$0$12 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapSpectatorMenu$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/components/spectator/SpectatorGui;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapSpectatorMenu$0$13 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapCrosshair$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapCrosshair$0$14 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapMiscOverlays$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/Hud;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapMiscOverlays$0$15 in fabric-rendering-v1.mixins.json:HudMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing HudMixin from fabric-content-registries-v0.client.mixins.json into net.minecraft.client.gui.Hud
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.WaypointStyleManager
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing SubtitleOverlayMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.components.SubtitleOverlay
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapExtractRenderState$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V to mda3b84f$fabric-rendering-v1$lambda$wrapExtractRenderState$0$0 in fabric-rendering-v1.mixins.json:SubtitleOverlayMixin from mod fabric-rendering-v1
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing KeyedClientResourceReloadListenerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.resources.SplashManager
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing ChatListenerMixin from fabric-message-api-v1.client.mixins.json into net.minecraft.client.multiplayer.chat.ChatListener
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing ResourceMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.packs.resources.Resource
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing GuiGraphicsExtractorMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.GuiGraphicsExtractor
+[11:25:24] [Render thread/INFO] (Minecraft) Reloading ResourceManager: vanilla, vanilla, easyelevator, fabric-advancement-api-v1, fabric-api, fabric-api-base, fabric-api-lookup-api-v1, fabric-biome-api-v1, fabric-block-api-v1, fabric-block-getter-api-v2, fabric-client-gametest-api-v1, fabric-command-api-v2, fabric-content-registries-v0, fabric-convention-tags-v2, fabric-crash-report-info-v1, fabric-creative-tab-api-v1, fabric-data-attachment-api-v1, fabric-data-generation-api-v1, fabric-debug-api-v1, fabric-dimensions-v1, fabric-entity-events-v1, fabric-events-interaction-v0, fabric-game-rule-api-v1, fabric-gametest-api-v1, fabric-item-api-v1, fabric-key-mapping-api-v1, fabric-lifecycle-events-v1, fabric-loot-api-v3, fabric-menu-api-v1, fabric-message-api-v1, fabric-model-loading-api-v1, fabric-networking-api-v1, fabric-object-builder-api-v1, fabric-particles-v1, fabric-permission-api-v1, fabric-recipe-api-v1, fabric-registry-sync-v0, fabric-renderer-api-v1, fabric-renderer-indigo, fabric-rendering-fluids-v1, fabric-rendering-v1, fabric-resource-conditions-api-v1, fabric-resource-loader-v0, fabric-resource-loader-v1, fabric-screen-api-v1, fabric-serialization-api-v1, fabric-sound-api-v1, fabric-tag-api-v1, fabric-transfer-api-v1, fabric-transitive-access-wideners-v1, fabricloader
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing SimpleReloadInstanceMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.packs.resources.SimpleReloadInstance
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing sprite.SpriteLoaderPreparationsMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.texture.SpriteLoader$Preparations
+[11:25:24] [Worker-Main-26/INFO] (FabricLoader/Mixin) Mixing LayerDefinitionsMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.model.geom.LayerDefinitions
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing modification.RegistryAccessImmutableRegistryAccessMixin from fabric-biome-api-v1.mixins.json into net.minecraft.core.RegistryAccess$ImmutableRegistryAccess
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing RegistryAccessImmutableRegistryAccessMixin from fabric-dimensions-v1.mixins.json into net.minecraft.core.RegistryAccess$ImmutableRegistryAccess
+[11:25:24] [Worker-Main-19/INFO] (FabricLoader/Mixin) Mixing BuiltInBlockModelsMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.block.BuiltInBlockModels
+[11:25:24] [Worker-Main-21/INFO] (Minecraft) Found unifont_jp_patch-17.0.01.hex, loading
+[11:25:24] [Worker-Main-23/INFO] (Minecraft) Found unifont_all_no_pua-17.0.01.hex, loading
+[11:25:24] [Worker-Main-22/INFO] (Minecraft) Found unifont_pua-17.0.01.hex, loading
+[11:25:24] [Worker-Main-19/INFO] (FabricLoader/Mixin) Mixing ModelLayersAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.model.geom.ModelLayers
+[11:25:24] [Worker-Main-19/INFO] (FabricLoader/Mixin) Renaming @Accessor method getLayers()Ljava/util/Set; to getLayers$fabric-rendering-v1_$md$a3b84f$0 in fabric-rendering-v1.mixins.json:ModelLayersAccessor from mod fabric-rendering-v1
+[11:25:24] [Worker-Main-13/INFO] (FabricLoader/Mixin) Mixing CuboidModelAccessor from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.resources.model.cuboid.CuboidModel
+[11:25:24] [Worker-Main-13/INFO] (FabricLoader/Mixin) Mixing CuboidModelMixin from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.resources.model.cuboid.CuboidModel
+[11:25:24] [Download-1/INFO] (Minecraft) Could not authorize you against Realms server: java.lang.RuntimeException: Failed to parse into SignedJWT: FabricMC
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing StagedVertexBufferDrawAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.StagedVertexBuffer$Draw
+[11:25:24] [Render thread/INFO] (FabricLoader/Mixin) Mixing GuiRendererDrawAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.render.GuiRenderer$Draw
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing block.model.MultiPartModelMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.multipart.MultiPartModel
+[11:25:24] [Worker-Main-8/INFO] (FabricLoader/Mixin) Mixing block.model.WeightedVariantsMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.WeightedVariants
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing ModelBakeryMixin from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.resources.model.ModelBakery
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$withExtraModels$1(Lnet/minecraft/client/resources/model/ModelBakery$BakingResult;Ljava/util/Map;)Lnet/minecraft/client/resources/model/ModelBakery$BakingResult; to mda3b84f$fabric-model-loading-api-v1$lambda$withExtraModels$1$0 in fabric-model-loading-api-v1.mixins.json:ModelBakeryMixin from mod fabric-model-loading-api-v1
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$withExtraModels$0(Lnet/minecraft/client/resources/model/ModelBakery$ModelBakerImpl;Lnet/fabricmc/fabric/api/client/model/loading/v1/ExtraModelKey;Lnet/fabricmc/fabric/api/client/model/loading/v1/UnbakedExtraModel;)Ljava/lang/Object; to mda3b84f$fabric-model-loading-api-v1$lambda$withExtraModels$0$1 in fabric-model-loading-api-v1.mixins.json:ModelBakeryMixin from mod fabric-model-loading-api-v1
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$hookBlockModelBake$0(Ljava/util/function/BiFunction;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel$UnbakedRoot;)Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel; to mda3b84f$fabric-model-loading-api-v1$lambda$hookBlockModelBake$0$2 in fabric-model-loading-api-v1.mixins.json:ModelBakeryMixin from mod fabric-model-loading-api-v1
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing sprite.MaterialBakerMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.resources.model.sprite.MaterialBaker
+[11:25:24] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing block.model.BlockStateModelPartMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.BlockStateModelPart
+[11:25:25] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing block.model.SimpleModelWrapperMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.resources.model.SimpleModelWrapper
+[11:25:25] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$emitQuads$0(Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/MutableQuadView;)Z to mda3b84f$fabric-renderer-api-v1$lambda$emitQuads$0$0 in fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin from mod fabric-renderer-api-v1
+[11:25:25] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$analyzeMesh$0(Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;Lnet/minecraft/client/resources/model/ModelBaker;Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/QuadView;)V to mda3b84f$fabric-renderer-api-v1$lambda$analyzeMesh$0$1 in fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin from mod fabric-renderer-api-v1
+[11:25:25] [Worker-Main-6/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$storeModelBakery$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/client/resources/model/geometry/QuadCollection;)Lcom/google/common/collect/Multimap; to mda3b84f$fabric-renderer-api-v1$lambda$storeModelBakery$0$2 in fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin from mod fabric-renderer-api-v1
+[11:25:25] [Worker-Main-24/INFO] (FabricLoader/Mixin) Mixing block.model.MultiPartModelSharedBakedStateAccessor from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.dispatch.multipart.MultiPartModel$SharedBakedState
+[11:25:25] [Worker-Main-6/INFO] (FabricLoader/Mixin) Mixing ModelBakeryBakingResultMixin from fabric-model-loading-api-v1.mixins.json into net.minecraft.client.resources.model.ModelBakery$BakingResult
+[11:25:25] [Worker-Main-14/INFO] (FabricLoader/Mixin) Mixing ModelPartAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.model.geom.ModelPart
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing block.render.BlockStateModelWrapperMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.model.BlockStateModelWrapper
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$update$0(Lnet/minecraft/core/Direction;)Z to mda3b84f$fabric-renderer-api-v1$lambda$update$0$0 in fabric-renderer-api-v1.mixins.json:block.render.BlockStateModelWrapperMixin from mod fabric-renderer-api-v1
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing FluidStateModelSetMixin from fabric-rendering-fluids-v1.mixins.json into net.minecraft.client.renderer.block.FluidStateModelSet
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$bake$0(Ljava/util/Map$Entry;)Ljava/lang/String; to mda3b84f$fabric-rendering-fluids-v1$lambda$bake$0$0 in fabric-rendering-fluids-v1.mixins.json:FluidStateModelSetMixin from mod fabric-rendering-fluids-v1
+[11:25:25] [Render thread/INFO] (Minecraft) OpenAL initialized on device OpenAL Soft on Realtek Digital Output (Realtek(R) Audio)
+[11:25:25] [Render thread/INFO] (Minecraft) Sound engine started
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 512x256x0 minecraft:textures/atlas/particles.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 256x128x0 minecraft:textures/atlas/celestials.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 128x128x0 minecraft:textures/atlas/decorated_pot.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 512x256x0 minecraft:textures/atlas/paintings.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 1024x512x0 minecraft:textures/atlas/shield_patterns.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 1024x512x0 minecraft:textures/atlas/banner_patterns.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 2048x2048x4 minecraft:textures/atlas/blocks.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 1024x512x0 minecraft:textures/atlas/items.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 1024x1024x0 minecraft:textures/atlas/gui.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 128x64x0 minecraft:textures/atlas/map_decorations.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 512x512x0 minecraft:textures/atlas/chest.png-atlas
+[11:25:25] [Render thread/INFO] (Minecraft) Created: 512x512x0 minecraft:textures/atlas/shulker_boxes.png-atlas
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.particle.BlockStateModelSetMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.BlockStateModelSet
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing EntityRenderersMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.EntityRenderers
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$onRegisterRenderers$0(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/client/renderer/entity/EntityRendererProvider;)V to mda3b84f$fabric-rendering-v1$lambda$onRegisterRenderers$0$0 in fabric-rendering-v1.mixins.json:EntityRenderersMixin from mod fabric-rendering-v1
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing HumanoidMobRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.HumanoidMobRenderer
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing HumanoidArmorLayerMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.render.BlockModelRenderStateMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.block.BlockModelRenderState
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitMesh$1(Lnet/minecraft/client/renderer/rendertype/RenderType;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/rendertype/RenderType; to mda3b84f$fabric-renderer-api-v1$lambda$submitMesh$1$0 in fabric-renderer-api-v1.mixins.json:block.render.BlockModelRenderStateMixin from mod fabric-renderer-api-v1
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitMesh$0(Lnet/minecraft/client/renderer/rendertype/RenderType;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/rendertype/RenderType; to mda3b84f$fabric-renderer-api-v1$lambda$submitMesh$0$1 in fabric-renderer-api-v1.mixins.json:block.render.BlockModelRenderStateMixin from mod fabric-renderer-api-v1
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.BlockModelRenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.block.BlockModelRenderState
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.block.BlockModelRenderState
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing CapeLayerMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.entity.layers.CapeLayer
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing BlockEntityRenderersMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.blockentity.BlockEntityRenderers
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0(Lnet/minecraft/world/level/block/entity/BlockEntityType;Lnet/minecraft/client/renderer/blockentity/BlockEntityRendererProvider;)V to mda3b84f$fabric-rendering-v1$lambda$init$0$0 in fabric-rendering-v1.mixins.json:BlockEntityRenderersMixin from mod fabric-rendering-v1
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing WorldOpenFlowsMixin from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.gui.screens.worldselection.WorldOpenFlows
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing BackupConfirmScreenAccessor from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.gui.screens.BackupConfirmScreen
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing CreateWorldScreenMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.gui.screens.worldselection.CreateWorldScreen
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing ReloadableServerResourcesMixin from fabric-tag-api-v1.mixins.json into net.minecraft.server.ReloadableServerResources
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing ReloadableServerResourcesMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.ReloadableServerResources
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing ReloadableServerResourcesMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.ReloadableServerResources
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing ReloadableServerResourcesMixin from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.server.ReloadableServerResources
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing WorldLoaderMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.server.WorldLoader
+[11:25:25] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerPlayerGameModeMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.server.level.ServerPlayerGameMode
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing TagLoaderMixin from fabric-tag-api-v1.mixins.json into net.minecraft.tags.TagLoader
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$scopeIdToTryBuildTag$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/tags/TagLoader;Lnet/minecraft/tags/TagEntry$Lookup;Ljava/util/List;)Lcom/mojang/datafixers/util/Either; to mda3b84f$fabric-tag-api-v1$lambda$scopeIdToTryBuildTag$0$0 in fabric-tag-api-v1.mixins.json:TagLoaderMixin from mod fabric-tag-api-v1
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing TagFileMixin from fabric-tag-api-v1.mixins.json into net.minecraft.tags.TagFile
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing TagEntryAccessor from fabric-tag-api-v1.mixins.json into net.minecraft.tags.TagEntry
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing MappedRegistry2Mixin from fabric-tag-api-v1.mixins.json into net.minecraft.core.MappedRegistry$2
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing MappedRegistry3Mixin from fabric-tag-api-v1.mixins.json into net.minecraft.core.MappedRegistry$3
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing RegistryDataLoaderMixin from fabric-gametest-api-v1.mixins.json into net.minecraft.resources.RegistryDataLoader
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$loadFromResources$0(Lnet/minecraft/resources/RegistryDataLoader$RegistryData;)Z to mda3b84f$fabric-gametest-api-v1$lambda$loadFromResources$0$0 in fabric-gametest-api-v1.mixins.json:RegistryDataLoaderMixin from mod fabric-gametest-api-v1
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing RegistryDataLoaderMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.resources.RegistryDataLoader
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$thenApplyAsync$0(ZLjava/util/function/Function;Ljava/lang/Void;)Lnet/minecraft/core/RegistryAccess$Frozen; to mda3b84f$fabric-registry-sync-v0$lambda$thenApplyAsync$0$1 in fabric-registry-sync-v0.mixins.json:RegistryDataLoaderMixin from mod fabric-registry-sync-v0
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$thenApplyAsync$1(Ljava/util/function/Function;Ljava/lang/Void;)Lnet/minecraft/core/RegistryAccess$Frozen; to mda3b84f$fabric-registry-sync-v0$lambda$thenApplyAsync$1$2 in fabric-registry-sync-v0.mixins.json:RegistryDataLoaderMixin from mod fabric-registry-sync-v0
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$supplyAsync$0(ZLjava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture; to mda3b84f$fabric-registry-sync-v0$lambda$supplyAsync$0$3 in fabric-registry-sync-v0.mixins.json:RegistryDataLoaderMixin from mod fabric-registry-sync-v0
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapIsServerCall$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Ljava/lang/Object;Ljava/util/List;Ljava/util/List;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture; to mda3b84f$fabric-registry-sync-v0$lambda$wrapIsServerCall$0$4 in fabric-registry-sync-v0.mixins.json:RegistryDataLoaderMixin from mod fabric-registry-sync-v0
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ResourceManagerRegistryLoadTaskMixin from fabric-advancement-api-v1.mixins.json into net.minecraft.resources.ResourceManagerRegistryLoadTask
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyAdvancement$0(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/server/packs/resources/Resource;Lnet/fabricmc/fabric/impl/advancement/AdvancementHolderProvider;Ljava/lang/Object;)Ljava/lang/Object; to mda3b84f$fabric-advancement-api-v1$lambda$modifyAdvancement$0$0 in fabric-advancement-api-v1.mixins.json:ResourceManagerRegistryLoadTaskMixin from mod fabric-advancement-api-v1
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ResourceManagerRegistryLoadTaskMixin from fabric-loot-api-v3.mixins.json into net.minecraft.resources.ResourceManagerRegistryLoadTask
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyLootTable$0(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/server/packs/resources/Resource;Lnet/fabricmc/fabric/impl/loot/LootTableHolderProvider;Ljava/lang/Object;)Ljava/lang/Object; to mda3b84f$fabric-loot-api-v3$lambda$modifyLootTable$0$1 in fabric-loot-api-v3.mixins.json:ResourceManagerRegistryLoadTaskMixin from mod fabric-loot-api-v3
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ResourceManagerRegistryLoadTaskMixin from fabric-item-api-v1.mixins.json into net.minecraft.resources.ResourceManagerRegistryLoadTask
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ResourceManagerRegistryLoadTaskMixin from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.resources.ResourceManagerRegistryLoadTask
+[11:25:25] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing RegistryLoadTaskPendingRegistrationMixin from fabric-resource-conditions-api-v1.mixins.json into net.minecraft.resources.RegistryLoadTask$PendingRegistration
+[11:25:25] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing EnchantmentBuilderAccessor from fabric-item-api-v1.mixins.json into net.minecraft.world.item.enchantment.Enchantment$Builder
+[11:25:25] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing EnchantmentBuilderMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.enchantment.Enchantment$Builder
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing WorldDimensionsMixin from fabric-dimensions-v1.mixins.json into net.minecraft.world.level.levelgen.WorldDimensions
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapBakeToProvideContext$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/core/Registry;)Lnet/minecraft/world/level/levelgen/WorldDimensions$Complete; to mda3b84f$fabric-dimensions-v1$lambda$wrapBakeToProvideContext$0$0 in fabric-dimensions-v1.mixins.json:WorldDimensionsMixin from mod fabric-dimensions-v1
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ReloadableServerRegistriesMixin from fabric-advancement-api-v1.mixins.json into net.minecraft.server.ReloadableServerRegistries
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyAdvancements$1(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/RegistryAccess$Frozen;Ljava/lang/Throwable;)V to mda3b84f$fabric-advancement-api-v1$lambda$modifyAdvancements$1$0 in fabric-advancement-api-v1.mixins.json:ReloadableServerRegistriesMixin from mod fabric-advancement-api-v1
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyAdvancements$0(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/RegistryAccess$Frozen;)Lnet/minecraft/core/RegistryAccess$Frozen; to mda3b84f$fabric-advancement-api-v1$lambda$modifyAdvancements$0$1 in fabric-advancement-api-v1.mixins.json:ReloadableServerRegistriesMixin from mod fabric-advancement-api-v1
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ReloadableServerRegistriesMixin from fabric-loot-api-v3.mixins.json into net.minecraft.server.ReloadableServerRegistries
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyLootTables$2(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/RegistryAccess$Frozen;Ljava/lang/Throwable;)V to mda3b84f$fabric-loot-api-v3$lambda$modifyLootTables$2$2 in fabric-loot-api-v3.mixins.json:ReloadableServerRegistriesMixin from mod fabric-loot-api-v3
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyLootTables$0(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/RegistryAccess$Frozen;)Lnet/minecraft/core/RegistryAccess$Frozen; to mda3b84f$fabric-loot-api-v3$lambda$modifyLootTables$0$3 in fabric-loot-api-v3.mixins.json:ReloadableServerRegistriesMixin from mod fabric-loot-api-v3
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$modifyLootTables$1(Lnet/minecraft/core/Holder$Reference;)V to mda3b84f$fabric-loot-api-v3$lambda$modifyLootTables$1$4 in fabric-loot-api-v3.mixins.json:ReloadableServerRegistriesMixin from mod fabric-loot-api-v3
+[11:25:26] [Worker-Main-2/INFO] (FabricLoader/Mixin) Mixing ReloadableServerRegistriesMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.server.ReloadableServerRegistries
+[11:25:26] [Worker-Main-8/INFO] (FabricLoader/Mixin) Mixing LootPoolAccessor from fabric-loot-api-v3.mixins.json into net.minecraft.world.level.storage.loot.LootPool
+[11:25:26] [Worker-Main-14/INFO] (FabricLoader/Mixin) Mixing LootTableBuilderMixin from fabric-loot-api-v3.mixins.json into net.minecraft.world.level.storage.loot.LootTable$Builder
+[11:25:26] [Worker-Main-14/WARN] (FabricLoader/Mixin) Write access to @Mutable @Final field pools:Lcom/google/common/collect/ImmutableList$Builder; in fabric-loot-api-v3.mixins.json:LootTableBuilderMixin from mod fabric-loot-api-v3::modifyPools
+[11:25:26] [Worker-Main-24/INFO] (FabricLoader/Mixin) Mixing AdvancementBuilderMixin from fabric-advancement-api-v1.mixins.json into net.minecraft.advancements.Advancement$Builder
+[11:25:26] [Worker-Main-24/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$requireCriteria$0(Ljava/util/List;Lnet/minecraft/advancements/AdvancementRequirements;)V to mda3b84f$fabric-advancement-api-v1$lambda$requireCriteria$0$0 in fabric-advancement-api-v1.mixins.json:AdvancementBuilderMixin from mod fabric-advancement-api-v1
+[11:25:26] [Worker-Main-24/INFO] (FabricLoader/Mixin) Mixing advancement.AdvancementBuilderMixin from fabric-data-generation-api-v1.mixins.json into net.minecraft.advancements.Advancement$Builder
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing DataComponentInitializersPendingComponentsMixin from fabric-item-api-v1.mixins.json into net.minecraft.core.component.DataComponentInitializers$1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing RecipeManagerMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.RecipeManager
+[11:25:26] [Worker-Main-21/WARN] (FabricLoader/Mixin) @Shadow target fabric-recipe-api-v1.mixins.json:RecipeManagerMixin from mod fabric-recipe-api-v1::recipes is final but shadow is not decorated with @Final
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing sync.RecipeManagerAccessor from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.RecipeManager
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing RecipeAccessMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.RecipeAccess
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing sync.RecipeMapMixin from fabric-recipe-api-v1.mixins.json into net.minecraft.world.item.crafting.RecipeMap
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing CommandsMixin from fabric-command-api-v2.mixins.json into net.minecraft.commands.Commands
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing CommandsMixin from fabric-networking-api-v1.mixins.json into net.minecraft.commands.Commands
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing CommandSourceStackMixin from fabric-permission-api-v1.mixins.json into net.minecraft.commands.CommandSourceStack
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing EntityDataAccessorMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.commands.data.EntityDataAccessor
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$setData$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/storage/ValueInput;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$setData$0$0 in fabric-data-attachment-api-v1.mixins.json:EntityDataAccessorMixin from mod fabric-data-attachment-api-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing BlockDataAccessorMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.commands.data.BlockDataAccessor
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$setData$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/block/entity/BlockEntity;Lnet/minecraft/world/level/storage/ValueInput;)V to mda3b84f$fabric-data-attachment-api-v1$lambda$setData$0$0 in fabric-data-attachment-api-v1.mixins.json:BlockDataAccessorMixin from mod fabric-data-attachment-api-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing DataPackCommandMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.commands.DataPackCommand
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$filterDisabledPackSuggestions$0(Lnet/minecraft/server/packs/repository/Pack;)Z to mda3b84f$fabric-resource-loader-v1$lambda$filterDisabledPackSuggestions$0$0 in fabric-resource-loader-v1.mixins.json:DataPackCommandMixin from mod fabric-resource-loader-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$filterEnabledPackSuggestions$0(Lnet/minecraft/server/packs/repository/Pack;)Z to mda3b84f$fabric-resource-loader-v1$lambda$filterEnabledPackSuggestions$0$1 in fabric-resource-loader-v1.mixins.json:DataPackCommandMixin from mod fabric-resource-loader-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$static$0(Ljava/lang/Object;)Lcom/mojang/brigadier/Message; to mda3b84f$fabric-resource-loader-v1$lambda$static$0$2 in fabric-resource-loader-v1.mixins.json:DataPackCommandMixin from mod fabric-resource-loader-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing EnchantCommandMixin from fabric-item-api-v1.mixins.json into net.minecraft.server.commands.EnchantCommand
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing GameRuleCommandAccessor from fabric-game-rule-api-v1.mixins.json into net.minecraft.server.commands.GameRuleCommand
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming @Invoker method callQueryRule(Lnet/minecraft/commands/CommandSourceStack;Lnet/minecraft/world/level/gamerules/GameRule;)I to callQueryRule$fabric-game-rule-api-v1_$md$a3b84f$0 in fabric-game-rule-api-v1.mixins.json:GameRuleCommandAccessor from mod fabric-game-rule-api-v1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing GameRuleCommandVisitorMixin from fabric-game-rule-api-v1.mixins.json into net.minecraft.server.commands.GameRuleCommand$1
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing HelpCommandAccessor from fabric-command-api-v2.mixins.json into net.minecraft.server.commands.HelpCommand
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Renaming @Accessor method getFailedException()Lcom/mojang/brigadier/exceptions/SimpleCommandExceptionType; to getFailedException$fabric-command-api-v2_$md$a3b84f$0 in fabric-command-api-v2.mixins.json:HelpCommandAccessor from mod fabric-command-api-v2
+[11:25:26] [Worker-Main-21/INFO] (Minecraft) Loaded 1866 advancements
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing ServerFunctionLibraryMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.ServerFunctionLibrary
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing ChunkStatusTasksMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.level.chunk.status.ChunkStatusTasks
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing PlayerListMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.players.PlayerList
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing PlayerListMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.players.PlayerList
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing PlayerListMixin from fabric-message-api-v1.mixins.json into net.minecraft.server.players.PlayerList
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing PlayerListMixin from fabric-entity-events-v1.mixins.json into net.minecraft.server.players.PlayerList
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerDebugSubscribersMixin from fabric-debug-api-v1.mixins.json into net.minecraft.util.debug.ServerDebugSubscribers
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing SavedDataStorageMixin from fabric-object-builder-v1.mixins.json into net.minecraft.world.level.storage.SavedDataStorage
+[11:25:26] [Render thread/INFO] (BiomeModificationImpl) Applied 0 biome modifications to 0 of 67 new biomes in 1.222 ms
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing AttachmentTargetsMixin from fabric-data-attachment-api-v1.mixins.json into net.fabricmc.fabric.impl.attachment.GlobalAttachmentsImpl
+[11:25:26] [Server thread/INFO] (Minecraft) Starting integrated minecraft server version 26.3
+[11:25:26] [Server thread/INFO] (Minecraft) Generating keypair
+[11:25:26] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.gui.PanoramaRenderState
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing PersistentEntitySectionManagerMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.world.level.entity.PersistentEntitySectionManager
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing ServerLevelEntityCallbacksMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.level.ServerLevel$EntityCallbacks
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing ChunkMapMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.level.ChunkMap
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing accessor.ChunkMapAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.server.level.ChunkMap
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing ChunkHolderMixin from fabric-lifecycle-events-v1.mixins.json into net.minecraft.server.level.ChunkHolder
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing ChunkHolderMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.level.ChunkHolder
+[11:25:26] [Server thread/INFO] (FabricLoader/Mixin) Mixing RandomStateMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.levelgen.RandomState
+[11:25:26] [Worker-Main-21/INFO] (FabricLoader/Mixin) Mixing ClimateSamplerMixin from fabric-biome-api-v1.mixins.json into net.minecraft.world.level.biome.Climate$Sampler
+[11:25:27] [Server thread/INFO] (Minecraft) Loading 0 persistent chunks...
+[11:25:27] [Server thread/INFO] (Minecraft) 准备生成区域中：16%
+[11:25:27] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[11:25:27] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[11:25:27] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing PacketDecoderMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.PacketDecoder
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapWithContext$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lio/netty/channel/ChannelHandlerContext;Lio/netty/buffer/ByteBuf;Ljava/util/List;)V to mda3b84f$fabric-networking-api-v1$lambda$wrapWithContext$0$0 in fabric-networking-api-v1.mixins.json:PacketDecoderMixin from mod fabric-networking-api-v1
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.PacketDecoderAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.network.PacketDecoder
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing PacketEncoderMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.PacketEncoder
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapWithContext$0(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lio/netty/channel/ChannelHandlerContext;Lnet/minecraft/network/protocol/Packet;Lio/netty/buffer/ByteBuf;)V to mda3b84f$fabric-networking-api-v1$lambda$wrapWithContext$0$0 in fabric-networking-api-v1.mixins.json:PacketEncoderMixin from mod fabric-networking-api-v1
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing accessor.PacketEncoderAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.network.PacketEncoder
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing IdDispatchCodecMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.codec.IdDispatchCodec
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing ServerboundCustomQueryAnswerPacketMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.login.ServerboundCustomQueryAnswerPacket
+[11:25:27] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientboundCustomQueryPacketMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.login.ClientboundCustomQueryPacket
+[11:25:27] [Netty Local IO #2/INFO] (FabricLoader/Mixin) Mixing ServerLoginPacketListenerImplMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerLoginPacketListenerImpl
+[11:25:27] [Netty Local IO #2/INFO] (FabricLoader/Mixin) Mixing accessor.ServerLoginPacketListenerImplAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerLoginPacketListenerImpl
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Mixing ServerboundCustomPayloadPacketMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$wrapCodec$0(Lnet/minecraft/network/FriendlyByteBuf;Lnet/minecraft/resources/Identifier;)Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload$TypeAndCodec; to mda3b84f$fabric-networking-api-v1$lambda$wrapCodec$0$0 in fabric-networking-api-v1.mixins.json:ServerboundCustomPayloadPacketMixin from mod fabric-networking-api-v1
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Mixing ServerboundSelectKnownPacksMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.network.protocol.configuration.ServerboundSelectKnownPacks
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Mixing RegistrySynchronizationMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.core.RegistrySynchronization
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Mixing RegistryDataCollectorMixin from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.multiplayer.RegistryDataCollector
+[11:25:27] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$skipEmptyRegistries$0(Ljava/util/Map;Lnet/minecraft/resources/RegistryDataLoader$RegistryData;)Z to mda3b84f$fabric-registry-sync-v0$lambda$skipEmptyRegistries$0$0 in fabric-registry-sync-v0.client.mixins.json:RegistryDataCollectorMixin from mod fabric-registry-sync-v0
+[11:25:28] [Netty Local IO #1/INFO] (FabricLoader/Mixin) Mixing BundlePacketMixin from fabric-networking-api-v1.mixins.json into net.minecraft.network.protocol.BundlePacket
+[11:25:28] [Netty Local IO #2/INFO] (FabricLoader/Mixin) Mixing SynchronizeRegistriesTaskMixin from fabric-resource-loader-v1.mixins.json into net.minecraft.server.network.config.SynchronizeRegistriesTask
+[11:25:28] [Render thread/INFO] (FabricLoader/Mixin) Mixing KnownPacksManagerMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.multiplayer.KnownPacksManager
+[11:25:28] [Server thread/INFO] (FabricLoader/Mixin) Mixing ValueInputMixin from fabric-serialization-api-v1.mixins.json into net.minecraft.world.level.storage.ValueInput
+[11:25:28] [Render thread/INFO] (FabricLoader/Mixin) Mixing RegistryDataCollectorContentsCollectorAccessor from fabric-registry-sync-v0.client.mixins.json into net.minecraft.client.multiplayer.RegistryDataCollector$ContentsCollector
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Mixing SerializableChunkDataMixin from fabric-registry-sync-v0.mixins.json into net.minecraft.world.level.chunk.storage.SerializableChunkData
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Mixing SerializableChunkDataMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.chunk.storage.SerializableChunkData
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Renaming @Unique field LOGGERLorg/slf4j/Logger; to fda3b84f$fabric-data-attachment-api-v1$LOGGER$0 in fabric-data-attachment-api-v1.mixins.json:SerializableChunkDataMixin from mod fabric-data-attachment-api-v1
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Mixing ImposterProtoChunkMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.world.level.chunk.ImposterProtoChunk
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Mixing LevelChunkSectionMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.chunk.LevelChunkSection
+[11:25:28] [Worker-Main-27/INFO] (FabricLoader/Mixin) Mixing ChunkSectionBlockStateCounterMixin from fabric-block-api-v1.mixins.json into net.minecraft.world.level.chunk.LevelChunkSection$1BlockCounter
+[11:25:28] [Server thread/INFO] (Minecraft) Loading 48 chunks for player spawn...
+[11:25:28] [Server thread/INFO] (Minecraft) 准备生成区域中：16%
+[11:25:28] [Server thread/INFO] (Minecraft) 准备生成区域中：16%
+[11:25:28] [Server thread/INFO] (Minecraft) 准备生成区域中：25%
+[11:25:28] [Server thread/INFO] (FabricLoader/Mixin) Mixing TagValueInputMixin from fabric-serialization-api-v1.mixins.json into net.minecraft.world.level.storage.TagValueInput
+[11:25:29] [Server thread/INFO] (Minecraft) 准备生成区域中：49%
+[11:25:29] [Server thread/INFO] (Minecraft) 准备生成区域中：49%
+[11:25:29] [Worker-Main-15/INFO] (FabricLoader/Mixin) Mixing TagValueOutputMixin from fabric-serialization-api-v1.mixins.json into net.minecraft.world.level.storage.TagValueOutput
+[11:25:30] [Worker-Main-28/INFO] (FabricLoader/Mixin) Mixing WalkNodeEvaluatorMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.pathfinder.WalkNodeEvaluator
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing accessor.EntityTrackerAccessor from fabric-networking-api-v1.mixins.json into net.minecraft.server.level.ChunkMap$TrackedEntity
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing ServerEntityMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.level.ServerEntity
+[11:25:30] [Server thread/INFO] (Minecraft) Time elapsed: 2944 ms
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing sync.ClientRecipeContainerMixin from fabric-recipe-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientRecipeContainer
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing advancement.ClientAdvancementsAccessor from fabric-rendering-v1.mixins.json into net.minecraft.client.multiplayer.ClientAdvancements
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientSuggestionProviderMixin from fabric-command-api-v2.client.mixins.json into net.minecraft.client.multiplayer.ClientSuggestionProvider
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientDebugSubscriberMixin from fabric-debug-api-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientDebugSubscriber
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing PlayerAdvancementsMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.server.PlayerAdvancements
+[11:25:30] [Server thread/INFO] (Minecraft) Player726[local:E:1931c068] logged in with entity id 4 at (-0.5, 72.0, 10.5)
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing ServerGamePacketListenerImplMixin from fabric-networking-api-v1.mixins.json into net.minecraft.server.network.ServerGamePacketListenerImpl
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing ServerGamePacketListenerImplMixin from fabric-events-interaction-v0.mixins.json into net.minecraft.server.network.ServerGamePacketListenerImpl
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing ServerPlayNetworkHandlerMixin from easyelevator.mixins.json into net.minecraft.server.network.ServerGamePacketListenerImpl
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$easyelevator$floorSupport$0(Lorg/DJB/easyelevator/entity/AbstractCabinEntity;)Z to mda3b84f$easyelevator$lambda$easyelevator$floorSupport$0$0 in easyelevator.mixins.json:ServerPlayNetworkHandlerMixin from mod easyelevator
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing PlayerChunkSenderMixin from fabric-data-attachment-api-v1.mixins.json into net.minecraft.server.network.PlayerChunkSender
+[11:25:30] [Server thread/INFO] (Minecraft) System chat: Player726加入了游戏
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing MultiPlayerGameModeMixin from fabric-item-api-v1.client.mixins.json into net.minecraft.client.multiplayer.MultiPlayerGameMode
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing MultiPlayerGameModeMixin from fabric-events-interaction-v0.client.mixins.json into net.minecraft.client.multiplayer.MultiPlayerGameMode
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$interactItem$0(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/entity/player/Player;I)Lnet/minecraft/network/protocol/Packet; to mda3b84f$fabric-events-interaction-v0$lambda$interactItem$0$0 in fabric-events-interaction-v0.client.mixins.json:MultiPlayerGameModeMixin from mod fabric-events-interaction-v0
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$interactBlock$0(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/phys/BlockHitResult;I)Lnet/minecraft/network/protocol/Packet; to mda3b84f$fabric-events-interaction-v0$lambda$interactBlock$0$1 in fabric-events-interaction-v0.client.mixins.json:MultiPlayerGameModeMixin from mod fabric-events-interaction-v0
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$fabric_fireAttackBlockCallback$0(Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;I)Lnet/minecraft/network/protocol/Packet; to mda3b84f$fabric-events-interaction-v0$lambda$fabric_fireAttackBlockCallback$0$2 in fabric-events-interaction-v0.client.mixins.json:MultiPlayerGameModeMixin from mod fabric-events-interaction-v0
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientChunkCacheMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientChunkCache
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientLevelEntityCallbacksMixin from fabric-lifecycle-events-v1.client.mixins.json into net.minecraft.client.multiplayer.ClientLevel$EntityCallbacks
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing HangingSignEditScreenMixin from fabric-object-builder-v1.client.mixins.json into net.minecraft.client.gui.screens.inventory.HangingSignEditScreen
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0(Ljava/lang/String;)Ljava/lang/String; to mda3b84f$fabric-object-builder-api-v1$lambda$init$0$0 in fabric-object-builder-v1.client.mixins.json:HangingSignEditScreenMixin from mod fabric-object-builder-api-v1
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing SignEditScreenMixin from fabric-object-builder-v1.client.mixins.json into net.minecraft.client.gui.screens.inventory.SignEditScreen
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$init$0(Ljava/lang/String;)Ljava/lang/String; to mda3b84f$fabric-object-builder-api-v1$lambda$init$0$0 in fabric-object-builder-v1.client.mixins.json:SignEditScreenMixin from mod fabric-object-builder-api-v1
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing FirstPersonHandsAndItemsMixin from fabric-item-api-v1.client.mixins.json into net.minecraft.client.player.FirstPersonHandsAndItems
+[11:25:30] [Server thread/INFO] (FabricLoader/Mixin) Mixing EnchantmentHelperMixin from fabric-item-api-v1.mixins.json into net.minecraft.world.item.enchantment.EnchantmentHelper
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing block.render.SectionCompilerMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.chunk.SectionCompiler
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$beforeLoopCompile$0(Ljava/util/Map;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/MutableQuadView;)V to mda3b84f$fabric-renderer-api-v1$lambda$beforeLoopCompile$0$0 in fabric-renderer-api-v1.mixins.json:block.render.SectionCompilerMixin from mod fabric-renderer-api-v1
+[11:25:30] [Server thread/INFO] (Minecraft) Changing view distance to 12, from 10
+[11:25:30] [Server thread/INFO] (Minecraft) Changing simulation distance to 12, from 0
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing RenderRegionCacheMixin from fabric-block-getter-api-v2.client.mixins.json into net.minecraft.client.renderer.chunk.RenderRegionCache
+[11:25:30] [Render thread/WARN] (Minecraft) Requested post effect does not exist: minecraft:end_of_frame
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.state.level.BlockOutlineRenderState
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing submit.SubmitNodeCollectionMixin from fabric-renderer-api-v1.mixins.json into net.minecraft.client.renderer.SubmitNodeCollection
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitBreakingBlockModel$0(Lnet/minecraft/client/renderer/rendertype/RenderType;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/rendertype/RenderType; to mda3b84f$fabric-renderer-api-v1$lambda$submitBreakingBlockModel$0$0 in fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin from mod fabric-renderer-api-v1
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitBlockModel$1(Ljava/util/function/Function;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/rendertype/RenderType; to mda3b84f$fabric-renderer-api-v1$lambda$submitBlockModel$1$1 in fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin from mod fabric-renderer-api-v1
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Renaming synthetic method lambda$submitBlockModel$0(Ljava/util/function/Function;Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/rendertype/RenderType; to mda3b84f$fabric-renderer-api-v1$lambda$submitBlockModel$0$2 in fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin from mod fabric-renderer-api-v1
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing SubmitNodeCollectionMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.SubmitNodeCollection
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Dynamic Transforms UBO, capacity limit of 2 reached during a single frame. New capacity will be 4.
+[11:25:30] [Render thread/INFO] (Minecraft) Loaded 2 advancements
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing ParticleUtilsMixin from fabric-particles-v1.mixins.json into net.minecraft.util.ParticleUtils
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Dynamic Transforms UBO, capacity limit of 4 reached during a single frame. New capacity will be 8.
+[11:25:30] [Render thread/INFO] (FabricLoader/Mixin) Mixing RenderSectionRegionMixin from fabric-block-getter-api-v2.client.mixins.json into net.minecraft.client.renderer.chunk.RenderSectionRegion
+[11:25:30] [Worker-Main-29/INFO] (FabricLoader/Mixin) Mixing BlockModelLighterAccessor from fabric-renderer-indigo.mixins.json into net.minecraft.client.renderer.block.BlockModelLighter
+[11:25:30] [Worker-Main-29/INFO] (FabricLoader/Mixin) Renaming @Accessor method fabric_getCACHE()Ljava/lang/ThreadLocal; to fabric_getCACHE$fabric-renderer-indigo_$md$a3b84f$0 in fabric-renderer-indigo.mixins.json:BlockModelLighterAccessor from mod fabric-renderer-indigo
+[11:25:30] [Worker-Main-29/INFO] (FabricLoader/Mixin) Mixing ModelBlockRendererMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.block.ModelBlockRenderer
+[11:25:30] [Worker-Main-29/INFO] (FabricLoader/Mixin) Mixing FluidRendererMixin from fabric-rendering-fluids-v1.mixins.json into net.minecraft.client.renderer.block.FluidRenderer
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 2 reached during a single frame. New capacity will be 4.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 2 reached during a single frame. New capacity will be 4.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 4 reached during a single frame. New capacity will be 8.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 4 reached during a single frame. New capacity will be 8.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 8 reached during a single frame. New capacity will be 16.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 8 reached during a single frame. New capacity will be 16.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 16 reached during a single frame. New capacity will be 32.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 32 reached during a single frame. New capacity will be 64.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 16 reached during a single frame. New capacity will be 32.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 32 reached during a single frame. New capacity will be 64.
+[11:25:30] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 64 reached during a single frame. New capacity will be 128.
+[11:25:31] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 64 reached during a single frame. New capacity will be 128.
+[11:25:31] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 128 reached during a single frame. New capacity will be 256.
+[11:25:31] [Server thread/INFO] (FabricLoader/Mixin) Mixing PathfindingContextMixin from fabric-content-registries-v0.mixins.json into net.minecraft.world.level.pathfinder.PathfindingContext
+[11:25:31] [Render thread/INFO] (FabricLoader/Mixin) Mixing MovingBlockRenderStateMixin from fabric-block-getter-api-v2.client.mixins.json into net.minecraft.client.renderer.block.MovingBlockRenderState
+[11:25:31] [Render thread/INFO] (FabricLoader/Mixin) Mixing renderstate.RenderStateMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.renderer.block.MovingBlockRenderState
+[11:25:32] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 128 reached during a single frame. New capacity will be 256.
+[11:25:32] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 256 reached during a single frame. New capacity will be 512.
+[11:25:34] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Instanced, capacity limit of 256 reached during a single frame. New capacity will be 512.
+[11:25:34] [Render thread/INFO] (Minecraft) Resizing Chunk Sections Command Buffer, capacity limit of 512 reached during a single frame. New capacity will be 1024.
+[11:25:49] [Render thread/INFO] (Minecraft) Resizing Dynamic Transforms UBO, capacity limit of 8 reached during a single frame. New capacity will be 16.
+[11:25:49] [Server thread/INFO] (Minecraft) Saving and pausing game...
+[11:25:49] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[11:25:49] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[11:25:49] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[11:25:49] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientTooltipComponentMixin from fabric-resource-loader-v1.client.mixins.json into net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
+[11:25:49] [Render thread/INFO] (FabricLoader/Mixin) Mixing ClientTooltipComponentMixin from fabric-rendering-v1.mixins.json into net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
+[11:25:50] [Server thread/INFO] (Minecraft) Player726 lost connection: 连接中断
+[11:25:50] [Server thread/INFO] (Minecraft) System chat: Player726退出了游戏
+[11:25:50] [Server thread/INFO] (Minecraft) Stopping singleplayer server as player logged out
+[11:25:50] [Server thread/INFO] (Minecraft) Stopping server
+[11:25:50] [Server thread/INFO] (Minecraft) Saving players
+[11:25:50] [Server thread/INFO] (Minecraft) Saving worlds
+[11:25:50] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[11:25:51] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[11:25:51] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[11:25:52] [Render thread/INFO] (Minecraft) Stopping!
+
+[Incubating] Problems report is available at: file:///E:/Codel/Documents/GitHub/EasyElevator/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.6.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 38s
+8 actionable tasks: 1 executed, 7 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.6.0/userguide/configuration_cache_enabling.html

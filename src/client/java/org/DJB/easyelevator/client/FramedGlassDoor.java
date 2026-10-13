@@ -17,9 +17,13 @@ import org.DJB.easyelevator.logic.LeafUv;
  * <p>布局（边框多宽、玻璃多大）全部来自纯算术类 {@link FramedLeaf}：门扇越开越窄时边框会按比例缩，
  * 玻璃不会变成负宽度，也不会在快开完时闪一下。
  *
- * <p>调用顺序（与 {@code VertexConsumerProvider.Immediate} 的约束一致）：
- * 先在不透明层调 {@link #frame}，把不透明缓冲画完之后再取玻璃层调 {@link #glass}——
- * 拿到新层会结束上一层，之后就绝不能再往旧引用写顶点（会抛 {@code Not building!}）。
+ * <p>调用顺序：先在不透明层调 {@link #frame}，玻璃层再调 {@link #glass}，两者用各自的图层提交
+ * （26.3 里是两次 {@code SubmitNodeCollector.submitCustomGeometry}，各带自己的 {@code RenderType}）。
+ * 1.21.1 那种"换层就结束上一个缓冲、旧引用作废"的约束已经不存在——每次提交拿到的都是新的批次缓冲——
+ * 但"不透明件与玻璃分开提交"这条分工仍然保留：它们的图层不同，混在一起就没法各自控制剔除与混合。
+ *
+ * <p>参数里的 {@link com.mojang.blaze3d.vertex.PoseStack.Pose} 是提交那一刻位姿的拷贝
+ * （见 {@link BoxMesh} 类注释：回调要等到真正建批次时才执行，那时活动矩阵栈已经用来画别的实体了）。
  */
 public final class FramedGlassDoor {
     private FramedGlassDoor() { }
@@ -33,19 +37,19 @@ public final class FramedGlassDoor {
      * 实机反馈的"贴图拉伸"就是这个。四周断面再各取一小段（{@link LeafUv#slabUv}），
      * 与门扇断面的处理完全一致。
      *
-     * @param matrices 渲染矩阵栈
+     * @param pose 渲染矩阵栈
      * @param out 不透明顶点缓冲
      * @param leaf 门扇长方体（格；局部坐标系）
      * @param alongZ true 表示门扇厚度方向是 Z（门宽沿 X），false 表示厚度方向是 X（门宽沿 Z）
      * @param window 门扇大面的 UV 矩形（与门扇本体用的是同一个窗口）
      * @param light 打包后的光照值
      */
-    public static void frame(PoseStack matrices,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light) {
-        frame(matrices,out,leaf,alongZ,window,light,BoxMesh.AMBIENT);
+    public static void frame(PoseStack.Pose pose,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light) {
+        frame(pose,out,leaf,alongZ,window,light,BoxMesh.AMBIENT);
     }
 
     /** Cabin frames may receive interior lamp shading; landing frames use ambient light. */
-    public static void frame(PoseStack matrices,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light,BoxMesh.FaceLighting lighting) {
+    public static void frame(PoseStack.Pose pose,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light,BoxMesh.FaceLighting lighting) {
         double w0=alongZ?leaf.minX:leaf.minZ, w1=alongZ?leaf.maxX:leaf.maxZ;
         double y0=leaf.minY, y1=leaf.maxY;
         double[] l=FramedLeaf.layout(w0,w1,y0,y1);
@@ -55,11 +59,11 @@ public final class FramedGlassDoor {
         float[] stileUv=FramedLeaf.stileUv(window,width<=1e-9?1:l[5]-l[4]<=1e-9?1:(l[5]-l[4])/width);
         float[] railUv=FramedLeaf.railUv(window,height<=1e-9?1:(l[1]-l[0])/height);
         // 底框、顶框：满宽
-        bar(matrices,out,alongZ,w0,w1,l[0],l[1],t0,t1,railUv,light,lighting);
-        bar(matrices,out,alongZ,w0,w1,l[2],l[3],t0,t1,railUv,light,lighting);
+        bar(pose,out,alongZ,w0,w1,l[0],l[1],t0,t1,railUv,light,lighting);
+        bar(pose,out,alongZ,w0,w1,l[2],l[3],t0,t1,railUv,light,lighting);
         // 两侧竖框：满高
-        bar(matrices,out,alongZ,l[4],l[5],y0,y1,t0,t1,stileUv,light,lighting);
-        bar(matrices,out,alongZ,l[6],l[7],y0,y1,t0,t1,stileUv,light,lighting);
+        bar(pose,out,alongZ,l[4],l[5],y0,y1,t0,t1,stileUv,light,lighting);
+        bar(pose,out,alongZ,l[6],l[7],y0,y1,t0,t1,stileUv,light,lighting);
     }
 
     /**
@@ -68,7 +72,7 @@ public final class FramedGlassDoor {
      * <p>玻璃的 UV 按玻璃面的宽高比取（{@link FramedLeaf#paneUv}），使贴图横竖像素密度一致，
      * 玻璃上的花纹不会被纵向拉长。
      *
-     * @param matrices 渲染矩阵栈
+     * @param pose 渲染矩阵栈
      * @param glass 玻璃顶点缓冲（必须由 {@link GlassLayers} 的层取得）
      * @param leaf 门扇长方体（格；局部坐标系）
      * @param alongZ true 表示门扇厚度方向是 Z（门宽沿 X），false 表示厚度方向是 X（门宽沿 Z）
@@ -76,14 +80,14 @@ public final class FramedGlassDoor {
      * @param light 打包后的光照值
      * @param color 顶点颜色（含 alpha，决定通透度）
      */
-    public static void glass(PoseStack matrices,VertexConsumer glass,AABB leaf,boolean alongZ,float[] cell,int light,int color) {
+    public static void glass(PoseStack.Pose pose,VertexConsumer glass,AABB leaf,boolean alongZ,float[] cell,int light,int color) {
         double w0=alongZ?leaf.minX:leaf.minZ, w1=alongZ?leaf.maxX:leaf.maxZ;
         double[] l=FramedLeaf.layout(w0,w1,leaf.minY,leaf.maxY);
         if(!FramedLeaf.glassVisible(l)) return; // 全开时门扇宽度归零，没有玻璃可画
         float[] uv=FramedLeaf.paneUv(cell,l[9]-l[8],l[11]-l[10]);
         double mid=alongZ?(leaf.minZ+leaf.maxZ)/2:(leaf.minX+leaf.maxX)/2;
-        if(alongZ) BoxMesh.glassZ(matrices,glass,(float)mid,(float)l[8],(float)l[10],(float)l[9],(float)l[11],light,color,uv);
-        else BoxMesh.glassX(matrices,glass,(float)mid,(float)l[10],(float)l[8],(float)l[11],(float)l[9],light,color,uv);
+        if(alongZ) BoxMesh.glassZ(pose,glass,(float)mid,(float)l[8],(float)l[10],(float)l[9],(float)l[11],light,color,uv);
+        else BoxMesh.glassX(pose,glass,(float)mid,(float)l[10],(float)l[8],(float)l[11],(float)l[9],light,color,uv);
     }
 
     /**
@@ -93,7 +97,7 @@ public final class FramedGlassDoor {
      * 与普通电梯门门扇（大面用滑动窗口、断面用 {@code edgeRange}）完全同一套处理，
      * 断面就不会把整块贴图挤进 2/16 格的窄边里。
      *
-     * @param matrices 渲染矩阵栈
+     * @param pose 渲染矩阵栈
      * @param out 顶点缓冲
      * @param alongZ 厚度方向是否为 Z
      * @param a0 门宽方向起点
@@ -105,11 +109,11 @@ public final class FramedGlassDoor {
      * @param uv 这块边框大面的 UV 矩形
      * @param light 打包后的光照值
      */
-    private static void bar(PoseStack matrices,VertexConsumer out,boolean alongZ,double a0,double a1,
+    private static void bar(PoseStack.Pose pose,VertexConsumer out,boolean alongZ,double a0,double a1,
                             double y0,double y1,double t0,double t1,float[] uv,int light,BoxMesh.FaceLighting lighting) {
         if(a1-a0<=1e-6||y1-y0<=1e-6||t1-t0<=1e-6) return; // 退化件直接跳过，避免反向长方体
         float[][] faceUv=LeafUv.slabUv(uv,LeafUv.centredThinSlice(uv),alongZ);
-        if(alongZ) BoxMesh.cuboid(matrices,out,(float)a0,(float)y0,(float)t0,(float)a1,(float)y1,(float)t1,light,0xFFFFFFFF,faceUv,lighting);
-        else BoxMesh.cuboid(matrices,out,(float)t0,(float)y0,(float)a0,(float)t1,(float)y1,(float)a1,light,0xFFFFFFFF,faceUv,lighting);
+        if(alongZ) BoxMesh.cuboid(pose,out,(float)a0,(float)y0,(float)t0,(float)a1,(float)y1,(float)t1,light,0xFFFFFFFF,faceUv,lighting);
+        else BoxMesh.cuboid(pose,out,(float)t0,(float)y0,(float)a0,(float)t1,(float)y1,(float)a1,light,0xFFFFFFFF,faceUv,lighting);
     }
 }

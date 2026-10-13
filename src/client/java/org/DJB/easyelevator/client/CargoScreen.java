@@ -1,6 +1,7 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.gui.GuiGraphics;
+// 26.3：GuiGraphics 变成 GuiGraphicsExtractor（屏幕先抽取绘制状态，再由渲染层统一绘制）。
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -33,13 +34,14 @@ public class CargoScreen extends AbstractContainerScreen<CargoScreenHandler> {
      * @param handler 货舱菜单（客户端的空壳实例，槽位内容由原版容器同步填写）
      * @param inventory 查看者背包
      * @param title 面板标题（服务端下发时用的 `screen.easyelevator.cargo` 翻译键）
-     * 副作用：设置三个布局常量——176×210 的背景与"背包标题画在 y=116"，
+     * 副作用：设置布局——176×210 的背景与"背包标题画在 y=116"，
      * 它们必须与 {@code CargoScreenHandler} 的槽位坐标一致，改一处就要改另一处。
+     *
+     * <p>26.3：imageWidth / imageHeight 在父类里变成了 final 字段，必须在 super(...) 里给，
+     * 不能再在构造体里赋值（父类新增了带宽高的构造函数）。
      */
     public CargoScreen(CargoScreenHandler handler, Inventory inventory, Component title) {
-        super(handler, inventory, title);
-        imageWidth = 176;
-        imageHeight = 210;
+        super(handler, inventory, title, 176, 210);
         inventoryLabelY = 116;
     }
 
@@ -52,14 +54,18 @@ public class CargoScreen extends AbstractContainerScreen<CargoScreenHandler> {
      * <p>进度条：长度 = {@code min(160, 件数 × 160 / MAX_ITEMS)}，即满舱 1728 件时铺满整条；
      * 用整数乘除而不是浮点，是为了"同一件数在任何客户端上画出同一长度"（面板截图与验收可比对）。
      *
+     * <p>26.3：父类的 renderBg 钩子没了（原版改为让子类覆盖 extractBackground 自己画底图），
+     * 于是这里改成私有方法，只由 {@link #extractBackground} 调用；参数顺序从 (ctx, delta, mouseX, mouseY)
+     * 统一成新版的 (ctx, mouseX, mouseY, delta)。绘制内容与坐标一字未改。
+     *
      * @param context 绘制上下文（坐标原点在屏幕左上角，槽位坐标要加上 {@code x}/{@code y}）
-     * @param delta 帧插值系数（未使用；本面板没有动画）
      * @param mouseX 鼠标 X（未使用）
      * @param mouseY 鼠标 Y（未使用）
+     * @param delta 帧插值系数（未使用；本面板没有动画）
      */
-    @Override protected void renderBg(GuiGraphics context, float delta, int mouseX, int mouseY) {
+    private void drawPanelBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, PANEL_COLOR);
-        context.renderOutline(leftPos, topPos, imageWidth, imageHeight, BORDER_COLOR);
+        context.outline(leftPos, topPos, imageWidth, imageHeight, BORDER_COLOR);
         context.fill(leftPos + 1, topPos + 1, leftPos + 175, topPos + 46, BAR_COLOR);
         for (var slot : menu.slots) {
             context.fill(leftPos + slot.x - 1, topPos + slot.y - 1, leftPos + slot.x + 17, topPos + slot.y + 17, BORDER_COLOR);
@@ -73,57 +79,67 @@ public class CargoScreen extends AbstractContainerScreen<CargoScreenHandler> {
     /**
      * 画表头三行与背包标题（原版在画完槽位后调用）。
      *
-     * <p>三行的 y 坐标（6 / 19 / 31）与 {@link #renderBg} 的表头条（1..46）配套；
+     * <p>三行的 y 坐标（6 / 19 / 31）与 {@link #drawPanelBackground} 的表头条（1..46）配套；
      * 件数与限载都现问 {@link CargoScreenHandler}，因此与后壁铭牌、超载判定永远一致。
      *
      * @param context 绘制上下文（此处坐标相对面板左上角）
      * @param mouseX 鼠标 X（未使用）
      * @param mouseY 鼠标 Y（未使用）
      */
-    @Override protected void renderLabels(GuiGraphics context, int mouseX, int mouseY) {
-        context.drawString(font, title, 8, 6, 0xFFEAF2FA, false);
-        context.drawString(font, Component.translatable("screen.easyelevator.cargo_count", menu.cargoItems()),
+    @Override protected void extractLabels(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        context.text(font, title, 8, 6, 0xFFEAF2FA, false);
+        context.text(font, Component.translatable("screen.easyelevator.cargo_count", menu.cargoItems()),
                 8, 19, COUNT_COLOR, false);
-        context.drawString(font, Component.translatable("screen.easyelevator.cargo_capacity", menu.passengerLimit()),
+        context.text(font, Component.translatable("screen.easyelevator.cargo_capacity", menu.passengerLimit()),
                 8, 31, CAPACITY_COLOR, false);
-        context.drawString(font, playerInventoryTitle, 8, inventoryLabelY, COUNT_COLOR, false);
+        context.text(font, playerInventoryTitle, 8, inventoryLabelY, COUNT_COLOR, false);
     }
 
     /**
-     * 每帧绘制：先走原版管线（背景 + 槽位 + 前景），再补光标物品的提示，
-     * 最后在鼠标悬停表头文字区（x 8..168、y 19..46）时弹出完整规则。
+     * 每帧绘制：先走原版管线（背景 + 槽位 + 标签 + 光标物品的提示），
+     * 再在鼠标悬停表头文字区（x 8..168、y 19..46）时弹出完整规则。
      *
      * <p>规则文本按 220 像素宽度自动折行（中英文字宽差异很大，固定折行会串行），
      * 因此新增文案不需要在这里调坐标。
+     *
+     * <p>26.3：Screen.render -> extractRenderState；而"画一段折行文本的提示框"改由
+     * {@code setTooltipForNextFrame} 登记、由原版在本帧末尾统一绘制（旧版是当场画出）。
+     * 光标物品的提示<b>不必再自己调一次</b>：26.3 的
+     * {@code AbstractContainerScreen.extractRenderState} 已经依次调用
+     * extractContents -> extractCarriedItem -> {@code extractTooltip}（旧版 1.21.1 的
+     * AbstractContainerScreen.render 不调用 renderTooltip，所以旧代码里那次显式调用是必需的，
+     * 26.3 里再调一次只会把同一个提示用 replaceExisting 重登记一遍）。调用顺序与外观不变。
      *
      * @param context 绘制上下文
      * @param mouseX 鼠标 X（屏幕坐标，用于悬停判定）
      * @param mouseY 鼠标 Y（屏幕坐标）
      * @param delta 帧插值系数
      */
-    @Override public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
-        renderTooltip(context, mouseX, mouseY);
+    @Override public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(context, mouseX, mouseY, delta);
         if (mouseX >= leftPos + 8 && mouseX < leftPos + 168 && mouseY >= topPos + 19 && mouseY < topPos + 46)
-            context.renderTooltip(font, font.split(
+            context.setTooltipForNextFrame(font, font.split(
                     Component.translatable("screen.easyelevator.cargo_rule"), 220), mouseX, mouseY);
     }
 
     /**
      * 面板背景：只铺一层很淡的暗色遮罩，**不调用原版模糊**——与选站面板、厅外呼叫面板一致。
      *
-     * <p>为什么必须在这里也画面板底：原版的调用链是 {@code Screen.render → renderBackground →
-     * drawBackground}，{@code HandledScreen.renderBackground} 就是转调 {@code drawBackground}；
-     * 本类覆盖了 {@code renderBackground} 来换掉模糊，因此要顺手把 {@link #renderBg} 叫上，
+     * <p>为什么必须在这里也画面板底：原版的调用链是 {@code Screen.extractRenderStateWithTooltipAndSubtitles →
+     * extractBackground → extractRenderState}，而 {@code extractBackground} 才是"画世界背景 / 模糊"的那一步；
+     * 本类覆盖它来换掉模糊，因此要顺手把 {@link #drawPanelBackground} 叫上，
      * 否则面板底与槽位凹槽根本不会被画出来（只剩槽位里的物品浮在游戏画面上）。
+     *
+     * <p>26.3：26.3 的 AbstractContainerScreen 不再替子类画底图（原版各个箱子/漏斗屏幕都改成自己覆盖
+     * extractBackground），所以这里是唯一绘制面板底的地方，语义与旧版一致。
      *
      * @param context 绘制上下文
      * @param mouseX 鼠标 X
      * @param mouseY 鼠标 Y
      * @param delta 帧插值系数
      */
-    @Override public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float delta) {
+    @Override public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0x18000000);
-        renderBg(context, delta, mouseX, mouseY);
+        drawPanelBackground(context, mouseX, mouseY, delta);
     }
 }

@@ -1,6 +1,10 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.0** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
+> 适用模组版本 **2.3.0+26.3** ｜ Minecraft **26.3** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.162.0+26.3** ｜ Java **25**
+>
+> **本线用 Mojang 官方命名**：Minecraft 26.1 起官方发布的就是未混淆代码，Fabric 也停止维护 Yarn 映射，
+> 因此本文与源码里的类名都是官方的（`ResourceLocation` → `Identifier` 这类改名见
+> [构建与打包](BUILD_AND_PACKAGING.md) 第 9 节），与 1.21.1 / 1.20.1 线的 Yarn 命名**不能互相 cherry-pick**。
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -46,13 +50,13 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 
 | 项 | 值 | 位置 |
 | --- | --- | --- |
-| Gradle | 8.14.3（wrapper） | `build.gradle` `tasks.named('wrapper')` |
-| Fabric Loom | 1.11.8 | `build.gradle` plugins |
-| Java 目标 | 21（`options.release` + toolchain） | `build.gradle` |
-| Minecraft | 1.21.1 | `gradle.properties` |
-| Yarn 映射 | 1.21.1+build.3 | `gradle.properties` |
-| Loader | 0.19.2 | `gradle.properties` |
-| Fabric API | 0.116.17+1.21.1 | `gradle.properties` |
+| Gradle | 9.6.0（wrapper） | `build.gradle` `tasks.named('wrapper')` |
+| Fabric Loom | 1.17.21（未混淆版本专用的插件 ID `net.fabricmc.fabric-loom`） | `build.gradle` plugins |
+| Java 目标 | 25（`options.release` + toolchain；工具链路径在 `gradle.properties`） | `build.gradle` |
+| Minecraft | 26.3 | `gradle.properties` |
+| 混淆映射 | **不需要**（26.1 起游戏未混淆，源码直接用官方命名） | 无 mappings 依赖 |
+| Loader | 0.19.5 | `gradle.properties` |
+| Fabric API | 0.162.0+26.3 | `gradle.properties` |
 | 源集拆分 | `splitEnvironmentSourceSets()`（main + client） | `build.gradle` `loom` |
 | 数据生成 | `configureDataGeneration { client = true }` | `build.gradle` |
 | 源集 | `main`（服务端/公共）+ `client`（客户端），由 `loom.splitEnvironmentSourceSets()` 拆分 | `build.gradle` |
@@ -1269,7 +1273,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.0.jar`） |
+| 构建 | `.\gradlew.bat build`（`JAVA_HOME` 用 JDK 21/25 启动 Gradle，编译用工具链的 JDK 25；成品 `build/libs/easyelevator-2.3.0+26.3.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
 | 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |

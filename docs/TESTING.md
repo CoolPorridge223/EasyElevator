@@ -1,6 +1,6 @@
 # 人工验收清单
 
-适用模组版本 **2.3.0**、Minecraft **1.21.1**、Fabric Loader **0.19.2**、Java **21**。安装时使用 `easyelevator-2.3.0.jar`。
+适用模组版本 **2.3.0+26.3**、Minecraft **26.3**、Fabric Loader **0.19.5**、Java **25**。安装时使用 `easyelevator-2.3.0+26.3.jar`（本线源码用 Mojang 官方命名，与 1.21.1 / 1.20.1 线的源码不可互相 cherry-pick，见[版本线与发布流程](VERSIONING.md)）。
 
 > 面向**测试**：进游戏逐项确认的检查清单。条目按主题分节，但**编号贯穿全文、不要重排**——
 > 正文里有"按第 58～60 项执行"这类交叉引用。
@@ -10,6 +10,23 @@
 **怎么用**：以下条目是**待执行**的人工验收步骤，不表示已经完成实机测试。几何一致性与包内容可作离线辅助检查（读模型 JSON、比对 `LandingDoorGeometry` 与内饰表里的常量），但不能替代真实客户端、光影与多人环境验收。
 
 **关于自动化**：工程内**没有常驻自动化测试**——`build.gradle` 关闭了 java 插件自动创建的 `test` / `testClasses`，`build` 只负责编译与打包，所有验收都在真实客户端/服务器里按本清单执行。
+
+**客户端冒烟（26.3 线改完客户端代码先跑一次）**：编译只证明 API 还在，证明不了**混入注入成功**、渲染状态字段填全、GUI 抽取分支没被漏掉——这三类问题编译期都查不出来。最短的自检路径是临时在 `build.gradle` 的 `loom` 块里给客户端 run 配置加两行，让开发客户端直接进一个世界：
+
+```groovy
+runs {
+    client {
+        programArgs '--quickPlaySingleplayer', '<run/saves 下的存档目录名>'
+        vmArg '-Dmixin.debug.verbose=true'   // 让 Mixin 把"混入了哪个类"写进日志
+    }
+}
+```
+
+然后 `.\gradlew.bat runClient`，在日志里确认三件事：① 出现本模组四个混入的落点行（`EntityViewMixin`、`ServerPlayNetworkHandlerMixin`、`ClientPlayerEntityMixin`、`CabinCrosshairMixin`），全程**没有** `InvalidInjectionException`；② 客户端那两条落在 `net.minecraft.client.player.LocalPlayer` 上；③ 进入世界后没有异常堆栈。用完把那两行删掉（工程不保留常驻测试配置）。
+
+> **别拿旧存档冒险**：26.3 打开 1.20.1/1.21.1 的存档会**就地升级、不可回退**。要试世界就先复制一份：
+> `runServer` 生成的 `run/world` 就是 26.3 格式，把它复制到 `run/saves/<名字>` 再进，既不用升级老存档，
+> 也省掉"是否升级"的确认界面。
 
 **历史修复验证记录**：2.1.1 的修复曾在临时 Fabric GameTest 服务器中用 3 项集成测试确认，覆盖打开/刷新消息编解码、开门初始帧及半开/半关离厢与闭门恢复、同刻门开度变化和门缝通行碰撞。那套测试源集与运行脚本已从工程移除，记录保留在此仅供追溯；双人客户端实机验收仍按第 58～60 项执行。
 

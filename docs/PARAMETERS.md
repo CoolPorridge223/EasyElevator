@@ -1,6 +1,6 @@
 # EasyElevator 电梯参数手册
 
-适用模组 **2.3.0**、Minecraft **1.21.1**、Fabric Loader **0.19.2**、Java **21**。
+适用模组 **2.3.0+26.3**、Minecraft **26.3**、Fabric Loader **0.19.5**、Java **25**。
 
 > 面向**调参与排查**：每个常量的数值、单位、派生公式与"改一处、跟着改"的联动清单。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构、调用关系与接口）、[人工验收清单](TESTING.md)、

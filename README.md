@@ -1,8 +1,8 @@
 # EasyElevator
 
-Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1** · Java **21**。
+Minecraft **26.3** · Fabric Loader **0.19.5** · Fabric API **0.162.0+26.3** · Java **25**。
 
-当前模组版本 **2.3.0**。六个组件：电梯轨道、楼层电梯门，以及四种电梯轿厢（普通／高速／观光／重载）。四种轿厢共用 `entity/AbstractCabinEntity` 的运动、门联锁与乘客恢复实现；重载型号另有 **27 格货舱**，货量会改变载客上限和内部货箱外观。模型含扶手、顶灯、操纵面板与载重铭牌，到站支持按楼层选择或上传音频；运行音默认静音，开关门不发声。
+当前模组版本 **2.3.0+26.3**（本分支为 `mc/26.3/fabric`：源码用 Mojang 官方命名，与 1.21.1 / 1.20.1 线并列维护，见[版本线与发布流程](docs/VERSIONING.md)）。六个组件：电梯轨道、楼层电梯门，以及四种电梯轿厢（普通／高速／观光／重载）。四种轿厢共用 `entity/AbstractCabinEntity` 的运动、门联锁与乘客恢复实现；重载型号另有 **27 格货舱**，货量会改变载客上限和内部货箱外观。模型含扶手、顶灯、操纵面板与载重铭牌，到站支持按楼层选择或上传音频；运行音默认静音，开关门不发声。
 
 **文档导航**
 
@@ -192,17 +192,17 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 
 ## 构建
 
-先将 `JAVA_HOME` 指向 **JDK 21**，然后在项目目录执行：
+先将 `JAVA_HOME` 指向 **JDK 21 或 25**（只用来启动 Gradle；编译与运行 Minecraft 由工具链指向本机 JDK 25，路径写在 `gradle.properties`），然后在项目目录执行：
 
 ```powershell
 .\gradlew.bat build
 ```
 
-成品在 `build/libs/easyelevator-2.3.0.jar`；带 `-sources` 后缀的是源码包，不放入 mods 文件夹。
+成品在 `build/libs/easyelevator-2.3.0+26.3.jar`；带 `-sources` 后缀的是源码包，不放入 mods 文件夹。
 
 完整说明见 [工程构建与打包说明书](docs/BUILD_AND_PACKAGING.md)；所有运行、精度、动画、尺寸、面板和音效参数见 [电梯参数手册](docs/PARAMETERS.md)。
 
-两种打包（先按上面把 `JAVA_HOME` 指向 JDK 21）：
+两种打包（先按上面把 `JAVA_HOME` 指向 JDK）：
 
 ```powershell
 .\gradlew.bat packageRelease

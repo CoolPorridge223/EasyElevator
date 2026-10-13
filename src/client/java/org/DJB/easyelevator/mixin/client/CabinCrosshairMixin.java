@@ -1,8 +1,6 @@
 package org.DJB.easyelevator.mixin.client;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -23,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <ol>
  *   <li><b>乘客点轿厢 → 一律命中本厢</b>（不分位置、不看手里拿什么）。<br>
- *       原版右键的判定是"准星命中的是什么"：只有 {@code crosshairTarget} 是 {@link EntityHitResult}
+ *       原版右键的判定是"准星命中的是什么"：只有 {@code hitResult} 是 {@link EntityHitResult}
  *       时才走实体交互。轿厢是空心壳，乘客在厢内看侧壁/后壁/门框时射线常穿到后面的方块上，
  *       这次右键就成了"对世界用物品"——手里拿着方块时更是直接把方块放出去，实体交互根本轮不到。
  *       实机表现就是"手里有物品时唤不出面板、空手才行"。这里改写成命中本厢即可消除。</li>
@@ -43,30 +41,47 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p><b>不要引入跨帧状态</b>：曾经用"客户端每帧刷新、限时若干刻的看面板标记"通知服务端，
  * 结果"看过一眼面板后转身点别处"被残留标记误判（实机反馈：手里拿着东西点哪都能唤出面板）。
+ *
+ * <h2>26.3 的迁移（注入点搬家）</h2>
+ *
+ * <p>1.21.1 的准星射线是 {@code GameRenderer.pick(Entity camera, double blockInteractionRange,
+ * double entityInteractionRange, float partialTicks)}；26.3 把它整段搬到了客户端玩家身上：
+ * {@code GameRenderer} 里已经<b>没有</b> {@code pick}，取而代之的是
+ * {@link LocalPlayer#raycastHitResult(float, net.minecraft.world.entity.Entity)}（只读
+ * {@code Minecraft.pick(float)} 一处调用它，调用后把结果写进 {@code Minecraft.hitResult} 与
+ * {@code crosshairPickEntity}），原静态实现在本地私有方法 {@code LocalPlayer.pick(Entity,D,D,F)} 里。
+ *
+ * <p>这里注入的是<b>外层</b>的 {@code raycastHitResult} 而不是那个私有静态 {@code pick}，原因有两层：
+ * 一是它就是 26.3 里"本机玩家的准星射线"唯一入口，注入点不依赖随时可能被重构的私有辅助方法；
+ * 二是手里拿着带 {@code ATTACK_RANGE} 组件的物品时，{@code raycastHitResult} 会在某些分支<b>根本不调用</b>
+ * {@code pick}——只挂 {@code pick} 会让第 1 条在那种情况下失效，正是本节开头要修的那个 bug。
+ *
+ * <p>改写权限也随之变化：1.21.1 靠注入参数拿到两个交互距离，26.3 改从玩家身上读
+ * {@link net.minecraft.world.entity.player.Player#blockInteractionRange()}（同一份逻辑，只是换了来源）。
+ * 另外因为目标方法<b>是实例方法</b>，{@code (LocalPlayer)(Object)this} 就是本机玩家，
+ * 不必再走 {@code Minecraft.getInstance().player} 并做空判。
  */
-@Mixin(GameRenderer.class)
+@Mixin(LocalPlayer.class)
 public abstract class CabinCrosshairMixin {
     /**
      * 准星求值返回后统一裁决：先按"门开着就让射线穿出轿厢"改写，否则一律命中本厢。
      *
+     * @param tickDelta 本帧的插值进度，用于取玩家视线方向
      * @param camera 相机跟随的实体（参数类型是 {@code Entity}，不是 {@code Camera}——写错类型会让
      *               Mixin 在 APPLY 阶段抛 InvalidInjectionException 并使客户端启动崩溃）
-     * @param blockInteractionRange 方块交互距离（格）：穿透时用它做方块射线长度
      * @param cir 原版返回值回调
      */
-    @Inject(method = "pick(Lnet/minecraft/world/entity/Entity;DDF)Lnet/minecraft/world/phys/HitResult;", at = @At("RETURN"), cancellable = true)
-    private void easyelevator$resolveCabinCrosshair(net.minecraft.world.entity.Entity camera, double blockInteractionRange,
-                                                    double entityInteractionRange, float tickDelta,
+    @Inject(method = "raycastHitResult(FLnet/minecraft/world/entity/Entity;)Lnet/minecraft/world/phys/HitResult;",
+            at = @At("RETURN"), cancellable = true)
+    private void easyelevator$resolveCabinCrosshair(float tickDelta, net.minecraft.world.entity.Entity camera,
                                                     CallbackInfoReturnable<HitResult> cir) {
-        Minecraft client = Minecraft.getInstance();
-        LocalPlayer player = client.player;
-        if (player == null || client.level == null) return;
+        LocalPlayer player = (LocalPlayer) (Object) this;
         if (player.isSpectator()) return;
         // 找到"自己正坐在里面"的那辆轿厢（正常至多一辆）；站在外面的玩家完全不受影响，
         // 因此"空手右键开门面板、潜行右键回收"照旧由原版准星决定。
         AABB around = player.getBoundingBox().inflate(4);
         AbstractCabinEntity own = null;
-        for (AbstractCabinEntity cabin : client.level.getEntitiesOfClass(AbstractCabinEntity.class, around, c -> true))
+        for (AbstractCabinEntity cabin : player.level().getEntitiesOfClass(AbstractCabinEntity.class, around, c -> true))
             if (cabin.containsPassenger(player)) { own = cabin; break; }
         if (own == null) return;
         // 穿透分支：门完全打开，且原结果就是"命中所处的这辆轿厢"。
@@ -79,10 +94,11 @@ public abstract class CabinCrosshairMixin {
         // 于是那条判据恒为假、穿透永远取消，表现为"从轿厢里怎么都打不到电梯门"。
         // 用"距离"就没有这个问题：门框/门楣在轿厢外壳之外，天然更近或更远都算得清楚。
         if (doorsOpen(own) && cir.getReturnValue() instanceof EntityHitResult hit && hit.getEntity() == own) {
+            double blockInteractionRange = player.blockInteractionRange();
             Vec3 eye = camera.getEyePosition();
             Vec3 look = player.getViewVector(tickDelta);
             Vec3 end = eye.add(look.scale(blockInteractionRange));
-            HitResult through = client.level.clip(new ClipContext(eye, end,
+            HitResult through = player.level().clip(new ClipContext(eye, end,
                     ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
             if (through instanceof BlockHitResult blockHit) {
                 // 同一条射线打到**静态舱体**（地板/顶板/侧壁/背板，不含轿厢自己的门扇）的最近距离。

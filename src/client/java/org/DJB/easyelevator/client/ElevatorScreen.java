@@ -1,7 +1,8 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.GuiGraphics;
+// 26.3：GuiGraphics 变成 GuiGraphicsExtractor（屏幕先抽取绘制状态，再由渲染层统一绘制）。
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -300,22 +301,26 @@ public class ElevatorScreen extends Screen {
      * 渲染面板：全屏浅遮罩 → 面板底与外框 → 表头条（标题、楼层指示牌、状态/页数）→ 按键区凹底
      * → 页脚条与分隔线 → 最后交给 super 画按钮。
      *
+     * <p>26.3：Screen.render 改名为 extractRenderState，renderBackground 改名为 extractBackground，
+     * drawString / drawCenteredString 改名为 text / centeredText；坐标、颜色、绘制顺序一字未改。
+     * 缩放用 pose() 也从 PoseStack 换成了 Matrix3x2fStack（pushMatrix/popMatrix，二维平移与缩放各少一个 z 参数）。
+     *
      * @param mouseX 鼠标 X（像素，屏幕坐标）
      * @param mouseY 鼠标 Y（像素，屏幕坐标）
      * @param delta 渲染插值系数（0..1）
      * 副作用：仅绘制；状态行每帧读取轿厢的 Y（格）与 Phase，因此会随服务端同步刷新。
      */
     @Override
-    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
         var cabin=cabin();
         updateDoorButtons(cabin); // 可用性跟着轿厢状态走，因此放在 render 里每帧刷新
-        renderBackground(context,mouseX,mouseY,delta);
+        extractBackground(context,mouseX,mouseY,delta);
         // 面板底：不透明深色（早先用半透明时，井道与轿厢内面板的红字会从底下透出来）+ 1 像素外框。
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
         drawFrame(context,panelLeft,panelTop,panelWidth,panelHeight,BORDER_COLOR);
         // 表头条：比面板底略亮，让"显示区"和按键区分开；标题居中放最上，其下是状态与页数两行。
         context.fill(panelLeft+1,panelTop+1,panelLeft+panelWidth-1,panelTop+HEADER,BAR_COLOR);
-        context.drawCenteredString(font,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
+        context.centeredText(font,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
         context.fill(panelLeft+1,panelTop+HEADER,panelLeft+panelWidth-1,panelTop+HEADER+1,LINE_COLOR);
         // 楼层指示牌：内凹的"数码管"（外框 → 面板 → 最深底），层号放大 2 倍、只显示数字本身。
         int floor=cabin==null?0:cabin.floorNumber();
@@ -323,15 +328,15 @@ public class ElevatorScreen extends Screen {
         context.fill(plaqueLeft,plaqueTop,plaqueLeft+PLAQUE_W,plaqueTop+PLAQUE_H,BORDER_COLOR);
         context.fill(plaqueLeft+1,plaqueTop+1,plaqueLeft+PLAQUE_W-1,plaqueTop+PLAQUE_H-1,0xFF2B3542);
         context.fill(plaqueLeft+2,plaqueTop+2,plaqueLeft+PLAQUE_W-2,plaqueTop+PLAQUE_H-2,FLOOR_PANEL_COLOR);
-        context.pose().pushPose();
+        context.pose().pushMatrix();
         // 以指示牌中心为原点放大；缩放后仍按"文字宽度的一半"定位，保证严格居中。
-        context.pose().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-font.lineHeight*FLOOR_TEXT_SCALE)/2f,0);
-        context.pose().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
+        context.pose().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-font.lineHeight*FLOOR_TEXT_SCALE)/2f);
+        context.pose().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE);
         // 不带阴影：带阴影时字会整体偏右下 1 像素，放大 2 倍后看起来就是"没居中"。
         // 深底红字本身对比度足够，这里用手动居中的无阴影绘制。
         Component floorLabel=Component.literal(FloorIndicator.format(floor));
-        context.drawString(font,floorLabel,-font.width(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
-        context.pose().popPose();
+        context.text(font,floorLabel,-font.width(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
+        context.pose().popMatrix();
         // 右侧剩余区域的水平中心：状态行与页数行都对齐到这里，避免和左边放大的指示牌挤在一起。
         int textCenter=plaqueLeft+PLAQUE_W+(panelLeft+panelWidth-PADDING-plaqueLeft-PLAQUE_W)/2;
         if(cabin!=null) {
@@ -339,10 +344,10 @@ public class ElevatorScreen extends Screen {
             // Locale.ROOT 保证小数点是 '.'、阶段键不随语言环境变形（翻译键必须与语言文件一致）。
             Component status=Component.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
                     Component.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
-            context.drawCenteredString(font,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
+            context.centeredText(font,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
         }
         // 页数行：总站点数、当前页（1 基）、总页数。
-        context.drawCenteredString(font,
+        context.centeredText(font,
                 Component.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
         // 按键区凹底：只比按键块四周各宽 WELL_PAD 像素，把数字键"托"起来——横贯整块面板会多出一条突兀的黑带。
         // 只填充、不再给凹底描边：描边会和上下两条分隔线贴在一起，看起来像叠了三层线，显得臃肿。
@@ -351,9 +356,9 @@ public class ElevatorScreen extends Screen {
         // 页脚条：与表头同色，放翻页/开门/关门/完成。
         context.fill(panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
         context.fill(panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
-        if(stops.isEmpty()) context.drawCenteredString(font,Component.translatable("screen.easyelevator.empty"),
+        if(stops.isEmpty()) context.centeredText(font,Component.translatable("screen.easyelevator.empty"),
                 panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFC27A);
-        super.render(context,mouseX,mouseY,delta);
+        super.extractRenderState(context,mouseX,mouseY,delta);
     }
 
     /**
@@ -366,20 +371,20 @@ public class ElevatorScreen extends Screen {
      * @param h 高（像素）
      * @param color 颜色（ARGB）
      */
-    private static void drawFrame(GuiGraphics context,int x,int y,int w,int h,int color) {
+    private static void drawFrame(GuiGraphicsExtractor context,int x,int y,int w,int h,int color) {
         context.fill(x,y,x+w,y+1,color);
         context.fill(x,y+h-1,x+w,y+h,color);
         context.fill(x,y,x+1,y+h,color);
         context.fill(x+w-1,y,x+w,y+h,color);
     }
 
-    /** 覆盖原版背景绘制。副作用：仅用一次全屏浅色叠加代替原版模糊着色器。
-     * 为什么这样做：Screen.renderBackground 会应用原版模糊（blur）后处理，会把世界连同文字一起糊掉；
+    /** 覆盖原版背景绘制（26.3：renderBackground -> extractBackground）。副作用：仅用一次全屏浅色叠加代替原版模糊着色器。
+     * 为什么这样做：原版的背景抽取会应用模糊（blur）后处理，会把世界连同文字一起糊掉；
      * 这里只做 0x18000000 的淡黑叠加，既压暗背景又保持世界与文字清晰，也不会二次模糊已经画好的标题/状态文字。
      */
     @Override
-    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
-        // Screen.renderBackground applies the vanilla blur shader. A light tint keeps the world
+    public void extractBackground(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
+        // The vanilla background extraction applies the blur shader. A light tint keeps the world
         // and its text sharp, and cannot blur title/status text already drawn by another pass.
         context.fill(0,0,width,height,0x18000000);
     }
@@ -427,19 +432,24 @@ public class ElevatorScreen extends Screen {
         /**
          * 画按钮本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>26.3：子类钩子从 {@code AbstractWidget.renderWidget} 改成
+         * {@code AbstractButton.extractContents}（原 {@code renderWidget} 那条链已被 final 的
+         * {@code extractWidgetRenderState} 接管）；画字从 {@code drawCenteredString} 改成
+         * {@code centeredText}，同样是"x 为文字中心、带阴影"的语义，坐标与颜色一字未改。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
+        protected void extractContents(GuiGraphicsExtractor ctx,int mouseX,int mouseY,float delta) {
             boolean lit=active&&(isHovered()||isFocused());
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             ctx.fill(x,y,x+w,y+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
             ctx.fill(x+1,y+1,x+w-1,y+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
             if(h>6) ctx.fill(x+2,y+2,x+w-2,y+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
-            ctx.drawCenteredString(font,getMessage(),x+w/2,y+(h-8)/2,
+            ctx.centeredText(font,getMessage(),x+w/2,y+(h-8)/2,
                     !active?0xFF7C8896:lit?0xFFFFFFFF:0xD5E2EE);
         }
     }
@@ -450,7 +460,7 @@ public class ElevatorScreen extends Screen {
      * <p>配色优先级：悬停/键盘聚焦（点亮为白色）&gt; 已加入停靠计划（红色）&gt; 轿厢当前停靠层（绿色）&gt; 普通灰色。
      * 为什么不用原版 ButtonWidget 的默认外观：原版按钮是 200×20 的三段式贴图，压成 20×20 后左右边框挤在一起，
      * 看起来像被压扁的长条；这里直接画描边 + 底色 + 数字，更接近真实面板上的按键，以后想换成贴图也只需要
-     * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link Button} 提供。
+     * 改本类的 {@link #extractContents}。点击音效、悬停提示、键盘朗读等行为仍由 {@link Button} 提供。
      */
     private final class StationButton extends Button {
         private final String label;  // 楼层编号文本（基准层 1、其上 2,3…、其下 B1,B2…），同时是按钮上的字
@@ -484,13 +494,16 @@ public class ElevatorScreen extends Screen {
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>26.3：钩子由 {@code renderWidget} 改名为 {@code extractContents}（见 {@link FlatButton} 的说明）；
+         * 画字由 {@code drawCenteredString} 改名为 {@code centeredText}，坐标与颜色一字未改。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
+        protected void extractContents(GuiGraphicsExtractor ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=isPlanned(), current=isCurrentFloor();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面，形成按键的立体感；配色与面板深色底协调。
@@ -498,7 +511,7 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:current?0xFF7FCB93:0xFF5A6A7B);
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
-            ctx.drawCenteredString(font,getMessage(),x+s/2,y+(s-8)/2,
+            ctx.centeredText(font,getMessage(),x+s/2,y+(s-8)/2,
                     lit?0xFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xC3D5E8);
         }
 

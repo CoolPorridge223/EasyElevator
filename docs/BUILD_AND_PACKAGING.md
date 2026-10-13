@@ -69,7 +69,7 @@ $env:JAVA_HOME = 'C:\Java\jdk-21'
 .\gradlew.bat build
 ```
 
-`--version` 中检查 Gradle=8.14.3，Launcher JVM/Daemon JVM 使用 Java 21。`build` 会编译客户端与服务端、处理资源，再生成重映射的正式 JAR。
+`--version` 中检查 Gradle=9.6.0；Launcher JVM/Daemon JVM 跑 JDK 21 或 25 都可以（只负责启动 Gradle），**编译与运行 Minecraft 用的是工具链指定的 JDK 25**。`build` 会编译客户端与服务端、处理资源，再直接产出正式 JAR——本线用非 remap 的 Loom，没有 `remapJar` 这一步（见第 9.1 节）。
 
 **关于测试**：java 插件自动创建的 `test` / `testClasses` 任务已在 `build.gradle` 里关闭（工程内没有 `src/test`），所以 `build` 只做编译与打包。工程内**没有常驻自动化测试**，验收一律进游戏按 [人工验收清单](TESTING.md) 逐项确认。
 
@@ -244,6 +244,28 @@ submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEX
 | --- | --- |
 | `net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup` | **模块被移除**，替代是 `fabric-creative-tab-api-v1`：`net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab` |
 | `PayloadTypeRegistry.playS2C()` / `playC2S()` | `clientboundPlay()` / `serverboundPlay()` |
+| `EntityRendererRegistry.register(...)` / `BlockEntityRendererRegistry.register(...)`（`fabric-rendering-v1`） | **已标记 `@Deprecated`**（0.162.0 起），改用原版 `EntityRenderers.register(...)` / `BlockEntityRenderers.register(...)` |
+
+> **渲染器注册为什么要改回原版**：26.3 里原版这两个 `register` 是 `private static`，但
+> `fabric-transitive-access-wideners-v1` 用 `transitive-accessible` 把它们放开了，因此模组可以直接调用。
+> 两种写法写的是**同一份可变注册表**（`EntityRenderers.PROVIDERS`，一个 `Object2ObjectOpenHashMap`），
+> 差别只在于 Fabric 的旧接口会先把条目缓存在自己的 map 里、等原版初始化时再灌进去。调用时机不变：
+> 都必须在渲染调度器创建之前，即在客户端模组初始化（`onInitializeClient`）里。
+
+### 9.6 数据包：战利品表格式
+
+26.3 把条目上的**条件从"列表"改成了"单数 + 组合条件"**，`data/<ns>/loot_table/`（单数目录）里的文件都要跟着改：
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `"conditions": [ {...}, {...} ]` | `"condition": { ... }`（**只有一个条件**）；多个条件要写成 `{"type":"minecraft:all_of","terms":[...]}` |
+| `{"condition":"minecraft:block_state_property","block":…,"properties":{…}}` | `{"type":"minecraft:match_block","blocks":…,"state":{…}}` |
+| `{"condition":"minecraft:survives_explosion"}` | `{"type":"minecraft:survives_explosion"}`（`condition` 键本身也改名为 `type`） |
+
+> **踩坑方式**：这一处编译期查不出来，也不会让服务端起不来——错误的战利品表只在**解析时**打一条
+> `Couldn't parse loot table …` 警告，然后该方块掉落物为空（破坏方块什么都不掉）。验收时随手挖一块
+> 轨道/呼叫按钮确认有掉落即可。用**不在注册表里的 id** 去离线试解析会得到误导性的报错，判断"表本身对不对"
+> 要看真实服务端日志，或把表里的命名空间换成原版方块后再解析。
 
 ## 10. 26.3 的 GUI 也是 extract 架构（客户端迁移的第二处结构性变化）
 
@@ -269,5 +291,33 @@ submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEX
 `net/minecraft/client/gui/components/`（例如 `AbstractButton`、`Button`、`AbstractContainerScreen`
 及其子类），把"控件怎么抽取内容"这一段骨架抄过来，再把本模组原来的绘制内容填进去。
 这与第 8 节的渲染器改写是同一个思路：**先把数据抽进状态/抽取器，再统一提交**。
+
+## 11. Mixin 注入点：编译期完全查不出来的那一类
+
+混入的 `method = "…"` 是**字符串**（`@Shadow` 的字段名同理），编译期只当它是一段文本：目标方法被改名、搬家或
+改了参数表，`gradlew build` 依然会成功。而两个 `*.mixins.json` 都是 `required: true` + `defaultRequire: 1`，
+注入落空的**唯一**表现是运行时抛 `InvalidInjectionException` → 客户端/服务端启动直接崩。
+
+因此**升级 MC 版本后必须逐个核对注入点**。本线 1.21.1 → 26.3 实际踩到的一处：
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `GameRenderer.pick(Entity, double, double, float)`（准星射线，返回 `HitResult`） | `GameRenderer` 里**已经没有** `pick`；准星射线搬到本机玩家身上：`LocalPlayer.raycastHitResult(float, Entity)`，原静态实现变成私有的 `LocalPlayer.pick(Entity, double, double, float)` |
+
+> **怎么选新的注入点**：`raycastHitResult` 是 26.3 里"本机玩家准星射线"的**唯一入口**
+> （只有 `Minecraft.pick(float)` 调它，结果随后写进 `Minecraft.hitResult` 与 `crosshairPickEntity`）；
+> 而私有静态 `pick` 在"手里拿着带 `ATTACK_RANGE` 组件的物品"时**可能根本不被调用**。
+> 移植时先挂外层入口，别挂内部辅助方法——否则会少覆盖一条分支，而且下次重构还会再断一次。
+
+**核对方法**（本工程不依赖反编译源码，用 `javap` 查真实 26.3 jar 即可）：
+
+```powershell
+# .mc263 / .mc263client 是把 26.3 的服务端 / 客户端 jar 解开的目录
+javap -p -classpath ".mc263client;.mc263" net.minecraft.client.player.LocalPlayer | Select-String raycastHitResult
+```
+
+> 客户端类只在 `.mc263client` 里、公共类只在 `.mc263` 里，**两个目录都要放进 `-classpath`**
+> （Windows 用 `;` 分隔），否则会报 `找不到符号`。
+> 需要看方法体时加 `-c`（本线就是靠 `javap -c` 读出 `Minecraft.pick` 到底把结果写进哪个字段的）。
 
 日志与人工验收见 [TESTING.md](TESTING.md)。

@@ -1,7 +1,9 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.GuiGraphics;
+// 26.3：GuiGraphics 变成 GuiGraphicsExtractor，屏幕改为"先抽取绘制状态、由渲染层统一绘制"，
+// 因此原来所有 render*/blit/fill 的入口都落在 GuiGraphicsExtractor 上。
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -91,6 +93,9 @@ public class LandingDoorScreen extends Screen {
     /**
      * 绘制面板：深色底 + 标题 + 站点高度提示，再交给 super 画按钮。
      *
+     * <p>26.3：Screen.render 改名为 extractRenderState（本类只"抽取"要画的东西，真正的绘制由原版渲染层完成），
+     * 画文字也从 drawCenteredString 改名为 centeredText；坐标与颜色一字未改，外观保持原样。
+     *
      * @param context 绘制上下文
      * @param mouseX 鼠标 X（像素）
      * @param mouseY 鼠标 Y（像素）
@@ -98,24 +103,25 @@ public class LandingDoorScreen extends Screen {
      * 副作用：仅绘制；不读世界、不发包。
      */
     @Override
-    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
-        renderBackground(context,mouseX,mouseY,delta);
+    public void extractRenderState(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
+        extractBackground(context,mouseX,mouseY,delta);
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
-        context.drawCenteredString(font,title,width/2,panelTop-PADDING-10,0xFFFFFF);
-        context.drawCenteredString(font,
+        context.centeredText(font,title,width/2,panelTop-PADDING-10,0xFFFFFF);
+        context.centeredText(font,
                 Component.translatable("screen.easyelevator.hall_station",station.getY()),
                 width/2,panelTop+panelHeight+PADDING-4,HINT_COLOR);
-        super.render(context,mouseX,mouseY,delta);
+        super.extractRenderState(context,mouseX,mouseY,delta);
     }
 
-    /** 覆盖原版背景绘制：只用一次淡黑叠加代替模糊着色器，保持世界画面清晰（与选站面板一致）。
+    /** 覆盖原版背景绘制（26.3：renderBackground -> extractBackground）：只用一次淡黑叠加代替模糊着色器，
+     * 保持世界画面清晰（与选站面板一致）。
      * @param context 绘制上下文
      * @param mouseX 鼠标 X（像素）
      * @param mouseY 鼠标 Y（像素）
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
+    public void extractBackground(GuiGraphicsExtractor context,int mouseX,int mouseY,float delta) {
         context.fill(0,0,width,height,0x18000000);
     }
 
@@ -153,20 +159,23 @@ public class LandingDoorScreen extends Screen {
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>26.3：AbstractWidget.renderWidget 改名为 extractContents（AbstractButton 里 renderWidget 那条链
+         * 已被 final 的 extractWidgetRenderState 接管），参数含义不变。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
+        protected void extractContents(GuiGraphicsExtractor ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=pending.getAsBoolean();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；配色与选站面板的楼层键同源。
             ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:0xFF6B7A88);
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:0xFF212A36);
-            ctx.drawCenteredString(font,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
+            ctx.centeredText(font,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本（方向或"关闭"）。 */

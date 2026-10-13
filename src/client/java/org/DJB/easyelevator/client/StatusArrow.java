@@ -1,6 +1,6 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.Util;
+import net.minecraft.util.Util; // 26.3：工具类从 net.minecraft.Util 搬到了 net.minecraft.util.Util
 import org.DJB.easyelevator.logic.ElevatorStatus;
 
 /**

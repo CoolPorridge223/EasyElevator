@@ -2,7 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "org.DJB.easyelevator.mixin.client",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": ["ClientPlayerEntityMixin", "CabinCrosshairMixin"],
   "injectors": {
     "defaultRequire": 1
