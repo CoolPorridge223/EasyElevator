@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.0+1.20.1** ｜ Minecraft **1.20.1** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.92.12+1.20.1** ｜ Java **17**
+> 适用模组版本 **2.3.1+1.20.1** ｜ Minecraft **1.20.1** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.92.12+1.20.1** ｜ Java **17**
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -1269,7 +1269,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（Gradle 进程用 JDK 21/17 均可，编译与运行 MC 1.20.1 用 toolchain 指定的 JDK 17；成品 `build/libs/easyelevator-2.3.0+1.20.1.jar`） |
+| 构建 | `.\gradlew.bat build`（Gradle 进程用 JDK 21/17 均可，编译与运行 MC 1.20.1 用 toolchain 指定的 JDK 17；成品 `build/libs/easyelevator-2.3.1+1.20.1.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
 | 开发服务端（几十秒内验证 Mixin 注入、注册表与数据包加载） | `.\gradlew.bat runServer` |

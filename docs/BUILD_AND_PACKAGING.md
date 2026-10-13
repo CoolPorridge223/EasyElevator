@@ -1,6 +1,6 @@
 # EasyElevator 工程构建与打包说明书
 
-适用版本：模组 **2.3.0+1.20.1**，Minecraft **1.20.1**，Fabric Loader **0.19.5**，Java **17**。
+适用版本：模组 **2.3.1+1.20.1**，Minecraft **1.20.1**，Fabric Loader **0.19.5**，Java **17**。
 
 > 面向**构建与发布**：环境固定项、命令速查、两种交付包、IDEA 设置与常见故障。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
@@ -86,7 +86,8 @@ $env:JAVA_HOME = '<JDK21>'
 | 清理旧构建输出 | `.\gradlew.bat clean` |
 
 2.3.0 给重载轿厢加上 **27 格货舱**：动态载客上限（空舱 20 人 → 满载 6 人）、随货量长出的最多 6 个可碰撞货箱，
-以及一个原版容器菜单；重载轿厢的速度同时改为普通梯的 2/3。正式 JAR 的 `fabric.mod.json` 版本应为 `2.3.0+1.20.1`；
+以及一个原版容器菜单；重载轿厢的速度同时改为普通梯的 2/3。2.3.1 修掉"乘客偶尔陷进支撑面"的一帧抖动
+（脚底恰好贴面时实体碰撞查询会漏掉那块面）。正式 JAR 的 `fabric.mod.json` 版本应为 `2.3.1+1.20.1`；
 发布包与工程包也必须包含本版文档。
 
 改完代码后的验收方式见 [人工验收清单](TESTING.md)：需要真人进游戏逐项确认，没有可替代的离线检查。
@@ -100,13 +101,13 @@ $env:JAVA_HOME = '<JDK21>'
 .\gradlew.bat packageRelease
 ```
 
-输出 `build/distributions/easyelevator-2.3.0+1.20.1-release.zip`，内容：
+输出 `build/distributions/easyelevator-2.3.1+1.20.1-release.zip`，内容：
 
-- `mods/easyelevator-2.3.0+1.20.1.jar`：玩家安装的模组。
-- `sources/easyelevator-2.3.0+1.20.1-sources.jar`：阅读用源码，不是安装文件。
+- `mods/easyelevator-2.3.1+1.20.1.jar`：玩家安装的模组。
+- `sources/easyelevator-2.3.1+1.20.1-sources.jar`：阅读用源码，不是安装文件。
 - `docs/`、README.md、LICENSE.txt：搭建、参数、替换素材、验收说明。
 
-也可以直接取 `build/libs/easyelevator-2.3.0+1.20.1.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
+也可以直接取 `build/libs/easyelevator-2.3.1+1.20.1.jar`。不要发布 `build/devlibs` 中未重映射的开发 JAR。
 
 在 Minecraft **1.20.1 + Fabric Loader 0.19.5** 的实例中，将正式 JAR 和匹配 1.20.1 的 Fabric API（0.92.x）放入 `mods`。**2.2.0 改变了乘客移动协议（`rider_move`），服务端与所有客户端必须一起升级，不能混用 2.1.x 或更早版本的客户端。** **2.3.0 又新增了货舱菜单类型（`easyelevator:cargo`）与重载轿厢的同步字段，同样要求服务端与所有客户端一起升级**：旧客户端既看不到货箱、算不出动态限载，也无法同步货舱槽位。更新时删除 mods 中旧版 EasyElevator JAR，避免重复加载。
 
@@ -119,7 +120,7 @@ $env:JAVA_HOME = '<JDK21>'
 .\gradlew.bat packageProject
 ```
 
-输出 `build/distributions/easyelevator-2.3.0+1.20.1-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本与 Gradle Wrapper 及其 JAR。
+输出 `build/distributions/easyelevator-2.3.1+1.20.1-project.zip`。顶层目录是 EasyElevator，包含源代码、模型/贴图/语言资源、文档、构建脚本与 Gradle Wrapper 及其 JAR。
 
 打包采用白名单（`build.gradle` 的 `packageProject`），只收录 `src/**`、`docs/**`、Gradle Wrapper、构建脚本与顶层说明文件，不包含 `.idea`、`.gradle`、`.gradle-user-home`、`build`、日志或其他游戏存档。**不要手工压缩整个工程目录**，否则会带入体积很大的缓存。工程 ZIP 不含下载依赖；对方首次构建仍需联网。
 
@@ -218,7 +219,7 @@ v.vertex(m.peek().getPositionMatrix(), ...).color(color).texture(u,v)
 > **自查办法**（每次移植完、打包后各做一次，几秒钟）：
 > ```powershell
 > # 编译产物里每个 mixin 选择器都必须有对应的 method_xxxx 条目，缺条目就是名字不存在
-> & jar xf build/libs/easyelevator-2.3.0+1.20.1.jar easyelevator-refmap.json client-easyelevator-refmap.json
+> & jar xf build/libs/easyelevator-2.3.1+1.20.1.jar easyelevator-refmap.json client-easyelevator-refmap.json
 > Get-Content client-easyelevator-refmap.json, easyelevator-refmap.json -Raw
 > ```
 > 更可靠的验证是真正把客户端跑起来：**通用 Mixin 只在服务端跑 `runServer` 就能覆盖，
