@@ -16,3 +16,9 @@ client-errors.txt
 .cpl.txt
 .entity.txt
 .*-scratch.txt
+# 子代理排查时留下的临时清单/日志
+*-263-*.txt
+entity.txt
+gr.txt
+lp.txt
+smoke-263.txt
