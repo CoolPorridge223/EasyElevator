@@ -1,12 +1,12 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.api.ClientModInitializer;
-import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.minecraft.client.gui.screens.MenuScreens;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
@@ -51,14 +51,14 @@ public class EasyelevatorClient implements ClientModInitializer {
     public void onInitializeClient() {
         // 货舱菜单的界面绑定：菜单类型（服务端）在 Easyelevator.CARGO_SCREEN 注册，
         // "用哪个 Screen 画它"只能在客户端注册（专用服务器不加载任何 Screen 类）。
-        HandledScreens.register(Easyelevator.CARGO_SCREEN, CargoScreen::new);
+        MenuScreens.register(Easyelevator.CARGO_SCREEN, CargoScreen::new);
         // 启动时把"这个进程能不能弹 AWT 窗口"记一行：headless 时门设置面板的"选择文件"会改走系统原生对话框，
         // 出问题时这一行能直接说明走的是哪条路（免去再猜一轮）。
         LOGGER.info("File dialog backend: {}", FilePicker.isHeadless() ? "native (AWT is headless)" : "AWT");
         // 拖拽上传：给窗口挂 GLFW 的 drop 回调。这是自定义到站音效最方便的入口——不依赖 AWT，
         // 也不依赖 PowerShell 弹窗（见 FileDropHandler）。
         // 这里只是第一次尝试；窗口若还没就绪，下面的刻回调会继续重试（挂上后函数自己就变成空操作）。
-        FileDropHandler.register(net.minecraft.client.MinecraftClient.getInstance());
+        FileDropHandler.register(net.minecraft.client.Minecraft.getInstance());
         // 四种轿厢（普通 / 高速 / 观光 / 重载）共用同一个渲染器：泛型参数取共同的父类，
         // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙、重载型号的重载内饰与双灯补光）
         // 由实体自身的 glassWalls() / heavyDuty() 决定，而不是按实体类型分支——将来加型号时这里只需要多一行注册。
@@ -78,7 +78,7 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 因此不会给没开面板的乘客弹出界面；面板里据此把已加入计划的站点标红。
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.PanelState.ID,(payload,context)->
                 context.client().execute(()->{
-                    if(context.client().currentScreen instanceof ElevatorScreen screen && screen.entityId()==payload.entityId())
+                    if(context.client().screen instanceof ElevatorScreen screen && screen.entityId()==payload.entityId())
                         screen.applyState(payload.planned(),payload.baseFloorY());
                 }));
         // 厅外呼叫面板：右键楼层门时服务端下发 OpenHallPanel，这里直接开界面（内容全部来自包，不信任本地状态）。
@@ -87,7 +87,7 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 点亮状态刷新（登记成功 / 轿厢到站清扫 / 门被拆）：只更新"已经为这个站点打开的面板"，绝不会主动弹界面。
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.HallPanelState.ID,(payload,context)->
                 context.client().execute(()->{
-                    if(context.client().currentScreen instanceof LandingDoorScreen screen && screen.station().equals(payload.station()))
+                    if(context.client().screen instanceof LandingDoorScreen screen && screen.station().equals(payload.station()))
                         screen.applyState(payload.up(),payload.down());
                 }));
         // 门专属设置面板（潜行右键楼层门时服务端下发 OpenDoorPanel）：打开或刷新界面。
@@ -95,7 +95,7 @@ public class EasyelevatorClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.OpenDoorPanel.ID,(payload,context)->
                 context.client().execute(()->{
                     // 已经为同一扇门开着面板时只刷新内容：避免每次点按钮都重建界面（会打断连点）。
-                    if(context.client().currentScreen instanceof DoorSoundScreen screen && screen.station().equals(payload.station()))
+                    if(context.client().screen instanceof DoorSoundScreen screen && screen.station().equals(payload.station()))
                         screen.apply(payload.enabled(),payload.choice(),payload.baseFloor(),payload.preview());
                     // 广播只刷新：不能抢走旁观者的游戏画面、背包或另一扇门的面板。
                     else if (payload.open()) context.client().setScreen(new DoorSoundScreen(payload));
@@ -116,7 +116,7 @@ public class EasyelevatorClient implements ClientModInitializer {
             // 进服后的第一刻：把磁盘上的运行时资源包接上，并向服务端索取本机缺少的自定义音频。
             // 只做一次。注意 DoorSoundPack.ensureReady 内部会先比对内容指纹——音频没变时
             // <b>不会</b>重载资源，因此进存档这条最常走的路不会闪红屏（见该方法的说明）。
-            if(!doorSoundPackChecked && client.world!=null) {
+            if(!doorSoundPackChecked && client.level!=null) {
                 doorSoundPackChecked=true;
                 DoorSoundPack.ensureReady(client);
                 // 请服务端把它现有的全部门槽音频发过来；服务端逐条回 DoorSoundData，本机按需存盘并重载。
@@ -132,16 +132,16 @@ public class EasyelevatorClient implements ClientModInitializer {
             // 先清理：实体卸载/移除或 Phase 离开 MOVING（到站、受阻、卡在门口）就停止运行声并移出映射；
             // removeIf 内返回 true 表示删除该条目，与 stop() 一样都是幂等的。
             sounds.entrySet().removeIf(entry->{
-                var e=client.world==null?null:client.world.getEntityById(entry.getKey());
+                var e=client.level==null?null:client.level.getEntity(entry.getKey());
                 if(!(e instanceof AbstractCabinEntity cabin) || cabin.isRemoved() || cabin.phase()!=ElevatorController.Phase.MOVING) {
                     client.getSoundManager().stop(entry.getValue());return true;
                 }
                 return false;
             });
-            if(client.world==null) return;
+            if(client.level==null) return;
             // 再补充：只为本刻处于 MOVING 的轿厢建立音效；computeIfAbsent 保证不会重复播放同一条循环。
             // 用实体 id 而非实体引用作键，避免实体对象在卸载后被旧映射长期持有。
-            for(var e:client.world.getEntities()) if(e instanceof AbstractCabinEntity cabin && cabin.phase()==ElevatorController.Phase.MOVING)
+            for(var e:client.level.entitiesForRendering()) if(e instanceof AbstractCabinEntity cabin && cabin.phase()==ElevatorController.Phase.MOVING)
                 sounds.computeIfAbsent(cabin.getId(),id->{var sound=new CabinRunningSound(cabin);client.getSoundManager().play(sound);return sound;});
         });
         // 断线：停止所有循环音效并清空映射，同时丢弃 CabinMotion 的插值历史与本地乘客标记，

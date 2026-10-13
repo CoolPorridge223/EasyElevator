@@ -1,7 +1,7 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.resources.ResourceLocation;
 
 /**
  * 原版无色玻璃：直接复用 Minecraft 贴图（也能跟随资源包替换）。
@@ -14,8 +14,8 @@ import net.minecraft.util.Identifier;
 public final class GlassLayers {
     private GlassLayers() { }
 
-    public static final Identifier CABIN_TEXTURE=Identifier.ofVanilla("textures/block/glass.png");
-    public static final Identifier DOOR_TEXTURE=CABIN_TEXTURE;
-    public static final RenderLayer CABIN=RenderLayer.getEntityCutout(CABIN_TEXTURE);
-    public static final RenderLayer DOOR=CABIN;
+    public static final ResourceLocation CABIN_TEXTURE=ResourceLocation.withDefaultNamespace("textures/block/glass.png");
+    public static final ResourceLocation DOOR_TEXTURE=CABIN_TEXTURE;
+    public static final RenderType CABIN=RenderType.entityCutout(CABIN_TEXTURE);
+    public static final RenderType DOOR=CABIN;
 }

@@ -1,9 +1,9 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.render.OverlayTexture;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.Box;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.world.phys.AABB;
 
 /**
  * 长方体网格的共享绘制工具：轿厢（{@link CabinRenderer}）与楼层门门扇
@@ -39,7 +39,7 @@ public final class BoxMesh {
     /**
      * 以两个对角点（单位：格）生成一个只有外表面的长方体，六个面共用一个颜色，整面铺满贴图。
      *
-     * <p>不做剔除/合并：调用方决定用带背面剔除还是 NoCull 的 {@link net.minecraft.client.render.RenderLayer}。
+     * <p>不做剔除/合并：调用方决定用带背面剔除还是 NoCull 的 {@link net.minecraft.client.renderer.RenderType}。
      * 轿厢外壳由有厚度的长方体组成，其朝厢内的表面也有独立几何；可使用带剔除的层。
      *
      * @param m 渲染矩阵栈
@@ -53,7 +53,7 @@ public final class BoxMesh {
      * @param light 打包后的光照值
      * @param color 顶点颜色（ARGB）
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color) {
+    public static void cuboid(PoseStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color) {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,FULL_UV);
     }
 
@@ -61,9 +61,9 @@ public final class BoxMesh {
      * 同上，但六个面都只取 {@code uv} 指定的那一小块贴图。
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}，归一化 0..1；v0 在面的上沿
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int)
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int)
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv) {
+    public static void cuboid(PoseStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv) {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,new float[][]{uv,uv,uv,uv,uv,uv});
     }
 
@@ -75,9 +75,9 @@ public final class BoxMesh {
      * 0.2 格厚的断面会把整块门板贴图挤进去，看起来像"贴图被截断/掐了一下"。
      *
      * @param faceUv 六个面的 UV 矩形，顺序与下面提交面的顺序一致：{-Z, +Z, -X, +X, +Y, -Y}
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[])
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int, float[])
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv) {
+    public static void cuboid(PoseStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv) {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,faceUv,AMBIENT);
     }
 
@@ -86,21 +86,21 @@ public final class BoxMesh {
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}，归一化 0..1
      * @param lighting 逐面光照采样器；轿厢内饰传 {@code CabinLighting} 的补光实现，不需要补光的几何传 {@link #AMBIENT}
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv,FaceLighting lighting) {
+    public static void cuboid(PoseStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[] uv,FaceLighting lighting) {
         cuboid(m,v,x,y,z,X,Y,Z,light,color,new float[][]{uv,uv,uv,uv,uv,uv},lighting);
     }
 
     /**
-     * 以 {@link Box}（单位：格）绘制长方体，逐面指定贴图并逐面改写光照。
+     * 以 {@link AABB}（单位：格）绘制长方体，逐面指定贴图并逐面改写光照。
      *
      * @param box 长方体，坐标单位格
      * @param uv 六个面的 UV 矩形，顺序为 {-Z, +Z, -X, +X, +Y, -Y}
      * @param lighting 逐面光照采样器；不需要补光的几何传 {@link #AMBIENT}
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][], FaceLighting)
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color,float[][] uv,FaceLighting lighting) {
+    public static void cuboid(PoseStack m,VertexConsumer v,AABB box,int light,int color,float[][] uv,FaceLighting lighting) {
         cuboid(m,v,(float)box.minX,(float)box.minY,(float)box.minZ,(float)box.maxX,(float)box.maxY,(float)box.maxZ,light,color,uv,lighting);
     }
 
@@ -122,7 +122,7 @@ public final class BoxMesh {
      * @param faceUv 六个面的 UV 矩形，顺序为 {-Z, +Z, -X, +X, +Y, -Y}
      * @param lighting 逐面光照采样器；不需要补光的几何传 {@link #AMBIENT}
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv,FaceLighting lighting) {
+    public static void cuboid(PoseStack m,VertexConsumer v,float x,float y,float z,float X,float Y,float Z,int light,int color,float[][] faceUv,FaceLighting lighting) {
         float cx=(x+X)/2,cy=(y+Y)/2,cz=(z+Z)/2;
         quad(m,v,lighting.sample(light,cx,cy,z,0,0,-1),color,0,0,-1,new float[]{X,y,z,x,y,z,x,Y,z,X,Y,z},faceUv[0]);
         quad(m,v,lighting.sample(light,cx,cy,Z,0,0,1),color,0,0,1,new float[]{x,y,Z,X,y,Z,X,Y,Z,x,Y,Z},faceUv[1]);
@@ -133,7 +133,7 @@ public final class BoxMesh {
     }
 
     /**
-     * 以 {@link Box}（单位：格）绘制长方体，整面铺满贴图。
+     * 以 {@link AABB}（单位：格）绘制长方体，整面铺满贴图。
      *
      * @param m 渲染矩阵栈
      * @param v 顶点消费者
@@ -141,27 +141,27 @@ public final class BoxMesh {
      * @param light 打包后的光照值
      * @param color 顶点颜色（ARGB）
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color) {
+    public static void cuboid(PoseStack m,VertexConsumer v,AABB box,int light,int color) {
         cuboid(m,v,box,light,color,FULL_UV);
     }
 
     /**
-     * 以 {@link Box}（单位：格）绘制长方体，只取 {@code uv} 指定的贴图分格。
+     * 以 {@link AABB}（单位：格）绘制长方体，只取 {@code uv} 指定的贴图分格。
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[])
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int, float[])
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color,float[] uv) {
+    public static void cuboid(PoseStack m,VertexConsumer v,AABB box,int light,int color,float[] uv) {
         cuboid(m,v,(float)box.minX,(float)box.minY,(float)box.minZ,(float)box.maxX,(float)box.maxY,(float)box.maxZ,light,color,uv);
     }
 
     /**
-     * 以 {@link Box}（单位：格）绘制长方体，逐面指定贴图分格。
+     * 以 {@link AABB}（单位：格）绘制长方体，逐面指定贴图分格。
      *
      * @param faceUv 六个面的 UV 矩形，顺序为 {-Z, +Z, -X, +X, +Y, -Y}
-     * @see #cuboid(MatrixStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][])
+     * @see #cuboid(PoseStack, VertexConsumer, float, float, float, float, float, float, int, int, float[][])
      */
-    public static void cuboid(MatrixStack m,VertexConsumer v,Box box,int light,int color,float[][] faceUv) {
+    public static void cuboid(PoseStack m,VertexConsumer v,AABB box,int light,int color,float[][] faceUv) {
         cuboid(m,v,(float)box.minX,(float)box.minY,(float)box.minZ,(float)box.maxX,(float)box.maxY,(float)box.maxZ,light,color,faceUv);
     }
 
@@ -186,7 +186,7 @@ public final class BoxMesh {
      * @param light 打包后的光照值
      * @param color 顶点颜色（ARGB）
      */
-    public static void planeX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color) {
+    public static void planeX(PoseStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color) {
         planeX(m,v,x,y1,z1,y2,z2,light,color,FULL_UV);
     }
 
@@ -194,15 +194,15 @@ public final class BoxMesh {
      * 同上，只取 {@code uv} 指定的贴图分格。
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}
-     * @see #planeX(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     * @see #planeX(PoseStack, VertexConsumer, float, float, float, float, float, int, int)
      */
-    public static void planeX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
+    public static void planeX(PoseStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
         float lo=Math.min(y1,y2),hi=Math.max(y1,y2),a=Math.min(z1,z2),b=Math.max(z1,z2);
         quad(m,v,light,color,-1,0,0,new float[]{x,lo,a,x,lo,b,x,hi,b,x,hi,a},uv);
     }
 
     /** Two opposite faces for a culling layer: each visible side has its own correct normal. */
-    public static void glassX(MatrixStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
+    public static void glassX(PoseStack m,VertexConsumer v,float x,float y1,float z1,float y2,float z2,int light,int color,float[] uv) {
         planeX(m,v,x,y1,z1,y2,z2,light,color,uv);
         float lo=Math.min(y1,y2),hi=Math.max(y1,y2),a=Math.min(z1,z2),b=Math.max(z1,z2);
         quad(m,v,light,color,1,0,0,new float[]{x,lo,b,x,lo,a,x,hi,a,x,hi,b},new float[]{uv[2],uv[1],uv[0],uv[3]});
@@ -220,9 +220,9 @@ public final class BoxMesh {
      * @param z2 矩形在 Z 方向的另一角
      * @param light 打包后的光照值
      * @param color 顶点颜色（ARGB）
-     * @see #planeX(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     * @see #planeX(PoseStack, VertexConsumer, float, float, float, float, float, int, int)
      */
-    public static void planeY(MatrixStack m,VertexConsumer v,float y,float x1,float z1,float x2,float z2,int light,int color) {
+    public static void planeY(PoseStack m,VertexConsumer v,float y,float x1,float z1,float x2,float z2,int light,int color) {
         planeY(m,v,y,x1,z1,x2,z2,light,color,FULL_UV);
     }
 
@@ -230,9 +230,9 @@ public final class BoxMesh {
      * 同上，只取 {@code uv} 指定的贴图分格。
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}
-     * @see #planeY(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     * @see #planeY(PoseStack, VertexConsumer, float, float, float, float, float, int, int)
      */
-    public static void planeY(MatrixStack m,VertexConsumer v,float y,float x1,float z1,float x2,float z2,int light,int color,float[] uv) {
+    public static void planeY(PoseStack m,VertexConsumer v,float y,float x1,float z1,float x2,float z2,int light,int color,float[] uv) {
         float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(z1,z2),b=Math.max(z1,z2);
         quad(m,v,light,color,0,-1,0,new float[]{lo,y,a,hi,y,a,hi,y,b,lo,y,b},uv);
     }
@@ -249,9 +249,9 @@ public final class BoxMesh {
      * @param y2 矩形在 Y 方向的另一角
      * @param light 打包后的光照值
      * @param color 顶点颜色（ARGB）
-     * @see #planeX(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     * @see #planeX(PoseStack, VertexConsumer, float, float, float, float, float, int, int)
      */
-    public static void planeZ(MatrixStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color) {
+    public static void planeZ(PoseStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color) {
         planeZ(m,v,z,x1,y1,x2,y2,light,color,FULL_UV);
     }
 
@@ -259,16 +259,16 @@ public final class BoxMesh {
      * 同上，只取 {@code uv} 指定的贴图分格。
      *
      * @param uv UV 矩形 {u0,v0,u1,v1}
-     * @see #planeZ(MatrixStack, VertexConsumer, float, float, float, float, float, int, int)
+     * @see #planeZ(PoseStack, VertexConsumer, float, float, float, float, float, int, int)
      */
-    public static void planeZ(MatrixStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color,float[] uv) {
+    public static void planeZ(PoseStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color,float[] uv) {
         float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(y1,y2),b=Math.max(y1,y2);
         // 顶点从 +X 侧起步：只有这样 u 才沿 X 增长、v 沿 Y 向下，贴图在竖直面上不会转 90°。
         quad(m,v,light,color,0,0,-1,new float[]{hi,a,z,lo,a,z,lo,b,z,hi,b,z},uv);
     }
 
     /** As glassX, with no double blending or reversed normals when viewed from inside. */
-    public static void glassZ(MatrixStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color,float[] uv) {
+    public static void glassZ(PoseStack m,VertexConsumer v,float z,float x1,float y1,float x2,float y2,int light,int color,float[] uv) {
         planeZ(m,v,z,x1,y1,x2,y2,light,color,uv);
         float lo=Math.min(x1,x2),hi=Math.max(x1,x2),a=Math.min(y1,y2),b=Math.max(y1,y2);
         quad(m,v,light,color,0,0,1,new float[]{lo,a,z,hi,a,z,hi,b,z,lo,b,z},new float[]{uv[2],uv[1],uv[0],uv[3]});
@@ -291,9 +291,9 @@ public final class BoxMesh {
      * @param p 顶点数组：每 3 个 float 一组（单位：格），按外侧逆时针顺序给出
      * @param uv UV 矩形 {u0,v0,u1,v1}，归一化 0..1
      */
-    private static void quad(MatrixStack m,VertexConsumer v,int light,int color,float nx,float ny,float nz,float[] p,float[] uv) {
+    private static void quad(PoseStack m,VertexConsumer v,int light,int color,float nx,float ny,float nz,float[] p,float[] uv) {
         float u0=uv[0],v0=uv[1],u1=uv[2],v1=uv[3];
-        for(int i=0;i<4;i++) v.vertex(m.peek(),p[i*3],p[i*3+1],p[i*3+2]).color(color)
-                .texture(i==1||i==2?u1:u0,i>=2?v0:v1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(m.peek(),nx,ny,nz);
+        for(int i=0;i<4;i++) v.addVertex(m.last(),p[i*3],p[i*3+1],p[i*3+2]).setColor(color)
+                .setUv(i==1||i==2?u1:u0,i>=2?v0:v1).setOverlay(OverlayTexture.NO_OVERLAY).setLight(light).setNormal(m.last(),nx,ny,nz);
     }
 }

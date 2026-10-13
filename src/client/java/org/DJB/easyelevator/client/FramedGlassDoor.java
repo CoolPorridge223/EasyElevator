@@ -1,8 +1,8 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.Box;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.world.phys.AABB;
 import org.DJB.easyelevator.logic.FramedLeaf;
 import org.DJB.easyelevator.logic.LeafUv;
 
@@ -40,12 +40,12 @@ public final class FramedGlassDoor {
      * @param window 门扇大面的 UV 矩形（与门扇本体用的是同一个窗口）
      * @param light 打包后的光照值
      */
-    public static void frame(MatrixStack matrices,VertexConsumer out,Box leaf,boolean alongZ,float[] window,int light) {
+    public static void frame(PoseStack matrices,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light) {
         frame(matrices,out,leaf,alongZ,window,light,BoxMesh.AMBIENT);
     }
 
     /** Cabin frames may receive interior lamp shading; landing frames use ambient light. */
-    public static void frame(MatrixStack matrices,VertexConsumer out,Box leaf,boolean alongZ,float[] window,int light,BoxMesh.FaceLighting lighting) {
+    public static void frame(PoseStack matrices,VertexConsumer out,AABB leaf,boolean alongZ,float[] window,int light,BoxMesh.FaceLighting lighting) {
         double w0=alongZ?leaf.minX:leaf.minZ, w1=alongZ?leaf.maxX:leaf.maxZ;
         double y0=leaf.minY, y1=leaf.maxY;
         double[] l=FramedLeaf.layout(w0,w1,y0,y1);
@@ -76,7 +76,7 @@ public final class FramedGlassDoor {
      * @param light 打包后的光照值
      * @param color 顶点颜色（含 alpha，决定通透度）
      */
-    public static void glass(MatrixStack matrices,VertexConsumer glass,Box leaf,boolean alongZ,float[] cell,int light,int color) {
+    public static void glass(PoseStack matrices,VertexConsumer glass,AABB leaf,boolean alongZ,float[] cell,int light,int color) {
         double w0=alongZ?leaf.minX:leaf.minZ, w1=alongZ?leaf.maxX:leaf.maxZ;
         double[] l=FramedLeaf.layout(w0,w1,leaf.minY,leaf.maxY);
         if(!FramedLeaf.glassVisible(l)) return; // 全开时门扇宽度归零，没有玻璃可画
@@ -105,7 +105,7 @@ public final class FramedGlassDoor {
      * @param uv 这块边框大面的 UV 矩形
      * @param light 打包后的光照值
      */
-    private static void bar(MatrixStack matrices,VertexConsumer out,boolean alongZ,double a0,double a1,
+    private static void bar(PoseStack matrices,VertexConsumer out,boolean alongZ,double a0,double a1,
                             double y0,double y1,double t0,double t1,float[] uv,int light,BoxMesh.FaceLighting lighting) {
         if(a1-a0<=1e-6||y1-y0<=1e-6||t1-t0<=1e-6) return; // 退化件直接跳过，避免反向长方体
         float[][] faceUv=LeafUv.slabUv(uv,LeafUv.centredThinSlice(uv),alongZ);

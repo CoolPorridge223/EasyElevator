@@ -1,16 +1,16 @@
 package org.DJB.easyelevator.block;
 
 import com.mojang.serialization.MapCodec;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.HorizontalFacingBlock;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.item.ItemPlacementContext;
-import net.minecraft.state.StateManager;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.BlockView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * 电梯轨道方块：同 X/Z 上垂直连续、朝向一致的一列轨道构成一条线路 line。
@@ -22,23 +22,23 @@ import net.minecraft.world.BlockView;
  * <p>关键不变量：整列轨道的 FACING 必须一致，否则 {@link org.DJB.easyelevator.logic.ElevatorLine}
  * 会在朝向不一致处断开线路（表现为断轨造成的 BLOCKED 暂停）。
  */
-public class ElevatorRailBlock extends HorizontalFacingBlock {
+public class ElevatorRailBlock extends HorizontalDirectionalBlock {
 
     /** 方块编解码器，仅用于数据生成与序列化；方块本身无额外构造参数。 */
-    public static final MapCodec<ElevatorRailBlock> CODEC = createCodec(ElevatorRailBlock::new);
+    public static final MapCodec<ElevatorRailBlock> CODEC = simpleCodec(ElevatorRailBlock::new);
 
     /**
      * @param settings 方块设置（硬度、是否不透明等），由注册处给出
      */
-    public ElevatorRailBlock(Settings settings) {
+    public ElevatorRailBlock(Properties settings) {
         super(settings);
         // HorizontalFacingBlock 声明了 FACING，默认状态必须显式赋值，否则读取状态属性会抛异常
-        setDefaultState(getStateManager().getDefaultState().with(FACING, Direction.NORTH));
+        registerDefaultState(getStateDefinition().any().setValue(FACING, Direction.NORTH));
     }
 
     /** @return 本方块对应的编解码器 */
     @Override
-    public MapCodec<ElevatorRailBlock> getCodec() { return CODEC; }
+    public MapCodec<ElevatorRailBlock> codec() { return CODEC; }
 
     /**
      * 只注册 FACING：轨道不是原版 AbstractRailBlock，没有 shape/waterlogged/powered，
@@ -47,7 +47,7 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
      * @param builder 状态属性构建器
      */
     @Override
-    protected void appendProperties(StateManager.Builder<Block, BlockState> builder) { builder.add(FACING); }
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) { builder.add(FACING); }
 
     /**
      * 推导放置后的朝向。
@@ -61,12 +61,12 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
      * @return 带最终 FACING 的方块状态
      */
     @Override
-    public BlockState getPlacementState(ItemPlacementContext ctx) {
+    public BlockState getStateForPlacement(BlockPlaceContext ctx) {
         for (Direction d : new Direction[]{Direction.DOWN, Direction.UP}) {
-            BlockState adjacent = ctx.getWorld().getBlockState(ctx.getBlockPos().offset(d));
-            if (adjacent.isOf(this)) return getDefaultState().with(FACING, adjacent.get(FACING));
+            BlockState adjacent = ctx.getLevel().getBlockState(ctx.getClickedPos().relative(d));
+            if (adjacent.is(this)) return defaultBlockState().setValue(FACING, adjacent.getValue(FACING));
         }
-        return getDefaultState().with(FACING, ctx.getHorizontalPlayerFacing().getOpposite());
+        return defaultBlockState().setValue(FACING, ctx.getHorizontalDirection().getOpposite());
     }
 
     /**
@@ -86,7 +86,7 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
      * @return 轮廓体素形状，单位为格
      */
     @Override
-    protected VoxelShape getOutlineShape(BlockState s, BlockView w, BlockPos p, ShapeContext c) {
-        return Block.createCuboidShape(3, 0, 3, 13, 16, 13);
+    protected VoxelShape getShape(BlockState s, BlockGetter w, BlockPos p, CollisionContext c) {
+        return Block.box(3, 0, 3, 13, 16, 13);
     }
 }

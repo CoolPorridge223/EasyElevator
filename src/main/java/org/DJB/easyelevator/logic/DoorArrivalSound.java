@@ -1,6 +1,6 @@
 package org.DJB.easyelevator.logic;
 
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.CompoundTag;
 
 /**
  * 单扇楼层门的<b>到站提示音</b>设置：一个开关 + 一个音效选项。
@@ -78,7 +78,7 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      *
      * @param nbt 目标 NBT
      */
-    public void writeNbt(NbtCompound nbt) {
+    public void writeNbt(CompoundTag nbt) {
         if (!enabled) nbt.putBoolean(KEY_ENABLED, false);
         if (choice != DoorSounds.DEFAULT) nbt.putInt(KEY_CHOICE, choice);
     }
@@ -98,7 +98,7 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      * @param nbt 存档 NBT
      * @return 读回的设置（序号已由构造器夹进合法区间）
      */
-    public static DoorArrivalSound readNbt(NbtCompound nbt) {
+    public static DoorArrivalSound readNbt(CompoundTag nbt) {
         boolean enabled = nbt.contains(KEY_ENABLED) ? nbt.getBoolean(KEY_ENABLED) : DEFAULT.enabled();
         return new DoorArrivalSound(enabled, nbt.getInt(KEY_CHOICE));
     }

@@ -1,7 +1,5 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.resource.ResourcePackManager;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
 import org.DJB.easyelevator.logic.DoorSounds;
@@ -19,6 +17,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
+import net.minecraft.client.Minecraft;
+import net.minecraft.server.packs.repository.PackRepository;
 
 /**
  * 运行时资源包：把玩家上传的到站音效 {@code .ogg} 变成一条原版能播放的音效。
@@ -201,7 +201,7 @@ public final class DoorSoundPack {
      *
      * @param client 客户端实例
      */
-    public static void ensureReady(MinecraftClient client) {
+    public static void ensureReady(Minecraft client) {
         if (client == null) return;
         boolean contentChanged = rebuild();
         boolean justEnabled = enable(client);
@@ -223,23 +223,23 @@ public final class DoorSoundPack {
      * @param client 客户端实例
      * @return true 表示本次调用"刚刚把它启用起来"（调用方需要重载一次让它生效）
      */
-    public static boolean enable(MinecraftClient client) {
+    public static boolean enable(Minecraft client) {
         if (client == null) return false;
         Path dir = packDir();
         // 包不存在（没有音频、或还没建过）就什么都不做：更不该为了一个空目录去折腾资源包管理器
         if (dir == null || !Files.isRegularFile(dir.resolve("pack.mcmeta"))) return false;
         try {
-            ResourcePackManager manager = client.getResourcePackManager();
-            manager.scanPacks(); // 重新扫目录：包是运行时创建的，不扫就看不见它
+            PackRepository manager = client.getResourcePackRepository();
+            manager.reload(); // 重新扫目录：包是运行时创建的，不扫就看不见它
             if (alreadyEnabled(manager)) return false; // 已经启用（上一次会话记住的选择）
             // 还没启用：按扫描出来的真实 profile id 启用。原版目录包的 id 前缀是实现细节，
             // 所以先从扫描结果里认出本包，认不出再退回两种约定写法。
             String id = profileId(manager);
             if (id == null) {
-                manager.enable("file/" + PACK_DIR_NAME);
-                if (!alreadyEnabled(manager)) manager.enable(PACK_DIR_NAME);
+                manager.addPack("file/" + PACK_DIR_NAME);
+                if (!alreadyEnabled(manager)) manager.addPack(PACK_DIR_NAME);
             } else {
-                manager.enable(id);
+                manager.addPack(id);
             }
             if (!alreadyEnabled(manager)) {
                 // 启用失败（包格式被判为不兼容、目录被别的东西占名）：记一条日志并返回，
@@ -267,10 +267,10 @@ public final class DoorSoundPack {
      *
      * @param client 客户端实例
      */
-    private static void persistEnabled(MinecraftClient client) {
+    private static void persistEnabled(Minecraft client) {
         try {
-            client.options.refreshResourcePacks(client.getResourcePackManager());
-            client.options.write();
+            client.options.updateResourcePacks(client.getResourcePackRepository());
+            client.options.save();
         } catch (RuntimeException e) {
             LOGGER.warn("Could not persist the enabled resource pack list", e);
         }
@@ -284,10 +284,10 @@ public final class DoorSoundPack {
      *
      * @param client 客户端实例
      */
-    public static void forceReload(MinecraftClient client) {
+    public static void forceReload(Minecraft client) {
         if (client == null) return;
         try {
-            client.reloadResources();
+            client.reloadResourcePacks();
         } catch (RuntimeException e) {
             LOGGER.warn("Failed to reload resources after changing the elevator arrival sounds", e);
         }
@@ -351,18 +351,18 @@ public final class DoorSoundPack {
      * @return 指纹文件 {@code <gameDir>/config/easyelevator/sound_pack.sha1}；客户端尚未就绪时返回 null
      */
     private static Path fingerprintFile() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.runDirectory == null) return null;
-        return client.runDirectory.toPath().resolve("config").resolve(Easyelevator.MOD_ID).resolve(FINGERPRINT_FILE);
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.gameDirectory == null) return null;
+        return client.gameDirectory.toPath().resolve("config").resolve(Easyelevator.MOD_ID).resolve(FINGERPRINT_FILE);
     }
 
     /**
      * @return 资源包目录 {@code <gameDir>/resourcepacks/easyelevator_custom}；客户端尚未就绪时返回 null
      */
     private static Path packDir() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.runDirectory == null) return null;
-        return client.runDirectory.toPath().resolve("resourcepacks").resolve(PACK_DIR_NAME);
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.gameDirectory == null) return null;
+        return client.gameDirectory.toPath().resolve("resourcepacks").resolve(PACK_DIR_NAME);
     }
 
     /**
@@ -371,8 +371,8 @@ public final class DoorSoundPack {
      * @param manager 资源包管理器（已 {@code scanPacks} 过）
      * @return 本包的 id；没有这个包时返回 null
      */
-    private static String profileId(ResourcePackManager manager) {
-        for (String id : manager.getIds()) {
+    private static String profileId(PackRepository manager) {
+        for (String id : manager.getAvailableIds()) {
             if (id.equals(PACK_DIR_NAME) || id.endsWith("/" + PACK_DIR_NAME)) return id;
         }
         return null;
@@ -382,8 +382,8 @@ public final class DoorSoundPack {
      * @param manager 资源包管理器
      * @return 本包当前是否已经在"已启用"列表里
      */
-    private static boolean alreadyEnabled(ResourcePackManager manager) {
-        for (String id : manager.getEnabledIds()) {
+    private static boolean alreadyEnabled(PackRepository manager) {
+        for (String id : manager.getSelectedIds()) {
             if (id.equals(PACK_DIR_NAME) || id.endsWith("/" + PACK_DIR_NAME)) return true;
         }
         return false;

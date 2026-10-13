@@ -1,16 +1,14 @@
 package org.DJB.easyelevator.mixin.client;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.spongepowered.asm.mixin.Mixin;
@@ -56,19 +54,19 @@ public abstract class CabinCrosshairMixin {
      * @param blockInteractionRange 方块交互距离（格）：穿透时用它做方块射线长度
      * @param cir 原版返回值回调
      */
-    @Inject(method = "findCrosshairTarget", at = @At("RETURN"), cancellable = true)
-    private void easyelevator$resolveCabinCrosshair(net.minecraft.entity.Entity camera, double blockInteractionRange,
+    @Inject(method = "pick(Lnet/minecraft/world/entity/Entity;DDF)Lnet/minecraft/world/phys/HitResult;", at = @At("RETURN"), cancellable = true)
+    private void easyelevator$resolveCabinCrosshair(net.minecraft.world.entity.Entity camera, double blockInteractionRange,
                                                     double entityInteractionRange, float tickDelta,
                                                     CallbackInfoReturnable<HitResult> cir) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client.player;
-        if (player == null || client.world == null) return;
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client.player;
+        if (player == null || client.level == null) return;
         if (player.isSpectator()) return;
         // 找到"自己正坐在里面"的那辆轿厢（正常至多一辆）；站在外面的玩家完全不受影响，
         // 因此"空手右键开门面板、潜行右键回收"照旧由原版准星决定。
-        Box around = player.getBoundingBox().expand(4);
+        AABB around = player.getBoundingBox().inflate(4);
         AbstractCabinEntity own = null;
-        for (AbstractCabinEntity cabin : client.world.getEntitiesByClass(AbstractCabinEntity.class, around, c -> true))
+        for (AbstractCabinEntity cabin : client.level.getEntitiesOfClass(AbstractCabinEntity.class, around, c -> true))
             if (cabin.containsPassenger(player)) { own = cabin; break; }
         if (own == null) return;
         // 穿透分支：门完全打开，且原结果就是"命中所处的这辆轿厢"。
@@ -81,21 +79,21 @@ public abstract class CabinCrosshairMixin {
         // 于是那条判据恒为假、穿透永远取消，表现为"从轿厢里怎么都打不到电梯门"。
         // 用"距离"就没有这个问题：门框/门楣在轿厢外壳之外，天然更近或更远都算得清楚。
         if (doorsOpen(own) && cir.getReturnValue() instanceof EntityHitResult hit && hit.getEntity() == own) {
-            Vec3d eye = camera.getEyePos();
-            Vec3d look = player.getRotationVec(tickDelta);
-            Vec3d end = eye.add(look.multiply(blockInteractionRange));
-            HitResult through = client.world.raycast(new RaycastContext(eye, end,
-                    RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, player));
+            Vec3 eye = camera.getEyePosition();
+            Vec3 look = player.getViewVector(tickDelta);
+            Vec3 end = eye.add(look.scale(blockInteractionRange));
+            HitResult through = client.level.clip(new ClipContext(eye, end,
+                    ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
             if (through instanceof BlockHitResult blockHit) {
                 // 同一条射线打到**静态舱体**（地板/顶板/侧壁/背板，不含轿厢自己的门扇）的最近距离。
                 // 用静态舱体而不是完整碰撞集合：乘客朝门外看时射线必然先命中轿厢门扇，
                 // 把门扇算作遮挡物就会让"从轿厢里打楼层门"永远失败（楼层门在门扇之外）。
                 double shellDist = Double.MAX_VALUE;
-                for (Box part : own.collisionBoxesStatic()) {
-                    var shellHit = part.raycast(eye, end);
+                for (AABB part : own.collisionBoxesStatic()) {
+                    var shellHit = part.clip(eye, end);
                     if (shellHit.isPresent()) shellDist = Math.min(shellDist, eye.distanceTo(shellHit.get()));
                 }
-                if (eye.distanceTo(blockHit.getPos()) < shellDist) {
+                if (eye.distanceTo(blockHit.getLocation()) < shellDist) {
                     cir.setReturnValue(blockHit); // 方块在舱壁之前 → 射线确实穿出去了
                     return;
                 }

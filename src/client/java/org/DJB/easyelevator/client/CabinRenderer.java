@@ -1,18 +1,18 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.Frustum;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.entity.EntityRenderer;
-import net.minecraft.client.render.entity.EntityRendererFactory;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.RotationAxis;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.entity.PowerfulCabinEntity;
@@ -79,7 +79,7 @@ import org.DJB.easyelevator.logic.*;
  *       正反两面各有正确法线并剔除背面，不会整片遮挡之后绘制的楼层门。</li>
  * </ul>
  *
- * <p><b>绘制顺序的硬性约束（改动本类前必读）</b>：实体渲染拿到的 {@link VertexConsumerProvider} 是
+ * <p><b>绘制顺序的硬性约束（改动本类前必读）</b>：实体渲染拿到的 {@link MultiBufferSource} 是
  * 原版的 {@code VertexConsumerProvider.Immediate}，它<b>每层只有一个正在构建的缓冲</b>；一旦通过
  * {@code getBuffer} 切换到另一层，上一层就会被结束（end）并提交，之前拿到的 {@link VertexConsumer}
  * 立刻失效。此后继续往那个旧引用写顶点会直接抛
@@ -88,7 +88,7 @@ import org.DJB.easyelevator.logic.*;
  * <ol>
  *   <li>不透明层 {@code getEntityCutout}：舱体外壳、全部内饰、门口门槛与门楣、两扇滑门、
  *       背面的抱轨导靴、重载型号的货箱（观光型号只画地板 / 顶板 / 四根角柱与内饰、压条、分格）；</li>
- *   <li>文字层（由 {@link TextRenderer#draw} 内部取用）：面板上的楼层号与运行状态，
+ *   <li>文字层（由 {@link Font#drawInBatch} 内部取用）：面板上的楼层号与运行状态，
  *       以及重载型号后壁载重铭牌上的限载人数；</li>
  *   <li>玻璃层 {@code getEntityCutout}（仅观光型号）：玻璃墙与玻璃门，必须最后画，画完不再写任何顶点。</li>
  * </ol>
@@ -97,7 +97,7 @@ import org.DJB.easyelevator.logic.*;
  * @param <T> 轿厢实体类型；四种型号共用一个渲染器实例类型，故取共同父类 {@link AbstractCabinEntity}
  */
 public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer<T> {
-    private static final Identifier TEXTURE=Easyelevator.id("textures/entity/cabin.png");
+    private static final ResourceLocation TEXTURE=Easyelevator.id("textures/entity/cabin.png");
     /**
      * 材质图集的分格。<b>枚举顺序 = 图集格号</b>：四行依次是"舱壁系 / 顶棚系 / 面板系 / 饰面系"，
      * 与 {@code textures/entity/cabin.png} 的 4x4 格位顺序一一对应——改那张图集就必须同步改这里的顺序，
@@ -303,9 +303,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     /**
      * 两行的<b>行心</b>（格，相对面板中心，正 = 向上）：箭头在上（+0.08）、楼层号在下（-0.10）。
      *
-     * <p>为什么不直接写字体坐标：{@link TextRenderer#draw} 的 y 参数是这一行的<b>顶边</b>而不是中心，
+     * <p>为什么不直接写字体坐标：{@link Font#drawInBatch} 的 y 参数是这一行的<b>顶边</b>而不是中心，
      * 而 {@code scale(scale,-scale,scale)} 之后局部 +Y 朝世界下方，于是顶边 = 面板中心 - 行心 - 半个字高
-     * （字高 = {@link TextRenderer#fontHeight} 像素）。这里由 {@link #drawCabinLine} 换算，
+     * （字高 = {@link Font#lineHeight} 像素）。这里由 {@link #drawCabinLine} 换算，
      * 因此改字号不会再把字推出显示窗——1.5.6 之前楼层号就是照抄像素偏移，结果掉到窗外压在按钮上。
      */
     private static final float ARROW_LINE_CENTRE=.08f, FLOOR_LINE_CENTRE=-.10f;
@@ -325,9 +325,9 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     private static final int GLASS_DOOR_COLOR=0xFFFFFFFF;
 
     /** 构造渲染器。副作用：仅保存 EntityRenderer 上下文（光源、模型加载器等）。 */
-    public CabinRenderer(EntityRendererFactory.Context context) { super(context); }
+    public CabinRenderer(EntityRendererProvider.Context context) { super(context); }
     /** 返回轿厢整张图集贴图；用于外壳与内饰；玻璃单独使用原版贴图。 */
-    @Override public Identifier getTexture(T entity) { return TEXTURE; }
+    @Override public ResourceLocation getTextureLocation(T entity) { return TEXTURE; }
 
     /**
      * 视锥剔除：用"向后加宽一格"的包围盒判定，容纳背面的抱轨导靴（见 {@link #drawGuideShoes}）。
@@ -346,7 +346,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      */
     @Override
     public boolean shouldRender(T entity,Frustum frustum,double x,double y,double z) {
-        return entity.shouldRender(x,y,z)&&frustum.isVisible(entity.getBoundingBox().expand(0,0,1));
+        return entity.shouldRender(x,y,z)&&frustum.isVisible(entity.getBoundingBox().inflate(0,0,1));
     }
 
     /** 绘制轿厢。只读服务端同步的状态（FACING、DOOR 的插值门进度），不修改任何游戏状态。
@@ -357,13 +357,13 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param buffers 顶点缓冲提供者
      * @param light 打包后的光照值
      */
-    @Override public void render(T cabin,float yaw,float delta,MatrixStack matrices,VertexConsumerProvider buffers,int light) {
-        matrices.push();
+    @Override public void render(T cabin,float yaw,float delta,PoseStack matrices,MultiBufferSource buffers,int light) {
+        matrices.pushPose();
         // 只叠加"视觉 Y - 原版插值 Y"的差值（单位：格）：实体自身坐标仍由原版渲染管线提供，
         // 因此碰撞箱、判定与服务端位置完全不受影响，这里只做外观平滑。
-        matrices.translate(0, CabinMotion.renderY(cabin,delta) - net.minecraft.util.math.MathHelper.lerp(delta,cabin.lastRenderY,cabin.getY()), 0);
+        matrices.translate(0, CabinMotion.renderY(cabin,delta) - net.minecraft.util.Mth.lerp(delta,cabin.yOld,cabin.getY()), 0);
         // 把 +Z 面转到 FACING 指定的轿厢门方向（NORTH=+Z，EAST=+X，WEST=-X，SOUTH=+Z 默认 0 度）。
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(cabin.facing()) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
+        matrices.mulPose(Axis.YP.rotationDegrees(switch(cabin.facing()) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
         // 正面 Z（格）与门板背面 Z（格），均取自 ElevatorParameters，保证与楼层门框的间隙一致。
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
@@ -379,7 +379,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         BoxMesh.FaceLighting surface=heavyDuty?CabinLighting::surfaceTwoLamps:CabinLighting::surface;
         // 第 1 组（不透明层）：外壳 + 内饰 + 门口构件 + 门扇。所有不透明几何必须在这一组里画完，
         // 否则切到文字层之后再回头写它就会触发 Not building!（见类注释）
-        VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutout(TEXTURE));
+        VertexConsumer out=buffers.getBuffer(RenderType.entityCutout(TEXTURE));
         if(cabin.glassWalls()) {
             // 观光舱：结构与内饰 + 玻璃双面（门板同样是不透明的钢框门，见 drawDoors）
             drawObservationShell(matrices,out,front,doorBack,light);
@@ -401,7 +401,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
             drawObservationGlass(matrices,buffers,front,doorBack,light);
             drawGlassDoorPanes(matrices,buffers,light,open); // 门扇中间的玻璃（与玻璃墙同一层）
         }
-        matrices.pop(); super.render(cabin,yaw,delta,matrices,buffers,light);
+        matrices.popPose(); super.render(cabin,yaw,delta,matrices,buffers,light);
     }
 
     /**
@@ -433,21 +433,21 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param out 不透明顶点缓冲
      * @param light 打包后的光照值
      */
-    private static void drawCargo(PowerfulCabinEntity cabin, MatrixStack matrices, VertexConsumer out, int light) {
+    private static void drawCargo(PowerfulCabinEntity cabin, PoseStack matrices, VertexConsumer out, int light) {
         float[] woodCell = MATERIAL_UV[Mat.WALL.ordinal()], bandCell = MATERIAL_UV[Mat.TRIM.ordinal()];
         float[][] wood = {woodCell,woodCell,woodCell,woodCell,woodCell,woodCell};
         float[][] band = {bandCell,bandCell,bandCell,bandCell,bandCell,bandCell};
         for(int i=0;i<cabin.cargoCrates();i++) {
             var b=CargoLoad.box(i);
-            BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(b.minX,b.minY,b.minZ+.006,
+            BoxMesh.cuboid(matrices,out,new net.minecraft.world.phys.AABB(b.minX,b.minY,b.minZ+.006,
                     b.maxX,b.maxY-.003,b.maxZ-.006),light,0xFFC28C50,wood,CabinLighting::surfaceTwoLamps);
             // 钢带套在木箱上，略内嵌，外表面留出深度差，避免共面闪烁。
             for(double fraction:new double[]{.22,.78}) {
                 double sx=b.minX+(b.maxX-b.minX)*fraction;
-                BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(sx-.025,b.minY,b.minZ,
+                BoxMesh.cuboid(matrices,out,new net.minecraft.world.phys.AABB(sx-.025,b.minY,b.minZ,
                         sx+.025,b.maxY,b.maxZ),light,0xFF536477,band,CabinLighting::surfaceTwoLamps);
             }
-            BoxMesh.cuboid(matrices,out,new net.minecraft.util.math.Box(b.minX+.27,b.minY+.14,b.maxZ-.008,
+            BoxMesh.cuboid(matrices,out,new net.minecraft.world.phys.AABB(b.minX+.27,b.minY+.14,b.maxZ-.008,
                     b.minX+.37,b.minY+.25,b.maxZ),light,0xFFE7CF8A,band,CabinLighting::surfaceTwoLamps);
         }
     }
@@ -475,7 +475,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *                重载舱传 {@link CabinLighting#surfaceTwoLamps}（门口还有第二盏顶灯）。灯罩行不受它影响，
      *                自发光行一律走 {@link CabinLighting#lamp}。
      */
-    private static void drawParts(MatrixStack matrices,VertexConsumer out,float[][] parts,int light,BoxMesh.FaceLighting surface) {
+    private static void drawParts(PoseStack matrices,VertexConsumer out,float[][] parts,int light,BoxMesh.FaceLighting surface) {
         for(float[] p:parts) {
             BoxMesh.FaceLighting lighting=p[7]!=0?CabinLighting::lamp:surface;
             int mat=(int)p[6];
@@ -520,7 +520,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *                重载舱传 {@link CabinLighting#surfaceTwoLamps}（外壳内面与内饰必须用同一盏/一组灯，
      *                否则舱壁与扶手会被两套灯位分别照亮，接缝上看得出来）
      */
-    private static void drawStandardShell(MatrixStack matrices,VertexConsumer out,float front,int light,BoxMesh.FaceLighting surface) {
+    private static void drawStandardShell(PoseStack matrices,VertexConsumer out,float front,int light,BoxMesh.FaceLighting surface) {
         drawFloor(matrices,out,front,light,surface);
         BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()],surface); // 顶板：Y=2.8..3.0 格
         BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.WALL.ordinal()],surface); // 左侧壁：厚 0.2 格
@@ -546,7 +546,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param light 打包后的光照值
      * @param surface 舱内表面的补光采样器（由 {@link #drawStandardShell} 按型号传入）
      */
-    private static void drawFloor(MatrixStack matrices,VertexConsumer out,float front,int light,BoxMesh.FaceLighting surface) {
+    private static void drawFloor(PoseStack matrices,VertexConsumer out,float front,int light,BoxMesh.FaceLighting surface) {
         // 基座顶面用 FLOOR_TOP-.0125 而不是 -.01：关门时门扇内缘正好在 |X| = 0.010 格（{@link SlidingDoor#SEAM}），
         // 基座 / 铺面的侧面若也落在 ±0.010 就会与门扇侧面共面（门底部那一段会闪）。缩到 ±0.0125 彻底错开。
         // 铺面顶面同样从 FLOOR_TOP 压到 -.0005，与门扇渲染下沿 DOOR_RENDER_BOTTOM 分开半毫米。
@@ -570,7 +570,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param doorBack 门扇背面 Z（格）
      * @param light 打包后的光照值
      */
-    private static void drawObservationShell(MatrixStack matrices,VertexConsumer out,float front,float doorBack,int light) {
+    private static void drawObservationShell(PoseStack matrices,VertexConsumer out,float front,float doorBack,int light) {
         drawFloor(matrices,out,front,light,CabinLighting::surface); // 观光舱同样保留地板，乘客站在上面（单灯：观光舱只有后侧那一盏顶灯）
         BoxMesh.cuboid(matrices,out,-1.5f,CEIL_INNER,-1.5f,1.5f,3,front,light,0xFFFFFFFF,MATERIAL_UV[Mat.CEIL.ordinal()],CabinLighting::surface);  // 顶板
         BoxMesh.cuboid(matrices,out,-1.5f,FLOOR_TOP,-1.5f,-INNER,CEIL_INNER,-INNER,light,0xFFFFFFFF,MATERIAL_UV[Mat.TRIM.ordinal()],CabinLighting::surface); // 后左角柱
@@ -593,7 +593,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param doorBack 门扇背面 Z（格）
      * @param light 打包后的光照值
      */
-    private static void drawDoorway(MatrixStack matrices,VertexConsumer out,float front,float doorBack,int light) {
+    private static void drawDoorway(PoseStack matrices,VertexConsumer out,float front,float doorBack,int light) {
         // 门槛：左右嵌进侧壁 0.002 格、底面嵌进地板 0.002 格，前后各缩 0.01 格，顶面 0.23 格（比地板面高 0.03 格）
         BoxMesh.cuboid(matrices,out,-INNER-BITE,FLOOR_TOP-BITE,doorBack+.01f,INNER+BITE,.23f,front-.01f,light,0xFFFFFFFF,MATERIAL_UV[Mat.SILL.ordinal()],CabinLighting::surface);
         // 门楣：贴顶的导轨箱，顶面嵌进顶板 0.002 格，背面缩进门扇背面 0.002 格
@@ -624,7 +624,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param open 门进度 0..1
      * @param glass true 表示观光型号：门扇只画"铁框"，中间的玻璃由 {@link #drawGlassDoorPanes} 在玻璃层画
      */
-    private static void drawDoors(MatrixStack matrices,VertexConsumer out,int light,float open,boolean glass) {
+    private static void drawDoors(PoseStack matrices,VertexConsumer out,int light,float open,boolean glass) {
         if(!SlidingDoor.visible(open)) return; // 全开时两扇宽度归零，没有可见几何
         float[] cell=MATERIAL_UV[Mat.DOOR.ordinal()], trim=MATERIAL_UV[Mat.TRIM.ordinal()];
         for(boolean right:new boolean[]{false,true}) {
@@ -655,7 +655,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param light 打包后的光照值
      * @param open 门进度 0..1
      */
-    private static void drawGlassDoorPanes(MatrixStack matrices,VertexConsumerProvider buffers,int light,float open) {
+    private static void drawGlassDoorPanes(PoseStack matrices,MultiBufferSource buffers,int light,float open) {
         if(!SlidingDoor.visible(open)) return;
         VertexConsumer glass=buffers.getBuffer(GlassLayers.CABIN);
         float[] uv=BoxMesh.FULL_UV;
@@ -670,8 +670,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param right true 取右扇（仅为可读性保留，两扇的 Z 范围相同）
      * @return 门扇长方体
      */
-    private static net.minecraft.util.math.Box leafBox(double[] x,boolean right) {
-        return new net.minecraft.util.math.Box(x[0],DOOR_RENDER_BOTTOM,SlidingDoor.DOOR_Z_BACK,x[1],CEIL_INNER,SlidingDoor.DOOR_Z_FRONT);
+    private static net.minecraft.world.phys.AABB leafBox(double[] x,boolean right) {
+        return new net.minecraft.world.phys.AABB(x[0],DOOR_RENDER_BOTTOM,SlidingDoor.DOOR_Z_BACK,x[1],CEIL_INNER,SlidingDoor.DOOR_Z_FRONT);
     }
 
     /**
@@ -691,7 +691,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param out 不透明顶点缓冲
      * @param light 打包后的光照值
      */
-    private static void drawGuideShoes(MatrixStack matrices,VertexConsumer out,int light) {
+    private static void drawGuideShoes(PoseStack matrices,VertexConsumer out,int light) {
         float[] steel=MATERIAL_UV[Mat.TRIM.ordinal()], rubber=MATERIAL_UV[Mat.DARK.ordinal()];
         for(float centre:new float[]{.55f,2.45f}) {
             // 背板贴板：贴在背板外表面上（略嵌进去，避免与背板共面）
@@ -732,7 +732,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param doorBack 门扇背面 Z（格）
      * @param light 打包后的光照值
      */
-    private static void drawObservationGlass(MatrixStack matrices,VertexConsumerProvider buffers,float front,float doorBack,int light) {
+    private static void drawObservationGlass(PoseStack matrices,MultiBufferSource buffers,float front,float doorBack,int light) {
         VertexConsumer glass=buffers.getBuffer(GlassLayers.CABIN);
         // 四面玻璃与不透明件一律留 0.01 格缝（见方法注释），因此这里的边界都写成"结构面 ∓0.01"。
         float y0=.21f, y1=2.79f;                  // 地板面 0.2、顶板内侧 2.8
@@ -762,19 +762,19 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param matrices 渲染矩阵栈（已包含轿厢朝向与位置）
      * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
      */
-    private static void drawFloorDisplay(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers) {
+    private static void drawFloorDisplay(AbstractCabinEntity cabin,PoseStack matrices,MultiBufferSource buffers) {
         int floor=cabin.floorNumber();
         if(floor==0) return; // 还没经过任何站点（或线路无效）：不显示，避免出现"0 层"（负数 = 地下 B1、B2…，要显示）
         // 两行都按"行心"定位（见 ARROW_LINE_CENTRE 的注释）：
         // 第一行运行方向箭头（▲ 上行 / ▼ 下行，闪烁），停靠时整行留空；第二行是当前到达层数
         // （FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…）。
         String arrow=StatusArrow.glyph(cabin.status());
-        if(!arrow.isEmpty()) drawPanelLine(matrices,buffers,Text.literal(arrow),ARROW_LINE_CENTRE,ARROW_SCALE);
+        if(!arrow.isEmpty()) drawPanelLine(matrices,buffers,Component.literal(arrow),ARROW_LINE_CENTRE,ARROW_SCALE);
 
         // 如果电梯超载，则在面板处显示“超载”，否则显示到达楼层
-        Text numText = Text.literal(FloorIndicator.format(floor));
+        Component numText = Component.literal(FloorIndicator.format(floor));
         if (cabin.phase() == ElevatorController.Phase.OVERLOAD)
-            numText = Text.translatable("phase.easyelevator.overload");
+            numText = Component.translatable("phase.easyelevator.overload");
         drawPanelLine(matrices,buffers,numText,FLOOR_LINE_CENTRE,FLOOR_SCALE);
     }
 
@@ -795,10 +795,10 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
      */
-    private static void drawCapacityPlate(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers) {
+    private static void drawCapacityPlate(AbstractCabinEntity cabin,PoseStack matrices,MultiBufferSource buffers) {
         int limit=cabin.passengerNumLimit();
         if(limit<=0) return; // 不限载的型号（普通 / 高速 / 观光）没有这块牌子，别把红字画在墙上
-        drawCabinLine(matrices,buffers,Text.translatable("text.easyelevator.capacity",limit),
+        drawCabinLine(matrices,buffers,Component.translatable("text.easyelevator.capacity",limit),
                 0,CAPACITY_PLATE_CENTRE_Y,CAPACITY_PLATE_FRONT_Z,0,0,CAPACITY_SCALE);
     }
 
@@ -816,7 +816,7 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param lineCentre 行心所在的高度（格，相对显示窗中心，正 = 向上）
      * @param scale 这一行的字号（格/像素）
      */
-    private static void drawPanelLine(MatrixStack matrices,VertexConsumerProvider buffers,Text text,float lineCentre,float scale) {
+    private static void drawPanelLine(PoseStack matrices,MultiBufferSource buffers,Component text,float lineCentre,float scale) {
         drawCabinLine(matrices,buffers,text,1.243f,1.5f,.55f,-90,lineCentre,scale); // 显示窗中心，再沿 -X 让开 0.003 格
     }
 
@@ -843,17 +843,17 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param lineCentre 行心相对板面中心的竖直偏移（格，正 = 向上）
      * @param scale 这一行的字号（格/像素）
      */
-    private static void drawCabinLine(MatrixStack matrices,VertexConsumerProvider buffers,Text text,
+    private static void drawCabinLine(PoseStack matrices,MultiBufferSource buffers,Component text,
                                       float x,float y,float z,float yawDegrees,float lineCentre,float scale) {
-        TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
-        float yOffset=-(lineCentre+textRenderer.fontHeight*scale/2f)/scale;
-        matrices.push();
+        Font textRenderer=Minecraft.getInstance().font;
+        float yOffset=-(lineCentre+textRenderer.lineHeight*scale/2f)/scale;
+        matrices.pushPose();
         // 实体渲染器传进来的矩阵已经平移到实体位置，因此这里全部用轿厢局部坐标。
         matrices.translate(x,y,z);
-        if(yawDegrees!=0) matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(yawDegrees)); // 正面（局部 +Z）转到板面朝向
+        if(yawDegrees!=0) matrices.mulPose(Axis.YP.rotationDegrees(yawDegrees)); // 正面（局部 +Z）转到板面朝向
         matrices.scale(scale,-scale,scale); // Y 取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒
-        textRenderer.draw(text,-textRenderer.getWidth(text)/2f,yOffset,FLOOR_COLOR,true,
-                matrices.peek().getPositionMatrix(),buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        matrices.pop();
+        textRenderer.drawInBatch(text,-textRenderer.width(text)/2f,yOffset,FLOOR_COLOR,true,
+                matrices.last().pose(),buffers,Font.DisplayMode.POLYGON_OFFSET,0,LightTexture.FULL_BRIGHT);
+        matrices.popPose();
     }
 }

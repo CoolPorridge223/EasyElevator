@@ -1,13 +1,13 @@
 package org.DJB.easyelevator.block;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.DoorArrivalSound;
@@ -86,11 +86,11 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     /** 不做插值的门扇进度，用于碰撞形状与联锁判定。
      * @return 当前刻进度 0..1（0 全关、1 全开） */
     public float openProgress() {
-        if (world == null) return 0f;
-        BlockState state = world.getBlockState(pos);
+        if (level == null) return 0f;
+        BlockState state = level.getBlockState(worldPosition);
         // 碰撞必须读最新进度；本刻早些时候的渲染采样可能早于轿厢 tick 或客户端状态包。
-        return state.isOf(Easyelevator.LANDING_DOOR) && state.get(LandingDoorBlock.OPEN)
-                ? LandingDoorBlock.leafProgress(world, pos) : 0f;
+        return state.is(Easyelevator.LANDING_DOOR) && state.getValue(LandingDoorBlock.OPEN)
+                ? LandingDoorBlock.leafProgress(level, worldPosition) : 0f;
     }
 
     /** 渲染用的插值进度：与轿厢门用同一个 tickDelta 在上一刻/当前刻样本之间插值。
@@ -98,28 +98,28 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @return 插值后的进度 0..1 */
     public float openProgress(float tickDelta) {
         sample();
-        return MathHelper.lerp(MathHelper.clamp(tickDelta,0,1),previousProgress,progress);
+        return Mth.lerp(Mth.clamp(tickDelta,0,1),previousProgress,progress);
     }
 
     /**
      * 按世界刻推进一次样本；同一刻重复调用直接返回，保证插值窗口恰好是一刻。
      *
-     * <p>用 {@code world.getBlockState(pos)} 而不是 {@link #getCachedState()}：方块状态随时
+     * <p>用 {@code world.getBlockState(pos)} 而不是 {@link #getBlockState()}：方块状态随时
      * 可能被 {@link LandingDoorBlock#refresh} 改写，这里每刻只读一次，取最新值最稳妥。
      *
      * <p>副作用：更新 progress/previousProgress/cabinFloor/cabinStatus/sampledTick；只读世界，不写世界。
      */
     private void sample() {
-        if (world==null) return; // 还没有加入世界（构造或加载过程中）：保持 0，避免空指针
-        long now=world.getTime();
+        if (level==null) return; // 还没有加入世界（构造或加载过程中）：保持 0，避免空指针
+        long now=level.getGameTime();
         if (now==sampledTick) return;
-        BlockState state=world.getBlockState(pos);
+        BlockState state=level.getBlockState(worldPosition);
         previousProgress=progress;
         // OPEN 为假说明联锁不成立（没有轿厢精确到站），此时门扇必定全关，不必再去查世界。
-        progress=state.isOf(Easyelevator.LANDING_DOOR) && state.get(LandingDoorBlock.OPEN)
-                ? LandingDoorBlock.leafProgress(world,pos) : 0f;
+        progress=state.is(Easyelevator.LANDING_DOOR) && state.getValue(LandingDoorBlock.OPEN)
+                ? LandingDoorBlock.leafProgress(level,worldPosition) : 0f;
         // 门框顶部的显示内容（楼层号 + 运行状态）同样每刻只查一次，渲染器直接读缓存
-        AbstractCabinEntity cabin=state.isOf(Easyelevator.LANDING_DOOR) ? cabinOf(world,state) : null;
+        AbstractCabinEntity cabin=state.is(Easyelevator.LANDING_DOOR) ? cabinOf(level,state) : null;
         cabinFloor=cabin==null ? 0 : cabin.floorNumber();
         cabinStatus=cabin==null ? ElevatorStatus.IDLE : cabin.status();
         // 观光线路上的门扇也跟着变成玻璃门（整条线路统一：门是哪一扇由线路上的轿厢决定，
@@ -142,13 +142,13 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param state 根方块状态（用其 FACING 反推轨道位置）
      * @return 本线路的轿厢；线路无效或没有轿厢时为 null
      */
-    private AbstractCabinEntity cabinOf(World world,BlockState state) {
-        ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(state,pos));
+    private AbstractCabinEntity cabinOf(Level world,BlockState state) {
+        ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(state,worldPosition));
         if(line==null) return null;
         double x=line.centerX(), z=line.centerZ();
         AbstractCabinEntity found=null;
-        for(AbstractCabinEntity cabin:world.getEntitiesByClass(AbstractCabinEntity.class,
-                new Box(x-1.6,line.bottom()-1,z-1.6,x+1.6,line.top()+4,z+1.6),
+        for(AbstractCabinEntity cabin:world.getEntitiesOfClass(AbstractCabinEntity.class,
+                new AABB(x-1.6,line.bottom()-1,z-1.6,x+1.6,line.top()+4,z+1.6),
                 c->!c.isRemoved() && Math.abs(c.getX()-x)<=ElevatorParameters.SYNC_POSITION_EPSILON
                         && Math.abs(c.getZ()-z)<=ElevatorParameters.SYNC_POSITION_EPSILON)) {
             // 一条线路上正常情况下只有一辆轿厢；万一世界里存在多辆（测试世界很常见），
@@ -193,7 +193,7 @@ public final class LandingDoorBlockEntity extends BlockEntity {
     public void setBaseFloor(boolean value) {
         if (baseFloor == value) return;
         baseFloor = value;
-        markDirty();
+        setChanged();
     }
 
     /**
@@ -213,7 +213,7 @@ public final class LandingDoorBlockEntity extends BlockEntity {
         DoorArrivalSound next = settings == null ? DoorArrivalSound.DEFAULT : settings;
         if (arrivalSound.equals(next)) return;
         arrivalSound = next;
-        markDirty();
+        setChanged();
     }
 
     /**
@@ -226,7 +226,7 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      *
      * @return {@code [0, DoorSounds.MAX_SLOTS)} 内的槽位号；同一扇门恒定不变
      */
-    public int soundSlot() { return DoorSounds.slotFor(pos.getX(), pos.getY(), pos.getZ()); }
+    public int soundSlot() { return DoorSounds.slotFor(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()); }
 
     /**
      * 本扇门到站时实际要播放的音效。
@@ -236,7 +236,7 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      *
      * @return 该门到站要播的音效；开关关着时返回 null（调用方据此跳过播放）
      */
-    public net.minecraft.sound.SoundEvent arrivalEvent() {
+    public net.minecraft.sounds.SoundEvent arrivalEvent() {
         return arrivalSound.enabled() ? DoorSounds.arrivalEvent(arrivalSound.choice(), soundSlot()) : null;
     }
 
@@ -246,8 +246,8 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param nbt 目标 NBT
      * @param registries 注册表查询（本实体没有需要迁移的字段，仅透传给父类）
      */
-    @Override protected void writeNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
-        super.writeNbt(nbt,registries);
+    @Override protected void saveAdditional(CompoundTag nbt,HolderLookup.Provider registries) {
+        super.saveAdditional(nbt,registries);
         if (baseFloor) nbt.putBoolean("BaseFloor",true); // 只写 true：默认门不必多一个 false 字段
         arrivalSound.writeNbt(nbt); // 同理：整份默认设置不写任何字段，旧存档体积不变
     }
@@ -258,8 +258,8 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param nbt 存档 NBT
      * @param registries 注册表查询（透传父类）
      */
-    @Override protected void readNbt(NbtCompound nbt,RegistryWrapper.WrapperLookup registries) {
-        super.readNbt(nbt,registries);
+    @Override protected void loadAdditional(CompoundTag nbt,HolderLookup.Provider registries) {
+        super.loadAdditional(nbt,registries);
         baseFloor=nbt.getBoolean("BaseFloor");
         arrivalSound=DoorArrivalSound.readNbt(nbt); // 开关字段缺失 = 出厂默认（发声）：旧存档的门升级后照旧会响；只有玩家真的关掉才写 false
     }

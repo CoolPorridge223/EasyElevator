@@ -1,10 +1,5 @@
 package org.DJB.easyelevator.mixin;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.EntityView;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,6 +7,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.EntityGetter;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Adds only the hollow cabin shell; a solid entity bounding box would prevent entering the car.
@@ -32,7 +32,7 @@ import java.util.List;
  *   <li>本类注册于 {@code easyelevator.mixins.json} 的必装 mixin 列表，注入失败即模组启动失败（required）。</li>
  * </ul>
  */
-@Mixin(EntityView.class)
+@Mixin(EntityGetter.class)
 public interface EntityViewMixin {
     /**
      * 在 {@code EntityView#getEntityCollisions} 返回原版结果之后追加轿厢外壳的碰撞形状。
@@ -47,16 +47,16 @@ public interface EntityViewMixin {
      * @param cir 原版返回值回调；入参为原版碰撞形状列表，出参为追加外壳后的列表
      */
     @Inject(method="getEntityCollisions", at=@At("RETURN"), cancellable=true)
-    private void easyelevator$collisions(Entity entity, Box box, CallbackInfoReturnable<List<VoxelShape>> cir) {
+    private void easyelevator$collisions(Entity entity, AABB box, CallbackInfoReturnable<List<VoxelShape>> cir) {
         if (entity instanceof AbstractCabinEntity) return;
-        EntityView view = (EntityView)this;
+        EntityGetter view = (EntityGetter)this;
         // 查询盒外扩 .001 格：相邻外壳恰好边缘相接时，浮点误差可能让 intersects 判定为不相交而漏掉外壳。
-        var cabins = view.getEntitiesByClass(AbstractCabinEntity.class, box.expand(.001), c -> !c.isRemoved());
+        var cabins = view.getEntitiesOfClass(AbstractCabinEntity.class, box.inflate(.001), c -> !c.isRemoved());
         if (cabins.isEmpty()) return;
         // 复制一份再追加：原版返回的列表可能被缓存或由调用方共享，不能就地修改。
         List<VoxelShape> result = new ArrayList<>(cir.getReturnValue());
         // 每个外壳部件先与查询盒相交测试再转换，避免把整座轿厢的形状全部塞进结果；不在范围内的部件一律跳过。
-        for (var cabin : cabins) for (Box part : cabin.collisionBoxes()) if (part.intersects(box)) result.add(VoxelShapes.cuboid(part));
+        for (var cabin : cabins) for (AABB part : cabin.collisionBoxes()) if (part.intersects(box)) result.add(Shapes.create(part));
         cir.setReturnValue(result);
     }
 }

@@ -42,7 +42,9 @@ repositories {
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    // 1.21.1 仍是混淆版本，需要映射：这里用 Mojang 官方映射（迁移后的源码已按官方命名书写）。
+    // 26.1 起游戏不再混淆，改用 net.fabricmc.fabric-loom 插件后连这一行都不需要。
+    mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"

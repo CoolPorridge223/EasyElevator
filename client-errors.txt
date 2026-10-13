@@ -1,0 +1,95 @@
+﻿
+> Configure project :
+Fabric Loom: 1.17.21
+
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :compileClientJava
+.\gradlew.bat : E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\CargoScreen.java:64:
+ 错误: 找不到符号
+所在位置 行:2 字符: 8
++ $out = .\gradlew.bat compileClientJava --console=plain 2>&1
++        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (E:\Codel\Docume...a:64: 错误: 找不到符号:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        for (var slot : handler.slots) {
+                        ^
+  符号:   变量 handler
+  位置: 类 CargoScreen
+E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\ElevatorScreen.java:96: 错误: 不兼容的类型: 
+无法推断类型变量 T
+        sorted.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos:
+:getZ));
+                                           ^
+    (参数不匹配; 方法引用无效
+      不兼容的类型: Object无法转换为long)
+  其中, T是类型变量:
+    T扩展已在方法 <T>comparingInt(ToIntFunction<? super T>)中声明的Object
+E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\LandingDoorRenderer.java:96: 错误: 找不到
+符号
+        BlockState state=door.getCachedState();
+                             ^
+  符号:   方法 getCachedState()
+  位置: 类型为LandingDoorBlockEntity的变量 door
+E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\LandingDoorRenderer.java:205: 错误: 方法
+不会覆盖或实现超类型的方法
+    @Override
+    ^
+注: E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\EasyelevatorClient.java使用或覆盖了已过时的
+ API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+4 个错误
+
+> Task :compileClientJava FAILED
+
+[Incubating] Problems report is available at: file:///E:/Codel/Documents/GitHub/EasyElevator/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileClientJava' (registered by plugin class 'org.gradle.api.plugins.JavaBasePlugin').
+> Compilation failed; see the compiler output below.
+  注: E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\EasyelevatorClient.java使用或覆盖了已过
+时的 API。
+  注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+  E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\ElevatorScreen.java:96: 错误: 不兼容的类型
+: 无法推断类型变量 T
+          sorted.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPo
+s::getZ));
+                                             ^
+      (参数不匹配; 方法引用无效
+        不兼容的类型: Object无法转换为long)
+    其中, T是类型变量:
+      T扩展已在方法 <T>comparingInt(ToIntFunction<? super T>)中声明的Object
+  E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\CargoScreen.java:64: 错误: 找不到符号
+          for (var slot : handler.slots) {
+                          ^
+    符号:   变量 handler
+    位置: 类 CargoScreen
+  E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\LandingDoorRenderer.java:205: 错误: 
+方法不会覆盖或实现超类型的方法
+      @Override
+      ^
+  E:\Codel\Documents\GitHub\EasyElevator\src\client\java\org\DJB\easyelevator\client\LandingDoorRenderer.java:96: 错误: 找
+不到符号
+          BlockState state=door.getCachedState();
+                               ^
+    符号:   方法 getCachedState()
+    位置: 类型为LandingDoorBlockEntity的变量 door
+  4 个错误
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.6.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 4s
+3 actionable tasks: 1 executed, 2 up-to-date

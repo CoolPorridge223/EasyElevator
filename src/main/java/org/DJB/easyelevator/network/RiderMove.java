@@ -2,11 +2,11 @@ package org.DJB.easyelevator.network;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.server.level.ServerPlayer;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.RiderMotionHistory;
@@ -51,18 +51,18 @@ import org.DJB.easyelevator.logic.RiderMotionHistory;
  */
 public record RiderMove(int cabinId, long tick, double x, double y, double z,
                         float yaw, float pitch, boolean ground, boolean position, boolean look)
-        implements CustomPayload {
+        implements CustomPacketPayload {
     /** 负载类型 id，注册与路由键：{@code easyelevator:rider_move}。 */
-    public static final Id<RiderMove> ID = new Id<>(Easyelevator.id("rider_move"));
+    public static final Type<RiderMove> ID = new Type<>(Easyelevator.id("rider_move"));
     /** 线格式编解码器：字段顺序必须与 {@link #decode}/{@link #encode} 严格一致，否则两端静默错位。 */
-    public static final PacketCodec<RegistryByteBuf, RiderMove> CODEC = new PacketCodec<>() {
+    public static final StreamCodec<RegistryFriendlyByteBuf, RiderMove> CODEC = new StreamCodec<>() {
         /** 从字节流按固定顺序读回一包移动：VarInt 实体 id、long 样本编号、3 个 double 坐标、两个 float 视角、3 个布尔标志。 */
-        @Override public RiderMove decode(RegistryByteBuf b) {
+        @Override public RiderMove decode(RegistryFriendlyByteBuf b) {
             return new RiderMove(b.readVarInt(), b.readLong(), b.readDouble(), b.readDouble(),
                     b.readDouble(), b.readFloat(), b.readFloat(), b.readBoolean(), b.readBoolean(), b.readBoolean());
         }
         /** 按与解码完全对称的顺序写出；顺序一旦改动即为协议不兼容。 */
-        @Override public void encode(RegistryByteBuf b, RiderMove p) {
+        @Override public void encode(RegistryFriendlyByteBuf b, RiderMove p) {
             b.writeVarInt(p.cabinId); b.writeLong(p.tick);
             b.writeDouble(p.x); b.writeDouble(p.y); b.writeDouble(p.z);
             b.writeFloat(p.yaw); b.writeFloat(p.pitch);
@@ -82,13 +82,13 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * @param p 原版此刻决定发送的移动包
      * @return 可直接发送的乘客移动包
      */
-    public static RiderMove of(int cabinId, long tick, PlayerMoveC2SPacket p) {
+    public static RiderMove of(int cabinId, long tick, ServerboundMovePlayerPacket p) {
         return new RiderMove(cabinId, tick, p.getX(0), p.getY(0), p.getZ(0),
-                p.getYaw(0), p.getPitch(0), p.isOnGround(), p.changesPosition(), p.changesLook());
+                p.getYRot(0), p.getXRot(0), p.isOnGround(), p.hasPosition(), p.hasRotation());
     }
 
     /** @return 负载类型 id，框架据此把包分发到对应接收器 */
-    @Override public Id<? extends CustomPayload> getId() { return ID; }
+    @Override public Type<? extends CustomPacketPayload> type() { return ID; }
 
     /**
      * 还原成原版移动包，但 Y 换成调用方给定的值。
@@ -100,11 +100,11 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * @param adjustedY 已经换算回服务端当前帧的玩家 Y，单位：格
      * @return 可直接交给 {@code ServerPlayNetworkHandler#onPlayerMove} 的原版移动包
      */
-    public PlayerMoveC2SPacket vanilla(double adjustedY) {
-        if (position && look) return new PlayerMoveC2SPacket.Full(x, adjustedY, z, yaw, pitch, ground);
-        if (position) return new PlayerMoveC2SPacket.PositionAndOnGround(x, adjustedY, z, ground);
-        if (look) return new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, ground);
-        return new PlayerMoveC2SPacket.OnGroundOnly(ground);
+    public ServerboundMovePlayerPacket vanilla(double adjustedY) {
+        if (position && look) return new ServerboundMovePlayerPacket.PosRot(x, adjustedY, z, yaw, pitch, ground);
+        if (position) return new ServerboundMovePlayerPacket.Pos(x, adjustedY, z, ground);
+        if (look) return new ServerboundMovePlayerPacket.Rot(yaw, pitch, ground);
+        return new ServerboundMovePlayerPacket.StatusOnly(ground);
     }
 
     /**
@@ -120,10 +120,10 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * @param player 发包的玩家；<b>只允许在服务端主线程调用</b>（{@link #register()} 的接收器已用
      *               {@code context.server().execute} 切回主线程）
      */
-    public void apply(ServerPlayerEntity player) {
+    public void apply(ServerPlayer player) {
         double adjustedY = y;
-        if (position && player.isAlive() && !player.isSpectator() && !player.hasVehicle()
-                && player.getWorld().getEntityById(cabinId) instanceof AbstractCabinEntity cabin
+        if (position && player.isAlive() && !player.isSpectator() && !player.isPassenger()
+                && player.level().getEntity(cabinId) instanceof AbstractCabinEntity cabin
                 && cabin.containsPassenger(player)) {
             double seenY = cabin.motionHeight(tick);
             // 只接受"确实存在的近期服务端样本"，并且身体必须贴近这辆轿厢：
@@ -136,7 +136,7 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
                 adjustedY = RiderMotionHistory.rebase(y, seenY, cabin.getY());
             }
         }
-        player.networkHandler.onPlayerMove(vanilla(adjustedY));
+        player.connection.handleMovePlayer(vanilla(adjustedY));
     }
 
     /**

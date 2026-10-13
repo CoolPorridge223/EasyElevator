@@ -1,13 +1,13 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorController;
 import org.DJB.easyelevator.logic.ElevatorParameters;
@@ -26,7 +26,7 @@ import java.util.Set;
  *
  * <p>在整体架构中的位置：纯客户端 UI。站点列表与"停靠计划"都由服务端下发（服务端已校验乘客身份），
  * 面板自身不查询线路、不做权限判断；点击只发"请求"，最终由服务端状态机决断。面板打开时不暂停游戏
- * （{@link #shouldPause()} 返回 false），因为轿厢仍需继续运行。
+ * （{@link #isPauseScreen()} 返回 false），因为轿厢仍需继续运行。
  *
  * <p>按键排布（模拟真实电梯面板）：站点按高度升序编号，<b>最底层 = 1 层</b>；按钮从<b>右下角</b>开始，
  * 先<b>从右往左</b>排满一行，再换到<b>上一行</b>继续（即从下往上）。于是每一列的数字自下而上连续递增，
@@ -80,8 +80,8 @@ public class ElevatorScreen extends Screen {
     private PanelLayout.Grid grid=PanelLayout.grid(0,1,1); // 网格与分页参数（列数/行数/页数），init() 时按站点数与窗口尺寸重算
     private int panelLeft, panelTop, panelWidth, panelHeight; // 面板矩形（像素）：init() 计算，render() 复用
     private int gridLeft, gridRight, gridTop, gridBottom; // 按键区矩形（像素）：凹底按它四周各外扩 WELL_PAD，编号 1 的按钮落在右下角
-    private ButtonWidget doorOpen, doorClose; // 底部"开门/关门"键；可用状态每帧按轿厢实时状态刷新
-    private ButtonWidget pagePrev, pageNext; // 底部翻页键（`<` `>`）；首页/末页禁用而不是隐藏，布局保持稳定
+    private Button doorOpen, doorClose; // 底部"开门/关门"键；可用状态每帧按轿厢实时状态刷新
+    private Button pagePrev, pageNext; // 底部翻页键（`<` `>`）；首页/末页禁用而不是隐藏，布局保持稳定
 
     /**
      * 从服务端下发的 OpenPanel 包构造面板；标题等文案由翻译键决定。
@@ -89,11 +89,12 @@ public class ElevatorScreen extends Screen {
      * @param payload 服务端包：entityId 轿厢实体 id、stops 站点（根方块）列表、planned 停靠计划
      */
     public ElevatorScreen(ElevatorNetworking.OpenPanel payload) {
-        super(Text.translatable("screen.easyelevator.title")); entityId=payload.entityId();
+        super(Component.translatable("screen.easyelevator.title")); entityId=payload.entityId();
         // 自己再排一次序：面板上的"1 层"永远是最低站点，不依赖下发顺序（服务端也是按高度排序的），
         // 同高度时按 X/Z 排序保证编号稳定，不会因为扫描顺序变化而跳号。
         List<BlockPos> sorted=new ArrayList<>(payload.stops());
-        sorted.sort(Comparator.comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
+        sorted.sort(Comparator.comparingInt((BlockPos p) -> p.getY())
+                .thenComparingInt(p -> p.getX()).thenComparingInt(p -> p.getZ()));
         stops=List.copyOf(sorted);
         setBaseFloor(payload.baseFloorY());
         applyPlanned(payload.planned());
@@ -124,7 +125,7 @@ public class ElevatorScreen extends Screen {
      */
     public void applyState(List<BlockPos> plan,int baseFloorY) {
         applyPlanned(plan);
-        if(setBaseFloor(baseFloorY)) clearAndInit(); // 编号口径变了：重铺按钮（保留当前页）
+        if(setBaseFloor(baseFloorY)) rebuildWidgets(); // 编号口径变了：重铺按钮（保留当前页）
     }
 
     /**
@@ -176,27 +177,27 @@ public class ElevatorScreen extends Screen {
             BlockPos stop=stops.get(i);
             // 按钮上只印楼层编号（i+1）；具体高度与方块坐标放进悬停提示，避免方块里塞满文字。
             String label=FloorIndicator.label(i,baseIndex); // 编号：基准层 = 1，其上 2,3…，其下 B1,B2…
-            addDrawableChild(new StationButton(x,y,label,stop.getY(),stop.asLong(),
-                    Text.translatable("screen.easyelevator.station",label,stop.getY()),
+            addRenderableWidget(new StationButton(x,y,label,stop.getY(),stop.asLong(),
+                    Component.translatable("screen.easyelevator.station",label,stop.getY()),
                     button->ClientPlayNetworking.send(new ElevatorNetworking.SelectStop(entityId,stop))));
         }
         // 页脚一行：翻页（< >）、开门、关门、完成。文案与可用状态都由原版控件机制负责，
         // 绘制统一走 FlatButton（深色扁平键），免得原版灰色长条贴图和深色面板打架。
         int footerY=gridBottom+WELL_PAD+1+(FOOTER-BUTTON)/2, left=panelLeft+PADDING;
-        pagePrev=addDrawableChild(new FlatButton(left,footerY,BUTTON,BUTTON,Text.literal("<"),b->{page--;clearAndInit();},
-                Text.translatable("screen.easyelevator.prev_page")));
-        pageNext=addDrawableChild(new FlatButton(left+BUTTON+GAP,footerY,BUTTON,BUTTON,Text.literal(">"),b->{page++;clearAndInit();},
-                Text.translatable("screen.easyelevator.next_page")));
-        doorOpen=addDrawableChild(new FlatButton(left+56,footerY,44,BUTTON,Text.translatable("screen.easyelevator.open_door"),
+        pagePrev=addRenderableWidget(new FlatButton(left,footerY,BUTTON,BUTTON,Component.literal("<"),b->{page--;rebuildWidgets();},
+                Component.translatable("screen.easyelevator.prev_page")));
+        pageNext=addRenderableWidget(new FlatButton(left+BUTTON+GAP,footerY,BUTTON,BUTTON,Component.literal(">"),b->{page++;rebuildWidgets();},
+                Component.translatable("screen.easyelevator.next_page")));
+        doorOpen=addRenderableWidget(new FlatButton(left+56,footerY,44,BUTTON,Component.translatable("screen.easyelevator.open_door"),
                 b->ClientPlayNetworking.send(new ElevatorNetworking.DoorCommand(entityId,true))));
-        doorClose=addDrawableChild(new FlatButton(left+104,footerY,44,BUTTON,Text.translatable("screen.easyelevator.close_door"),
+        doorClose=addRenderableWidget(new FlatButton(left+104,footerY,44,BUTTON,Component.translatable("screen.easyelevator.close_door"),
                 b->ClientPlayNetworking.send(new ElevatorNetworking.DoorCommand(entityId,false))));
-        addDrawableChild(new FlatButton(panelLeft+panelWidth-PADDING-60,footerY,60,BUTTON,Text.translatable("gui.done"),b->close()));
+        addRenderableWidget(new FlatButton(panelLeft+panelWidth-PADDING-60,footerY,60,BUTTON,Component.translatable("gui.done"),b->onClose()));
     }
 
     /** 查找面板绑定的轿厢。@return 世界/实体未就绪或 id 已不对应轿厢时返回 null，调用方需判空。 */
     private AbstractCabinEntity cabin() {
-        return client!=null && client.world!=null && client.world.getEntityById(entityId) instanceof AbstractCabinEntity c ? c : null;
+        return minecraft!=null && minecraft.level!=null && minecraft.level.getEntity(entityId) instanceof AbstractCabinEntity c ? c : null;
     }
 
     /**
@@ -210,9 +211,9 @@ public class ElevatorScreen extends Screen {
      */
     @Override
     public void tick() {
-        if(client==null) return;
+        if(minecraft==null) return;
         var cabin=cabin();
-        if(cabin==null || client.player==null || !staysInside(cabin,client.player)) close();
+        if(cabin==null || minecraft.player==null || !staysInside(cabin,minecraft.player)) onClose();
     }
 
     /**
@@ -225,8 +226,8 @@ public class ElevatorScreen extends Screen {
      * @param player 本机玩家
      * @return 判定为"仍可作为面板操作者"时为 true
      */
-    private static boolean staysInside(AbstractCabinEntity cabin,PlayerEntity player) {
-        return !player.isSpectator() && !player.hasVehicle()
+    private static boolean staysInside(AbstractCabinEntity cabin,Player player) {
+        return !player.isSpectator() && !player.isPassenger()
                 && Math.abs(player.getX()-cabin.getX())<=KEEP_HORIZONTAL
                 && Math.abs(player.getZ()-cabin.getZ())<=KEEP_HORIZONTAL
                 && player.getY()>=cabin.getY()-KEEP_BELOW
@@ -305,7 +306,7 @@ public class ElevatorScreen extends Screen {
      * 副作用：仅绘制；状态行每帧读取轿厢的 Y（格）与 Phase，因此会随服务端同步刷新。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
         var cabin=cabin();
         updateDoorButtons(cabin); // 可用性跟着轿厢状态走，因此放在 render 里每帧刷新
         renderBackground(context,mouseX,mouseY,delta);
@@ -314,7 +315,7 @@ public class ElevatorScreen extends Screen {
         drawFrame(context,panelLeft,panelTop,panelWidth,panelHeight,BORDER_COLOR);
         // 表头条：比面板底略亮，让"显示区"和按键区分开；标题居中放最上，其下是状态与页数两行。
         context.fill(panelLeft+1,panelTop+1,panelLeft+panelWidth-1,panelTop+HEADER,BAR_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
+        context.drawCenteredString(font,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
         context.fill(panelLeft+1,panelTop+HEADER,panelLeft+panelWidth-1,panelTop+HEADER+1,LINE_COLOR);
         // 楼层指示牌：内凹的"数码管"（外框 → 面板 → 最深底），层号放大 2 倍、只显示数字本身。
         int floor=cabin==null?0:cabin.floorNumber();
@@ -322,27 +323,27 @@ public class ElevatorScreen extends Screen {
         context.fill(plaqueLeft,plaqueTop,plaqueLeft+PLAQUE_W,plaqueTop+PLAQUE_H,BORDER_COLOR);
         context.fill(plaqueLeft+1,plaqueTop+1,plaqueLeft+PLAQUE_W-1,plaqueTop+PLAQUE_H-1,0xFF2B3542);
         context.fill(plaqueLeft+2,plaqueTop+2,plaqueLeft+PLAQUE_W-2,plaqueTop+PLAQUE_H-2,FLOOR_PANEL_COLOR);
-        context.getMatrices().push();
+        context.pose().pushPose();
         // 以指示牌中心为原点放大；缩放后仍按"文字宽度的一半"定位，保证严格居中。
-        context.getMatrices().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-textRenderer.fontHeight*FLOOR_TEXT_SCALE)/2f,0);
-        context.getMatrices().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
+        context.pose().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-font.lineHeight*FLOOR_TEXT_SCALE)/2f,0);
+        context.pose().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
         // 不带阴影：带阴影时字会整体偏右下 1 像素，放大 2 倍后看起来就是"没居中"。
         // 深底红字本身对比度足够，这里用手动居中的无阴影绘制。
-        Text floorLabel=Text.literal(FloorIndicator.format(floor));
-        context.drawText(textRenderer,floorLabel,-textRenderer.getWidth(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
-        context.getMatrices().pop();
+        Component floorLabel=Component.literal(FloorIndicator.format(floor));
+        context.drawString(font,floorLabel,-font.width(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
+        context.pose().popPose();
         // 右侧剩余区域的水平中心：状态行与页数行都对齐到这里，避免和左边放大的指示牌挤在一起。
         int textCenter=plaqueLeft+PLAQUE_W+(panelLeft+panelWidth-PADDING-plaqueLeft-PLAQUE_W)/2;
         if(cabin!=null) {
             // 状态行："Y 坐标（格，保留 1 位小数）+ Phase 翻译键 phase.easyelevator.<小写阶段名>"。
             // Locale.ROOT 保证小数点是 '.'、阶段键不随语言环境变形（翻译键必须与语言文件一致）。
-            Text status=Text.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
-                    Text.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
-            context.drawCenteredTextWithShadow(textRenderer,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
+            Component status=Component.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
+                    Component.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
+            context.drawCenteredString(font,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
         }
         // 页数行：总站点数、当前页（1 基）、总页数。
-        context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
+        context.drawCenteredString(font,
+                Component.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
         // 按键区凹底：只比按键块四周各宽 WELL_PAD 像素，把数字键"托"起来——横贯整块面板会多出一条突兀的黑带。
         // 只填充、不再给凹底描边：描边会和上下两条分隔线贴在一起，看起来像叠了三层线，显得臃肿。
         int wellLeft=gridLeft-WELL_PAD, wellTop=gridTop-WELL_PAD, wellRight=gridRight+WELL_PAD, wellBottom=gridBottom+WELL_PAD;
@@ -350,7 +351,7 @@ public class ElevatorScreen extends Screen {
         // 页脚条：与表头同色，放翻页/开门/关门/完成。
         context.fill(panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
         context.fill(panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
-        if(stops.isEmpty()) context.drawCenteredTextWithShadow(textRenderer,Text.translatable("screen.easyelevator.empty"),
+        if(stops.isEmpty()) context.drawCenteredString(font,Component.translatable("screen.easyelevator.empty"),
                 panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFC27A);
         super.render(context,mouseX,mouseY,delta);
     }
@@ -365,7 +366,7 @@ public class ElevatorScreen extends Screen {
      * @param h 高（像素）
      * @param color 颜色（ARGB）
      */
-    private static void drawFrame(DrawContext context,int x,int y,int w,int h,int color) {
+    private static void drawFrame(GuiGraphics context,int x,int y,int w,int h,int color) {
         context.fill(x,y,x+w,y+1,color);
         context.fill(x,y+h-1,x+w,y+h,color);
         context.fill(x,y,x+1,y+h,color);
@@ -377,7 +378,7 @@ public class ElevatorScreen extends Screen {
      * 这里只做 0x18000000 的淡黑叠加，既压暗背景又保持世界与文字清晰，也不会二次模糊已经画好的标题/状态文字。
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
         // Screen.renderBackground applies the vanilla blur shader. A light tint keeps the world
         // and its text sharp, and cannot blur title/status text already drawn by another pass.
         context.fill(0,0,width,height,0x18000000);
@@ -385,16 +386,16 @@ public class ElevatorScreen extends Screen {
 
     /** @return false，电梯运行期间不暂停单人游戏世界，否则轿厢会在面板打开时停住。 */
     @Override
-    public boolean shouldPause() { return false; }
+    public boolean isPauseScreen() { return false; }
 
     /**
      * 面板上的扁平按钮（翻页 / 开门 / 关门 / 完成共用）：1 像素描边 + 深色底面 + 顶部一道高光。
      *
      * <p>为什么不用原版 ButtonWidget 的默认外观：原版是 200×20 的三段式灰色贴图，压在深色面板上像贴了
      * 一张灰纸；这里统一画成与楼层键同族的扁平键，禁用时压暗并变灰，悬停/聚焦时点亮。
-     * 点击音效、悬停提示、键盘朗读与禁用判定仍由 {@link ButtonWidget} 提供。
+     * 点击音效、悬停提示、键盘朗读与禁用判定仍由 {@link Button} 提供。
      */
-    private final class FlatButton extends ButtonWidget {
+    private final class FlatButton extends Button {
         /**
          * @param x 左上角 X（像素）
          * @param y 左上角 Y（像素）
@@ -404,9 +405,9 @@ public class ElevatorScreen extends Screen {
          * @param onPress 点击回调
          * @param tooltip 悬停提示
          */
-        FlatButton(int x,int y,int w,int h,Text message,PressAction onPress,Text tooltip) {
-            super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
-            setTooltip(Tooltip.of(tooltip));
+        FlatButton(int x,int y,int w,int h,Component message,OnPress onPress,Component tooltip) {
+            super(x,y,w,h,message,onPress,DEFAULT_NARRATION);
+            setTooltip(Tooltip.create(tooltip));
         }
 
         /**
@@ -419,8 +420,8 @@ public class ElevatorScreen extends Screen {
          * @param message 按钮文字
          * @param onPress 点击回调
          */
-        FlatButton(int x,int y,int w,int h,Text message,PressAction onPress) {
-            super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
+        FlatButton(int x,int y,int w,int h,Component message,OnPress onPress) {
+            super(x,y,w,h,message,onPress,DEFAULT_NARRATION);
         }
 
         /**
@@ -432,13 +433,13 @@ public class ElevatorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
             boolean lit=active&&(isHovered()||isFocused());
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             ctx.fill(x,y,x+w,y+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
             ctx.fill(x+1,y+1,x+w-1,y+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
             if(h>6) ctx.fill(x+2,y+2,x+w-2,y+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+w/2,y+(h-8)/2,
+            ctx.drawCenteredString(font,getMessage(),x+w/2,y+(h-8)/2,
                     !active?0xFF7C8896:lit?0xFFFFFFFF:0xD5E2EE);
         }
     }
@@ -449,9 +450,9 @@ public class ElevatorScreen extends Screen {
      * <p>配色优先级：悬停/键盘聚焦（点亮为白色）&gt; 已加入停靠计划（红色）&gt; 轿厢当前停靠层（绿色）&gt; 普通灰色。
      * 为什么不用原版 ButtonWidget 的默认外观：原版按钮是 200×20 的三段式贴图，压成 20×20 后左右边框挤在一起，
      * 看起来像被压扁的长条；这里直接画描边 + 底色 + 数字，更接近真实面板上的按键，以后想换成贴图也只需要
-     * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
+     * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link Button} 提供。
      */
-    private final class StationButton extends ButtonWidget {
+    private final class StationButton extends Button {
         private final String label;  // 楼层编号文本（基准层 1、其上 2,3…、其下 B1,B2…），同时是按钮上的字
         private final int stationY; // 该站点高度（方块 Y，格），用于判断"轿厢当前停靠层"
         private final long packed;  // 站点根方块的打包坐标，用于与停靠计划比对
@@ -465,10 +466,10 @@ public class ElevatorScreen extends Screen {
          * @param tooltip 悬停提示（楼层编号 + 具体高度）
          * @param onPress 点击回调：发送 SelectStop 请求
          */
-        StationButton(int x,int y,String label,int stationY,long packed,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(label),onPress,DEFAULT_NARRATION_SUPPLIER);
+        StationButton(int x,int y,String label,int stationY,long packed,Component tooltip,OnPress onPress) {
+            super(x,y,BUTTON,BUTTON,Component.literal(label),onPress,DEFAULT_NARRATION);
             this.label=label; this.stationY=stationY; this.packed=packed;
-            setTooltip(Tooltip.of(tooltip));
+            setTooltip(Tooltip.create(tooltip));
         }
 
         /** @return 轿厢是否正停在这一层（必须已停稳：运行途中经过某一层不算，也不会闪一下绿色）。 */
@@ -489,7 +490,7 @@ public class ElevatorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=isPlanned(), current=isCurrentFloor();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面，形成按键的立体感；配色与面板深色底协调。
@@ -497,15 +498,15 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:current?0xFF7FCB93:0xFF5A6A7B);
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2,
+            ctx.drawCenteredString(font,getMessage(),x+s/2,y+(s-8)/2,
                     lit?0xFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：楼层编号 + 该站高度，和悬停提示一致。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,
-                    Text.translatable("screen.easyelevator.station",label,stationY));
+        public void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput builder) {
+            builder.add(net.minecraft.client.gui.narration.NarratedElementType.TITLE,
+                    Component.translatable("screen.easyelevator.station",label,stationY));
         }
     }
 }

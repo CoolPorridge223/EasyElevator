@@ -1,12 +1,12 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import org.DJB.easyelevator.network.ElevatorNetworking;
 
 /**
@@ -24,7 +24,7 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  *
  * <p>在整体架构中的位置：纯客户端 UI，与服务端之间只往返"请求 + 点亮状态"。面板内容（哪个方向可点、
  * 哪个方向还亮着）全部来自服务端下发的包，客户端不推导、不缓存线路，因此关掉再打开、或别人按过按钮之后
- * 再打开，看到的都是真实状态。面板打开时<b>不暂停游戏</b>（{@link #shouldPause()} 返回 false）。
+ * 再打开，看到的都是真实状态。面板打开时<b>不暂停游戏</b>（{@link #isPauseScreen()} 返回 false）。
  */
 public class LandingDoorScreen extends Screen {
     /** 方形按钮边长（像素）、按钮间距（像素）、面板内边距（像素）。三个键同尺寸，整列才齐。 */
@@ -45,7 +45,7 @@ public class LandingDoorScreen extends Screen {
      * @param payload 包内容：站点坐标、两个方向当前的点亮状态、以及两个方向是否显示（端站只显示一个）
      */
     public LandingDoorScreen(ElevatorNetworking.OpenHallPanel payload) {
-        super(Text.translatable("screen.easyelevator.hall_title"));
+        super(Component.translatable("screen.easyelevator.hall_title"));
         this.station=payload.station();
         this.upPending=payload.up(); this.downPending=payload.down();
         this.showUp=payload.showUp(); this.showDown=payload.showDown();
@@ -77,15 +77,15 @@ public class LandingDoorScreen extends Screen {
         panelLeft=width/2-panelWidth/2;
         panelTop=height/2-panelHeight/2;
         int left=width/2-BUTTON/2, top=panelTop+PADDING, row=0;
-        if(showUp) addDrawableChild(new SquareButton(left,top+row++*(BUTTON+GAP),"▲",() -> upPending,
-                Text.translatable("screen.easyelevator.hall_up"),
+        if(showUp) addRenderableWidget(new SquareButton(left,top+row++*(BUTTON+GAP),"▲",() -> upPending,
+                Component.translatable("screen.easyelevator.hall_up"),
                 b->ClientPlayNetworking.send(new ElevatorNetworking.HallCallButton(station,true))));
-        if(showDown) addDrawableChild(new SquareButton(left,top+row++*(BUTTON+GAP),"▼",() -> downPending,
-                Text.translatable("screen.easyelevator.hall_down"),
+        if(showDown) addRenderableWidget(new SquareButton(left,top+row++*(BUTTON+GAP),"▼",() -> downPending,
+                Component.translatable("screen.easyelevator.hall_down"),
                 b->ClientPlayNetworking.send(new ElevatorNetworking.HallCallButton(station,false))));
         // 关闭键：与方向键完全同款同尺寸（只有一个 × 字符，不再用原版长条按钮）。
-        addDrawableChild(new SquareButton(left,top+row*(BUTTON+GAP),"×",() -> false,
-                Text.translatable("screen.easyelevator.close"),b->close()));
+        addRenderableWidget(new SquareButton(left,top+row*(BUTTON+GAP),"×",() -> false,
+                Component.translatable("screen.easyelevator.close"),b->onClose()));
     }
 
     /**
@@ -98,12 +98,12 @@ public class LandingDoorScreen extends Screen {
      * 副作用：仅绘制；不读世界、不发包。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
         renderBackground(context,mouseX,mouseY,delta);
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFF);
-        context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.hall_station",station.getY()),
+        context.drawCenteredString(font,title,width/2,panelTop-PADDING-10,0xFFFFFF);
+        context.drawCenteredString(font,
+                Component.translatable("screen.easyelevator.hall_station",station.getY()),
                 width/2,panelTop+panelHeight+PADDING-4,HINT_COLOR);
         super.render(context,mouseX,mouseY,delta);
     }
@@ -115,13 +115,13 @@ public class LandingDoorScreen extends Screen {
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
         context.fill(0,0,width,height,0x18000000);
     }
 
     /** @return false：等车期间不暂停单人游戏世界，否则轿厢会停在半路。 */
     @Override
-    public boolean shouldPause() { return false; }
+    public boolean isPauseScreen() { return false; }
 
     /**
      * 面板上的方形按键（方向键与关闭键共用）：一个方块 + 中间的字符（▲ / ▼ / ×）。
@@ -130,11 +130,11 @@ public class LandingDoorScreen extends Screen {
      * （红 = "服务端还留着这条呼叫"，由服务端推送，因此反映的是真实调度状态而不是本地点击）。
      * 关闭键的 {@code pending} 恒为 false，因此永远是灰/悬停白两种状态。
      */
-    private final class SquareButton extends ButtonWidget {
+    private final class SquareButton extends Button {
         /** 该键"点亮/变红"的判据：方向键读服务端推送的状态，关闭键恒为 false。 */
         private final java.util.function.BooleanSupplier pending;
         /** 键盘朗读与悬停提示用的文本（"上行呼叫 / 下行呼叫 / 关闭"）。 */
-        private final Text narration;
+        private final Component narration;
 
         /**
          * @param x 按钮左上角 X（像素）
@@ -144,10 +144,10 @@ public class LandingDoorScreen extends Screen {
          * @param tooltip 悬停提示（"上行呼叫 / 下行呼叫 / 关闭"）
          * @param onPress 点击回调：方向键发 HallCallButton，关闭键关闭界面
          */
-        SquareButton(int x,int y,String glyph,java.util.function.BooleanSupplier pending,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(glyph),onPress,DEFAULT_NARRATION_SUPPLIER);
+        SquareButton(int x,int y,String glyph,java.util.function.BooleanSupplier pending,Component tooltip,OnPress onPress) {
+            super(x,y,BUTTON,BUTTON,Component.literal(glyph),onPress,DEFAULT_NARRATION);
             this.pending=pending; this.narration=tooltip;
-            setTooltip(Tooltip.of(tooltip));
+            setTooltip(Tooltip.create(tooltip));
         }
 
         /**
@@ -159,20 +159,20 @@ public class LandingDoorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=pending.getAsBoolean();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；配色与选站面板的楼层键同源。
             ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:0xFF6B7A88);
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:0xFF212A36);
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
+            ctx.drawCenteredString(font,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本（方向或"关闭"）。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,narration);
+        public void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput builder) {
+            builder.add(net.minecraft.client.gui.narration.NarratedElementType.TITLE,narration);
         }
     }
 }

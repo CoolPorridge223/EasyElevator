@@ -1,22 +1,5 @@
 package org.DJB.easyelevator.entity;
 
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventories;
-import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.Item;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.logic.CargoLoad;
 import org.DJB.easyelevator.logic.ElevatorController;
@@ -24,6 +7,23 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.screen.CargoScreenHandler;
 
 import java.util.List;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 
 /**
  * 重载电梯轿厢（注册 ID {@code easyelevator:powerful_cabin}）：<b>带货舱的大载客量型号</b>。
@@ -32,7 +32,7 @@ import java.util.List;
  * 运动、门联锁、乘客名册与存档，它额外提供三件事：
  *
  * <h2>1. 持久化货舱（27 格）</h2>
- * 货物存在实体 NBT 的 {@code Cargo.Items} 里（原版 {@link Inventories} 格式，保留槽位、数量与
+ * 货物存在实体 NBT 的 {@code Cargo.Items} 里（原版 {@link ContainerHelper} 格式，保留槽位、数量与
  * 物品组件），区块卸载、停服、跨维度都不会掉货；只有"回收"与 {@code /kill} 掉出来一次
  * （见 {@link #remove(RemovalReason)}）。旧存档没有 {@code Cargo} 键时按空舱读入。
  *
@@ -62,10 +62,10 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 但<b>不打开面板</b>的观察者也要能看到货箱、看到铭牌上的限载人数，这两个表现都只依赖件数，
      * 因此用一个 4 字节整数跟着实体追踪一起走就够了（几百件货物不必逐格广播）。
      */
-    private static final TrackedData<Integer> CARGO_ITEMS = DataTracker.registerData(
-            PowerfulCabinEntity.class, TrackedDataHandlerRegistry.INTEGER);
+    private static final EntityDataAccessor<Integer> CARGO_ITEMS = SynchedEntityData.defineId(
+            PowerfulCabinEntity.class, EntityDataSerializers.INT);
     /** 货舱库存（27 格）。服务端是权威副本；变更时通过监听器重算并同步件数。 */
-    private final SimpleInventory cargo = new SimpleInventory(CargoLoad.SLOTS);
+    private final SimpleContainer cargo = new SimpleContainer(CargoLoad.SLOTS);
 
     /**
      * 构造重载轿厢。
@@ -76,7 +76,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 并把 {@link ElevatorParameters#HIGH_PASSENGER_NUM_LIMIT} 作为<b>空舱基准上限</b>交给父类；
      * 真正的当前上限由 {@link #passengerNumLimit()} 按货量实时算出来。
      */
-    public PowerfulCabinEntity(EntityType<?> type, World world) {
+    public PowerfulCabinEntity(EntityType<?> type, Level world) {
         super(type, world, ElevatorParameters.LOW_SPEED, ElevatorParameters.HIGH_PASSENGER_NUM_LIMIT);
         cargo.addListener(inventory -> syncCargo());
     }
@@ -86,16 +86,16 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * @param builder 原版实体构造流程传入的 DataTracker 构建器
      */
-    @Override protected void initDataTracker(DataTracker.Builder builder) {
-        super.initDataTracker(builder);
-        builder.add(CARGO_ITEMS, 0);
+    @Override protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(CARGO_ITEMS, 0);
     }
 
     /** @return 货舱库存（27 格）：服务端为权威副本，客户端只有打开货舱后由菜单同步的那一份 */
-    public SimpleInventory cargo() { return cargo; }
+    public SimpleContainer cargo() { return cargo; }
 
     /** @return 当前货舱件数（服务端为实时值，客户端读同步字段；负数不会出现） */
-    public int cargoItems() { return dataTracker.get(CARGO_ITEMS); }
+    public int cargoItems() { return entityData.get(CARGO_ITEMS); }
 
     /** @return 当前应显示的货箱数量（0..{@link CargoLoad#MAX_CRATES}）：渲染与碰撞都按它取 {@link #cargoBox(int)} */
     public int cargoCrates() { return CargoLoad.crates(cargoItems()); }
@@ -110,10 +110,10 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 副作用：写同步字段（服务端）；客户端调用时什么都不做。
      */
     private void syncCargo() {
-        if (!getWorld().isClient) {
+        if (!level().isClientSide) {
             int count = 0;
-            for (int i = 0; i < cargo.size(); i++) count += cargo.getStack(i).getCount();
-            dataTracker.set(CARGO_ITEMS, count);
+            for (int i = 0; i < cargo.getContainerSize(); i++) count += cargo.getItem(i).getCount();
+            entityData.set(CARGO_ITEMS, count);
         }
     }
 
@@ -139,7 +139,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * <p>四个条件缺一不可：实体与玩家都活着、玩家不是旁观者、玩家与轿厢在同一个世界、
      * 且玩家的身体仍然落在轿厢内缘之内（{@link #containsPassenger}）。
      * 于是"走出厢门 / 被传走 / 死亡 / 跨维度 / 半途旁观"都会让已经打开的面板立刻失效——
-     * 服务端每次点击都会重新问一遍（{@link CargoScreenHandler#canUse}），
+     * 服务端每次点击都会重新问一遍（{@link CargoScreenHandler#stillValid}），
      * 原版也会周期性检查并自动关掉失效的界面。
      *
      * <p>刻意<b>不</b>要求"门开着"或"已停稳"：装卸只在轿厢内进行，而"车在动的时候能不能整理货物"
@@ -149,8 +149,8 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @param player 待判定的玩家
      * @return 允许操作货舱时为 true
      */
-    public boolean canUseCargo(PlayerEntity player) {
-        return isAlive() && player.isAlive() && !player.isSpectator() && player.getWorld() == getWorld()
+    public boolean canUseCargo(Player player) {
+        return isAlive() && player.isAlive() && !player.isSpectator() && player.level() == level()
                 && containsPassenger(player);
     }
 
@@ -164,8 +164,8 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @return 至少有一名玩家正在装卸本厢货物时为 true
      */
     private boolean cargoInUse() {
-        return getWorld().getPlayers().stream().anyMatch(player ->
-                player.currentScreenHandler instanceof CargoScreenHandler handler
+        return level().players().stream().anyMatch(player ->
+                player.containerMenu instanceof CargoScreenHandler handler
                         && handler.cabin() == this && canUseCargo(player));
     }
 
@@ -182,7 +182,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 同一刻内不会出现"倒计时先归零、门开始关"的窗口。
      */
     @Override public void tick() {
-        if (!getWorld().isClient && cargoInUse()) super.doorCommand(true);
+        if (!level().isClientSide && cargoInUse()) super.doorCommand(true);
         super.tick();
     }
 
@@ -216,22 +216,22 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * <p>为什么先判 {@code containsPassenger} 再判客户端：潜行右键在厢外是"回收"，
      * 在厢内是"开货舱"，两者必须由同一个判据分开，否则站在门口的玩家会同时触发两种语义。
-     * 返回 {@link ActionResult#SUCCESS} 是为了吃掉这次点击，避免物品被放到舱壁上。
+     * 返回 {@link InteractionResult#SUCCESS} 是为了吃掉这次点击，避免物品被放到舱壁上。
      *
      * @param player 交互玩家
      * @param hand 交互手
      * @return 处理了这次点击时 SUCCESS；交给父类处理时父类的返回值
      */
-    @Override public ActionResult interact(PlayerEntity player, Hand hand) {
-        if (hand == Hand.MAIN_HAND && player.isSneaking() && containsPassenger(player)) {
-            if (!getWorld().isClient) {
+    @Override public InteractionResult interact(Player player, InteractionHand hand) {
+        if (hand == InteractionHand.MAIN_HAND && player.isShiftKeyDown() && containsPassenger(player)) {
+            if (!level().isClientSide) {
                 if (canUseCargo(player)) {
-                    player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                    player.openMenu(new SimpleMenuProvider(
                             (syncId, inventory, viewer) -> new CargoScreenHandler(syncId, inventory, this),
-                            Text.translatable("screen.easyelevator.cargo")));
-                } else player.sendMessage(Text.translatable("message.easyelevator.cargo_stopped"), true);
+                            Component.translatable("screen.easyelevator.cargo")));
+                } else player.displayClientMessage(Component.translatable("message.easyelevator.cargo_stopped"), true);
             }
-            return ActionResult.SUCCESS;
+            return InteractionResult.SUCCESS;
         }
         return super.interact(player, hand);
     }
@@ -247,8 +247,8 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @param index 货箱序号（0 起）
      * @return 世界坐标下的货箱长方体
      */
-    public Box cargoBox(int index) {
-        Box box = CargoLoad.box(index);
+    public AABB cargoBox(int index) {
+        AABB box = CargoLoad.box(index);
         return localBox(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
@@ -270,7 +270,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @return 本格允许的最大堆叠数（0..64）
      */
     public int cargoSlotLimit(int slot) {
-        return Math.max(0, Math.min(64, cargoSpaceLimit() - cargoItems() + cargo.getStack(slot).getCount()));
+        return Math.max(0, Math.min(64, cargoSpaceLimit() - cargoItems() + cargo.getItem(slot).getCount()));
     }
 
     /**
@@ -308,7 +308,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      */
     private int cargoSpaceLimit() {
         for (int i = cargoCrates(); i < CargoLoad.MAX_CRATES; i++) {
-            if (!getWorld().getOtherEntities(this, cargoBox(i), e -> e instanceof LivingEntity && !e.isSpectator()).isEmpty()) {
+            if (!level().getEntities(this, cargoBox(i), e -> e instanceof LivingEntity && !e.isSpectator()).isEmpty()) {
                 return i * CargoLoad.ITEMS_PER_CRATE;
             }
         }
@@ -325,8 +325,8 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * @return 本刻的碰撞盒列表：外壳在前、货箱在后（顺序不参与判定，只影响调试可读性）
      */
-    @Override public List<Box> collisionBoxesStatic() {
-        List<Box> boxes = super.collisionBoxesStatic();
+    @Override public List<AABB> collisionBoxesStatic() {
+        List<AABB> boxes = super.collisionBoxesStatic();
         for (int i = 0; i < cargoCrates(); i++) boxes.add(cargoBox(i));
         return boxes;
     }
@@ -345,9 +345,9 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     @Override public boolean supportsPassenger(Entity entity) {
         if (super.supportsPassenger(entity)) return true;
         if (!containsPassenger(entity)) return false;
-        Box feet = entity.getBoundingBox();
+        AABB feet = entity.getBoundingBox();
         for (int i=0; i<cargoCrates(); i++) {
-            Box box = cargoBox(i);
+            AABB box = cargoBox(i);
             if (Math.abs(entity.getY()-box.maxY) < .025 && feet.maxX > box.minX && feet.minX < box.maxX
                     && feet.maxZ > box.minZ && feet.minZ < box.maxZ) return true;
         }
@@ -357,15 +357,15 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     /**
      * 存档：父类写线路/状态机/乘客名册，本类补一个 {@code Cargo} 复合标签。
      *
-     * <p>用原版 {@link Inventories#writeNbt} 的格式（{@code Items} 列表）而不是自定义结构：槽位、数量与
+     * <p>用原版 {@link ContainerHelper#saveAllItems} 的格式（{@code Items} 列表）而不是自定义结构：槽位、数量与
      * 物品组件（自定义名称、附魔、容器内容……）都由原版负责往返，本模组不需要跟着版本更新维护一份
-     * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readCustomDataFromNbt}）。
+     * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readAdditionalSaveData}）。
      *
      * @param nbt 待写入的实体 NBT
      */
-    @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
-        super.writeCustomDataToNbt(nbt);
-        nbt.put("Cargo", Inventories.writeNbt(new NbtCompound(), cargo.getHeldStacks(), getRegistryManager()));
+    @Override protected void addAdditionalSaveData(CompoundTag nbt) {
+        super.addAdditionalSaveData(nbt);
+        nbt.put("Cargo", ContainerHelper.saveAllItems(new CompoundTag(), cargo.getItems(), registryAccess()));
     }
 
     /**
@@ -378,10 +378,10 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * @param nbt 已序列化的实体 NBT
      */
-    @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
-        super.readCustomDataFromNbt(nbt);
-        cargo.clear();
-        Inventories.readNbt(nbt.getCompound("Cargo"), cargo.getHeldStacks(), getRegistryManager());
+    @Override protected void readAdditionalSaveData(CompoundTag nbt) {
+        super.readAdditionalSaveData(nbt);
+        cargo.clearContent();
+        ContainerHelper.loadAllItems(nbt.getCompound("Cargo"), cargo.getItems(), registryAccess());
         syncCargo();
     }
 
@@ -404,11 +404,11 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @param reason 原版移除原因
      */
     @Override public void remove(RemovalReason reason) {
-        if (!getWorld().isClient && !isRemoved()
+        if (!level().isClientSide && !isRemoved()
                 && (reason == RemovalReason.KILLED || reason == RemovalReason.DISCARDED)) {
-            for (int i = 0; i < cargo.size(); i++) {
-                var stack = cargo.removeStack(i);
-                if (!stack.isEmpty()) dropStack(stack);
+            for (int i = 0; i < cargo.getContainerSize(); i++) {
+                var stack = cargo.removeItemNoUpdate(i);
+                if (!stack.isEmpty()) spawnAtLocation(stack);
             }
             syncCargo();
         }

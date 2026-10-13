@@ -1,9 +1,9 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Inventory;
 import org.DJB.easyelevator.logic.CargoLoad;
 import org.DJB.easyelevator.screen.CargoScreenHandler;
 
@@ -22,7 +22,7 @@ import org.DJB.easyelevator.screen.CargoScreenHandler;
  * 表头下沿还有一条**载重进度条**（宽度按件数占 {@link CargoLoad#MAX_ITEMS} 的比例）。
  * 鼠标移到表头文字上会弹出完整规则（可以让玩家不去翻文档就知道"多少货少载几个人"）。
  */
-public class CargoScreen extends HandledScreen<CargoScreenHandler> {
+public class CargoScreen extends AbstractContainerScreen<CargoScreenHandler> {
     /** 面板底色、边框、表头条、槽位凹底、普通文字与载重文字用的六个颜色常量（与选站面板同一套深色配色）。 */
     private static final int PANEL_COLOR = 0xFF161D27, BORDER_COLOR = 0xFF4A5A6D, BAR_COLOR = 0xFF1E2733,
             SLOT_BG_COLOR = 0xFF0F141B, COUNT_COLOR = 0xFFB7C7D9, CAPACITY_COLOR = 0xFFFFBC62;
@@ -36,11 +36,11 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      * 副作用：设置三个布局常量——176×210 的背景与"背包标题画在 y=116"，
      * 它们必须与 {@code CargoScreenHandler} 的槽位坐标一致，改一处就要改另一处。
      */
-    public CargoScreen(CargoScreenHandler handler, PlayerInventory inventory, Text title) {
+    public CargoScreen(CargoScreenHandler handler, Inventory inventory, Component title) {
         super(handler, inventory, title);
-        backgroundWidth = 176;
-        backgroundHeight = 210;
-        playerInventoryTitleY = 116;
+        imageWidth = 176;
+        imageHeight = 210;
+        inventoryLabelY = 116;
     }
 
     /**
@@ -57,36 +57,36 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      * @param mouseX 鼠标 X（未使用）
      * @param mouseY 鼠标 Y（未使用）
      */
-    @Override protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
-        context.fill(x, y, x + backgroundWidth, y + backgroundHeight, PANEL_COLOR);
-        context.drawBorder(x, y, backgroundWidth, backgroundHeight, BORDER_COLOR);
-        context.fill(x + 1, y + 1, x + 175, y + 46, BAR_COLOR);
-        for (var slot : handler.slots) {
-            context.fill(x + slot.x - 1, y + slot.y - 1, x + slot.x + 17, y + slot.y + 17, BORDER_COLOR);
-            context.fill(x + slot.x, y + slot.y, x + slot.x + 16, y + slot.y + 16, SLOT_BG_COLOR);
+    @Override protected void renderBg(GuiGraphics context, float delta, int mouseX, int mouseY) {
+        context.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, PANEL_COLOR);
+        context.renderOutline(leftPos, topPos, imageWidth, imageHeight, BORDER_COLOR);
+        context.fill(leftPos + 1, topPos + 1, leftPos + 175, topPos + 46, BAR_COLOR);
+        for (var slot : menu.slots) {
+            context.fill(leftPos + slot.x - 1, topPos + slot.y - 1, leftPos + slot.x + 17, topPos + slot.y + 17, BORDER_COLOR);
+            context.fill(leftPos + slot.x, topPos + slot.y, leftPos + slot.x + 16, topPos + slot.y + 16, SLOT_BG_COLOR);
         }
-        context.fill(x + 8, y + 43, x + 168, y + 45, SLOT_BG_COLOR);
-        int used = Math.min(160, handler.cargoItems() * 160 / CargoLoad.MAX_ITEMS);
-        context.fill(x + 8, y + 43, x + 8 + used, y + 45, CAPACITY_COLOR);
+        context.fill(leftPos + 8, topPos + 43, leftPos + 168, topPos + 45, SLOT_BG_COLOR);
+        int used = Math.min(160, menu.cargoItems() * 160 / CargoLoad.MAX_ITEMS);
+        context.fill(leftPos + 8, topPos + 43, leftPos + 8 + used, topPos + 45, CAPACITY_COLOR);
     }
 
     /**
      * 画表头三行与背包标题（原版在画完槽位后调用）。
      *
-     * <p>三行的 y 坐标（6 / 19 / 31）与 {@link #drawBackground} 的表头条（1..46）配套；
+     * <p>三行的 y 坐标（6 / 19 / 31）与 {@link #renderBg} 的表头条（1..46）配套；
      * 件数与限载都现问 {@link CargoScreenHandler}，因此与后壁铭牌、超载判定永远一致。
      *
      * @param context 绘制上下文（此处坐标相对面板左上角）
      * @param mouseX 鼠标 X（未使用）
      * @param mouseY 鼠标 Y（未使用）
      */
-    @Override protected void drawForeground(DrawContext context, int mouseX, int mouseY) {
-        context.drawText(textRenderer, title, 8, 6, 0xFFEAF2FA, false);
-        context.drawText(textRenderer, Text.translatable("screen.easyelevator.cargo_count", handler.cargoItems()),
+    @Override protected void renderLabels(GuiGraphics context, int mouseX, int mouseY) {
+        context.drawString(font, title, 8, 6, 0xFFEAF2FA, false);
+        context.drawString(font, Component.translatable("screen.easyelevator.cargo_count", menu.cargoItems()),
                 8, 19, COUNT_COLOR, false);
-        context.drawText(textRenderer, Text.translatable("screen.easyelevator.cargo_capacity", handler.passengerLimit()),
+        context.drawString(font, Component.translatable("screen.easyelevator.cargo_capacity", menu.passengerLimit()),
                 8, 31, CAPACITY_COLOR, false);
-        context.drawText(textRenderer, playerInventoryTitle, 8, playerInventoryTitleY, COUNT_COLOR, false);
+        context.drawString(font, playerInventoryTitle, 8, inventoryLabelY, COUNT_COLOR, false);
     }
 
     /**
@@ -101,12 +101,12 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      * @param mouseY 鼠标 Y（屏幕坐标）
      * @param delta 帧插值系数
      */
-    @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    @Override public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         super.render(context, mouseX, mouseY, delta);
-        drawMouseoverTooltip(context, mouseX, mouseY);
-        if (mouseX >= x + 8 && mouseX < x + 168 && mouseY >= y + 19 && mouseY < y + 46)
-            context.drawOrderedTooltip(textRenderer, textRenderer.wrapLines(
-                    Text.translatable("screen.easyelevator.cargo_rule"), 220), mouseX, mouseY);
+        renderTooltip(context, mouseX, mouseY);
+        if (mouseX >= leftPos + 8 && mouseX < leftPos + 168 && mouseY >= topPos + 19 && mouseY < topPos + 46)
+            context.renderTooltip(font, font.split(
+                    Component.translatable("screen.easyelevator.cargo_rule"), 220), mouseX, mouseY);
     }
 
     /**
@@ -114,7 +114,7 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      *
      * <p>为什么必须在这里也画面板底：原版的调用链是 {@code Screen.render → renderBackground →
      * drawBackground}，{@code HandledScreen.renderBackground} 就是转调 {@code drawBackground}；
-     * 本类覆盖了 {@code renderBackground} 来换掉模糊，因此要顺手把 {@link #drawBackground} 叫上，
+     * 本类覆盖了 {@code renderBackground} 来换掉模糊，因此要顺手把 {@link #renderBg} 叫上，
      * 否则面板底与槽位凹槽根本不会被画出来（只剩槽位里的物品浮在游戏画面上）。
      *
      * @param context 绘制上下文
@@ -122,8 +122,8 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      * @param mouseY 鼠标 Y
      * @param delta 帧插值系数
      */
-    @Override public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+    @Override public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0x18000000);
-        drawBackground(context, delta, mouseX, mouseY);
+        renderBg(context, delta, mouseX, mouseY);
     }
 }

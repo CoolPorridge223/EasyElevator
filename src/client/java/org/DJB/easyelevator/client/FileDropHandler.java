@@ -1,6 +1,5 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFWDropCallback;
 import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
@@ -8,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import net.minecraft.client.Minecraft;
 
 /**
  * 把文件<b>拖进游戏窗口</b>当作"选择文件"——门设置面板上传自定义到站音效的主要入口。
@@ -50,7 +50,7 @@ public final class FileDropHandler {
      *
      * @param client 客户端实例
      */
-    public static void register(MinecraftClient client) {
+    public static void register(Minecraft client) {
         if (callback != null) return; // 已经挂上
         if (client == null) {
             LOGGER.warn("Drag-and-drop uploads were not enabled: no client instance yet");
@@ -71,8 +71,8 @@ public final class FileDropHandler {
                     LOGGER.warn("Failed to handle a dropped file", t);
                 }
             });
-            org.lwjgl.glfw.GLFW.glfwSetDropCallback(client.getWindow().getHandle(), callback);
-            LOGGER.info("Drag-and-drop uploads enabled (window handle {})", client.getWindow().getHandle());
+            org.lwjgl.glfw.GLFW.glfwSetDropCallback(client.getWindow().getWindow(), callback);
+            LOGGER.info("Drag-and-drop uploads enabled (window handle {})", client.getWindow().getWindow());
         } catch (RuntimeException e) {
             // 拿不到窗口句柄或 GLFW 不可用：拖拽就用不了，但模组其余功能照常
             LOGGER.warn("Could not enable drag-and-drop uploads", e);

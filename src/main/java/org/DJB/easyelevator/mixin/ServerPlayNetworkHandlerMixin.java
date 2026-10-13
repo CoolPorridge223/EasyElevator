@@ -1,9 +1,9 @@
 package org.DJB.easyelevator.mixin;
 
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.world.phys.Vec3;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.network.PlatformMovement;
 import org.spongepowered.asm.mixin.Mixin;
@@ -40,28 +40,28 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *       字段也没有同步保护。</li>
  * </ul>
  */
-@Mixin(ServerPlayNetworkHandler.class)
+@Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerPlayNetworkHandlerMixin implements PlatformMovement {
     /** 本条连接正在处理的玩家；由 {@code onPlayerMove} 的注入回调读取。 */
-    @Shadow public ServerPlayerEntity player;
+    @Shadow public ServerPlayer player;
     /** 原版移动校验用的"上一刻 Y"基准（格）：平台位移必须计入它，否则会被当成玩家自己上升。 */
-    @Shadow private double lastTickY;
-    /** 原版移动校验用的"本刻已更新 Y"（格）：与 {@link #lastTickY} 成对平移。 */
-    @Shadow private double updatedY;
+    @Shadow private double firstGoodY;
+    /** 原版移动校验用的"本刻已更新 Y"（格）：与 {@link #firstGoodY} 成对平移。 */
+    @Shadow private double lastGoodY;
     /** 待确认的强制传送目标；非 null 期间任何位置平移都会被传送确认判成作弊，故此时禁止随厢移动。 */
-    @Shadow private Vec3d requestedTeleportPos;
-    /** 原版悬浮判定标志：为 true 时服务端认为玩家悬空，累计 {@link #floatingTicks} 刻后会拉回。 */
-    @Shadow private boolean floating;
+    @Shadow private Vec3 awaitingPositionFromClient;
+    /** 原版悬浮判定标志：为 true 时服务端认为玩家悬空，累计 {@link #aboveGroundTickCount} 刻后会拉回。 */
+    @Shadow private boolean clientIsFloating;
     /** 悬浮累计刻数（刻）；轿厢地板托住玩家时归零。 */
-    @Shadow private int floatingTicks;
+    @Shadow private int aboveGroundTickCount;
 
     /**
      * {@inheritDoc}
      *
-     * <p>判据就是"没有待确认传送"：原版把传送目标暂存在 {@link #requestedTeleportPos}，
+     * <p>判据就是"没有待确认传送"：原版把传送目标暂存在 {@link #awaitingPositionFromClient}，
      * 非空期间平移玩家会让随后的确认包与预期位置不符（见 {@code genuineTeleportIsNotCarried} 用例）。
      */
-    @Override public boolean easyelevator$canCarry() { return requestedTeleportPos == null; }
+    @Override public boolean easyelevator$canCarry() { return awaitingPositionFromClient == null; }
 
     /**
      * {@inheritDoc}
@@ -70,8 +70,8 @@ public abstract class ServerPlayNetworkHandlerMixin implements PlatformMovement 
      * 于是玩家自身的水平与垂直位移仍旧按原值参与速度校验，不会凭空获得或丢失速度。
      */
     @Override public void easyelevator$carried(double dy) {
-        lastTickY += dy;
-        updatedY += dy;
+        firstGoodY += dy;
+        lastGoodY += dy;
     }
 
     /**
@@ -82,21 +82,21 @@ public abstract class ServerPlayNetworkHandlerMixin implements PlatformMovement 
      * 更不会让半空中的非乘客获得支撑。
      *
      * @param packet 刚被处理的原版移动包；本方法不使用它，位置一律以 {@link #player} 的当前状态为准
-     * @param ci 原版回调信息；本方法不取消调用，只可能修改 {@link #floating}/{@link #floatingTicks}
+     * @param ci 原版回调信息；本方法不取消调用，只可能修改 {@link #clientIsFloating}/{@link #aboveGroundTickCount}
      *           与玩家的 {@code fallDistance}
      */
     // 只补"实体地板也算支撑"这一条：原版的速度、碰撞、飞行与传送校验一概不碰。
-    @Inject(method = "onPlayerMove", at = @At("RETURN"))
-    private void easyelevator$floorSupport(PlayerMoveC2SPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleMovePlayer", at = @At("RETURN"))
+    private void easyelevator$floorSupport(ServerboundMovePlayerPacket packet, CallbackInfo ci) {
         // 只处理"自称踩在地上"的正常玩家：旁观者与骑乘者本来就不走这套站立判定，直接放行。
-        if (!player.isOnGround() || player.isSpectator() || player.hasVehicle()) return;
+        if (!player.onGround() || player.isSpectator() || player.isPassenger()) return;
         // 外扩 0.01 格再搜索：玩家站在地板边缘时包围盒可能因浮点误差与轿厢刚好不相交，漏判就会白挨一次拉回。
-        for (var cabin : player.getWorld().getEntitiesByClass(AbstractCabinEntity.class,
-                player.getBoundingBox().expand(.01), c -> !c.isRemoved())) {
+        for (var cabin : player.level().getEntitiesOfClass(AbstractCabinEntity.class,
+                player.getBoundingBox().inflate(.01), c -> !c.isRemoved())) {
             // supportsPassenger = 在厢内 且 脚底恰好贴在地板面（容差 0.025 格）；站在厢内半空中跳起的玩家不算，悬浮判定照旧生效。
             if (cabin.supportsPassenger(player)) {
-                floating = false;
-                floatingTicks = 0;
+                clientIsFloating = false;
+                aboveGroundTickCount = 0;
                 player.fallDistance = 0;
                 break;
             }

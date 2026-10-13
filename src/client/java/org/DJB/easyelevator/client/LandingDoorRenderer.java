@@ -1,20 +1,20 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.block.entity.BlockEntityRenderer;
-import net.minecraft.client.render.block.entity.BlockEntityRendererFactory;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.RotationAxis;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
@@ -45,7 +45,7 @@ import org.joml.Matrix4f;
 public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlockEntity> {
     /** 门扇贴图：深色阳极氧化钢板，比门框的亮钢暗一档，形成层次。
      *  贴图纵轴映射到门扇高度（v=0 在上、v=1 在下），因此图里的踢脚板正好落在门扇底部。 */
-    private static final Identifier TEXTURE=Easyelevator.id("textures/block/blank_door.png");
+    private static final ResourceLocation TEXTURE=Easyelevator.id("textures/block/blank_door.png");
     /** 与轿厢相同，原版无色玻璃不使用整面染色或 alpha 混合。 */
     private static final int GLASS_COLOR=0xFFFFFFFF;
 
@@ -77,7 +77,7 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
 
     /** 门扇不做顶点着色（保持贴图原色，由光照决定明暗）。
      * @param context 渲染器上下文（本渲染器不需要额外资源） */
-    public LandingDoorRenderer(BlockEntityRendererFactory.Context context) { }
+    public LandingDoorRenderer(BlockEntityRendererProvider.Context context) { }
 
     /**
      * 绘制门框顶部的楼层数字与两扇门扇（渲染原点 = 根方块原点）。
@@ -92,8 +92,8 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      * @param overlay 覆盖层（未使用，交给 {@link BoxMesh} 填默认值）
      */
     @Override
-    public void render(LandingDoorBlockEntity door,float tickDelta,MatrixStack matrices,VertexConsumerProvider buffers,int light,int overlay) {
-        BlockState state=door.getCachedState();
+    public void render(LandingDoorBlockEntity door,float tickDelta,PoseStack matrices,MultiBufferSource buffers,int light,int overlay) {
+        BlockState state=door.getBlockState();
         // 方块实体只在根方块创建，这里再挡一次：万一其它部件也带上实体，也不会把整扇门画 9 遍
         if(!LandingDoorBlock.isRoot(state)) return;
         // 楼层数字与门扇无关（门全开时没有门扇几何），因此先画层号再判断门扇是否还需要绘制
@@ -101,13 +101,13 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         float progress=door.openProgress(tickDelta);
         // 全开时两扇门扇宽度归零、完全躲进门框立柱后面，没有可见几何，直接跳过
         if(progress>=.999f) return;
-        Direction facing=state.get(LandingDoorBlock.FACING);
-        Box left=LandingDoorGeometry.leafBox(facing,progress,false);
-        Box right=LandingDoorGeometry.leafBox(facing,progress,true);
+        Direction facing=state.getValue(LandingDoorBlock.FACING);
+        AABB left=LandingDoorGeometry.leafBox(facing,progress,false);
+        AABB right=LandingDoorGeometry.leafBox(facing,progress,true);
         if(left==null&&right==null) return;
         // getEntityCutout 会剔除背面：门扇是实心长方体，背向的面本来看不见；
         // 顺带让"门扇外缘与门框内缘贴合"处的共面三角形不再互相闪烁。
-        VertexConsumer out=buffers.getBuffer(RenderLayer.getEntityCutout(TEXTURE));
+        VertexConsumer out=buffers.getBuffer(RenderType.entityCutout(TEXTURE));
         // 观光轿厢所在的线路：所有楼层门的门扇都换成"铁框 + 中间玻璃"（判据来自门方块实体，见 glassDoors()）。
         // 玻璃必须画在不透明层之后、而且必须在返回前只写玻璃层（换层会结束上一层缓冲，见 BoxMesh 类注释）。
         boolean glass=door.glassDoors();
@@ -146,7 +146,7 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      *
      * <p>位置：从方块中心沿朝向推出"半格（到方块面）− 屏幕凹陷 + 0.008 格空隙"，因此红字正好贴在
      * 凹进去的显示屏面上（而不是浮在方块面之外）；高度取屏幕中线，字体坐标再下移半个字高
-     * （{@link TextRenderer#draw} 的 y 是这一行的**顶边**）。方块实体渲染器传进来的矩阵
+     * （{@link Font#drawInBatch} 的 y 是这一行的**顶边**）。方块实体渲染器传进来的矩阵
      * <b>已经平移到方块原点</b>，因此只能用方块内局部坐标。
      *
      * <p>副作用：只向顶点缓冲写入文字（与门扇共用渲染管线传入的缓冲，由管线统一 flush），
@@ -158,38 +158,38 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      * @param buffers 顶点缓冲提供者：与原版告示牌一样直接复用管线给的这一个
      * @param light 打包后的光照值
      */
-    private static void drawFloorDisplay(LandingDoorBlockEntity door,BlockState state,MatrixStack matrices,VertexConsumerProvider buffers,int light) {
+    private static void drawFloorDisplay(LandingDoorBlockEntity door,BlockState state,PoseStack matrices,MultiBufferSource buffers,int light) {
         int floor=door.cabinFloor();
         if(floor==0) return; // 本线路没有轿厢：什么都不画，避免显示成"0 层"（负数 = 地下 B1、B2…，要显示）
-        Direction facing=state.get(LandingDoorBlock.FACING);
-        TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
+        Direction facing=state.getValue(LandingDoorBlock.FACING);
+        Font textRenderer=Minecraft.getInstance().font;
         // 运行方向用闪烁箭头表示（▲ 上行 / ▼ 下行 / 停靠留空），不再写"电梯上行"这类文字。
         ElevatorStatus status=door.cabinStatus();
         boolean moving=StatusArrow.moving(status);
-        Text arrowText=Text.literal(StatusArrow.glyph(status));
+        Component arrowText=Component.literal(StatusArrow.glyph(status));
         // 楼层号统一走 FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…，与选站面板、轿厢内面板同一口径。
-        Text floorText=Text.literal(FloorIndicator.format(floor));
+        Component floorText=Component.literal(FloorIndicator.format(floor));
         // 箭头宽度始终按字符本身预留（停靠时不占位），这样闪烁的半个周期里楼层号不会左右跳动。
-        int statusWidth=moving?StatusArrow.width(textRenderer):0, floorWidth=textRenderer.getWidth(floorText);
+        int statusWidth=moving?StatusArrow.width(textRenderer):0, floorWidth=textRenderer.width(floorText);
         float start=-(statusWidth+STATUS_GAP+floorWidth)/2f; // 整组居中的起点
         // 位置：从方块中心沿朝向推出"半格（到方块面）− 屏幕凹陷 + 一点空隙"，因此红字正好贴在
         // 凹进去的显示屏面上（而不是浮在方块面之外）。四种朝向的偏移量同一个公式，因为
         // "沿朝向往外"在正向与反向朝向上刚好互为镜像。
         double offset=.5-SCREEN_INSET+TEXT_STANDOFF;
-        matrices.push();
+        matrices.pushPose();
         // 高度取显示屏中线：字体坐标的 y 是这一行的**顶边**，所以再下移半个字高，两行才会被屏幕装住。
-        matrices.translate(.5+facing.getOffsetX()*offset,SCREEN_CENTRE_Y,.5+facing.getOffsetZ()*offset);
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(facing) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
+        matrices.translate(.5+facing.getStepX()*offset,SCREEN_CENTRE_Y,.5+facing.getStepZ()*offset);
+        matrices.mulPose(Axis.YP.rotationDegrees(switch(facing) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
         // Y 轴取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒。
         matrices.scale(FLOOR_SCALE,-FLOOR_SCALE,FLOOR_SCALE);
-        Matrix4f matrix=matrices.peek().getPositionMatrix();
-        float textY=-textRenderer.fontHeight/2f; // 行心 → 顶边（见上）
+        Matrix4f matrix=matrices.last().pose();
+        float textY=-textRenderer.lineHeight/2f; // 行心 → 顶边（见上）
         // 最高亮度：井道或走廊再暗也能看清红字。POLYGON_OFFSET 与原版告示牌一致，避免与屏幕面片闪烁。
         // 只在"正在运行 + 闪烁的亮相"画箭头；灭相与停靠都不画，位置由上面的 statusWidth 固定住。
         if(!arrowText.getString().isEmpty())
-            textRenderer.draw(arrowText,start,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        textRenderer.draw(floorText,start+statusWidth+STATUS_GAP,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        matrices.pop();
+            textRenderer.drawInBatch(arrowText,start,textY,FLOOR_COLOR,true,matrix,buffers,Font.DisplayMode.POLYGON_OFFSET,0,LightTexture.FULL_BRIGHT);
+        textRenderer.drawInBatch(floorText,start+statusWidth+STATUS_GAP,textY,FLOOR_COLOR,true,matrix,buffers,Font.DisplayMode.POLYGON_OFFSET,0,LightTexture.FULL_BRIGHT);
+        matrices.popPose();
     }
 
     /**
@@ -197,11 +197,11 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
      *
      * <p>原因：方块实体渲染器的默认剔除用的是<b>根方块自己那一格</b>的轮廓形状，而门扇会滑到左右两列
      * （进度过半后两扇都离开了中列），此时中列的轮廓已经为空，若沿用默认剔除，门扇会在还看得见的时候
-     * 突然消失。这里改为按渲染距离显示，整扇门由 {@link #getRenderDistance()} 与摄像机裁剪控制。
+     * 突然消失。这里改为按渲染距离显示，整扇门由 {@link #getViewDistance()} 与摄像机裁剪控制。
      *
      * @param door 根方块的方块实体
      * @return 恒为 true
      */
     @Override
-    public boolean rendersOutsideBoundingBox(LandingDoorBlockEntity door) { return true; }
+    public boolean shouldRenderOffScreen(LandingDoorBlockEntity door) { return true; }
 }

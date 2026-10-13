@@ -1,6 +1,6 @@
 package org.DJB.easyelevator.logic;
 
-import net.minecraft.util.math.Box;
+import net.minecraft.world.phys.AABB;
 
 /**
  * 货舱的<b>纯算术模型</b>：件数与"占几个人的载重"、"显示几个货箱"的换算，以及货箱的几何。
@@ -14,7 +14,7 @@ import net.minecraft.util.math.Box;
  * 潜影盒之类的容器只算容器本身那 1 件，盒内物品<b>不</b>另计。理由：递归称重会让"装箱"变成
  * 免费的重量规避（把 27 格塞进一个潜影盒），而本模组要表达的是"这部电梯装了多少货"。
  *
- * <p>只依赖 {@link Box} 这一个 Minecraft 类型（用于货箱几何），不引用世界、实体或注册表，
+ * <p>只依赖 {@link AABB} 这一个 Minecraft 类型（用于货箱几何），不引用世界、实体或注册表，
  * 因此与 {@code LandingDoorGeometry} 一样属于"需要 MC 类路径、但不需要世界"的可单测类。
  */
 public final class CargoLoad {
@@ -121,10 +121,10 @@ public final class CargoLoad {
      * @throws IllegalArgumentException 序号越界（&lt;0 或 ≥{@link #MAX_CRATES}）——调用方应当先问
      *         {@link #crates(int)}，越界说明渲染与货量已经不同步，宁可当场报错也不要画出错位的箱子
      */
-    public static Box box(int index) {
+    public static AABB box(int index) {
         if (index < 0 || index >= MAX_CRATES) throw new IllegalArgumentException("Invalid cargo crate");
         double x = -1.08 + (index % 3) * .76;
         double y = .2 + (index / 3) * .4;
-        return new Box(x, y, -1.14, x + .64, y + .4, -.50);
+        return new AABB(x, y, -1.14, x + .64, y + .4, -.50);
     }
 }

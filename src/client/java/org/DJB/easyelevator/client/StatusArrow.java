@@ -1,6 +1,6 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.util.Util;
+import net.minecraft.Util;
 import org.DJB.easyelevator.logic.ElevatorStatus;
 
 /**
@@ -11,7 +11,7 @@ import org.DJB.easyelevator.logic.ElevatorStatus;
  * 同一状态用同一字符、闪烁同相，玩家从走廊看向轿厢时不会看到两个节奏不一致的箭头；
  * 字号、字符宽度这些约定也集中在一处，改一个地方两处一起变。
  *
- * <p>闪烁用墙钟毫秒（{@link Util#getMeasuringTimeMs()}）而不是游戏刻：渲染帧率与游戏刻无关，
+ * <p>闪烁用墙钟毫秒（{@link Util#getMillis()}）而不是游戏刻：渲染帧率与游戏刻无关，
  * 而且打开暂停菜单（游戏刻停止）时箭头仍会继续闪，不会突然定住。
  *
  * <p>纯客户端表现层：不读世界状态、不发包；状态本身仍来自服务端同步的 Phase + 目的站高度
@@ -34,7 +34,7 @@ final class StatusArrow {
     static boolean moving(ElevatorStatus status) { return status==ElevatorStatus.UP||status==ElevatorStatus.DOWN; }
 
     /** @return 闪烁的"亮"相；灭的那半个周期两处显示同时留空，因此视觉上是同一个箭头在闪 */
-    static boolean lit() { return (Util.getMeasuringTimeMs()/BLINK_MS)%2==0; }
+    static boolean lit() { return (Util.getMillis()/BLINK_MS)%2==0; }
 
     /**
      * 取当前该显示的箭头字符。
@@ -56,7 +56,7 @@ final class StatusArrow {
      * @param textRenderer 字体渲染器
      * @return 上/下箭头字符宽度的较大值（像素）
      */
-    static int width(net.minecraft.client.font.TextRenderer textRenderer) {
-        return Math.max(textRenderer.getWidth(net.minecraft.text.Text.literal(UP)),textRenderer.getWidth(net.minecraft.text.Text.literal(DOWN)));
+    static int width(net.minecraft.client.gui.Font textRenderer) {
+        return Math.max(textRenderer.width(net.minecraft.network.chat.Component.literal(UP)),textRenderer.width(net.minecraft.network.chat.Component.literal(DOWN)));
     }
 }

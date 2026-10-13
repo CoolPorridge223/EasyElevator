@@ -1,13 +1,13 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
 import org.DJB.easyelevator.logic.DoorSounds;
 import org.DJB.easyelevator.network.ElevatorNetworking;
@@ -47,7 +47,7 @@ import java.util.function.Supplier;
  * {@link ElevatorNetworking.SetBaseFloor} / {@link ElevatorNetworking.DoorSoundUpload}，
  * 从不自己改状态。因此别人改了同一扇门时，服务端推来新快照，本面板当场刷新（{@link #apply}）。
  *
- * <p>面板打开时<b>不暂停游戏</b>（{@link #shouldPause()} 返回 false），与另两个界面一致。
+ * <p>面板打开时<b>不暂停游戏</b>（{@link #isPauseScreen()} 返回 false），与另两个界面一致。
  */
 public class DoorSoundScreen extends Screen {
     /** 诊断日志：弹窗失败时把真实原因（HeadlessException 等）写进日志，而不是只给玩家一句含糊的提示。 */
@@ -110,7 +110,7 @@ public class DoorSoundScreen extends Screen {
     /** 面板左上角与设置行的上边缘（渲染深色底与分隔线用）。 */
     private int panelLeft, panelTop, rowTop;
     /** 路径输入框：不依赖拖拽与系统对话框的最后一道上传入口。 */
-    private TextFieldWidget pathInput;
+    private EditBox pathInput;
 
     /**
      * 由服务端下发的 {@link ElevatorNetworking.OpenDoorPanel} 构造面板。
@@ -118,7 +118,7 @@ public class DoorSoundScreen extends Screen {
      * @param payload 面板快照：站点、层号、开关与选项、基准层、音效槽位、试听提示
      */
     public DoorSoundScreen(ElevatorNetworking.OpenDoorPanel payload) {
-        super(Text.translatable("screen.easyelevator.door_sound_title"));
+        super(Component.translatable("screen.easyelevator.door_sound_title"));
         this.station=payload.station();
         this.floorLabel=payload.floorLabel();
         this.stationY=payload.station().getY();
@@ -175,22 +175,22 @@ public class DoorSoundScreen extends Screen {
         // 路径输入框：最后一道保险——不依赖拖拽、不依赖对话框，复制粘贴路径就能上传。
         // 宽度与上面的工具键同宽，多出来的部分往右让给"上传"键。
         int inputWidth=CONTENT_W-PAD-INPUT_W-INPUT_GAP-PAD;
-        pathInput=new TextFieldWidget(textRenderer,panelLeft+PAD,panelTop+INPUT_TOP,inputWidth,ROW,
-                Text.translatable("screen.easyelevator.door_sound_path"));
+        pathInput=new EditBox(font,panelLeft+PAD,panelTop+INPUT_TOP,inputWidth,ROW,
+                Component.translatable("screen.easyelevator.door_sound_path"));
         pathInput.setMaxLength(512); // 路径远长不到 512 字符，这里纯粹是防御性上限
-        addDrawableChild(pathInput);
-        addDrawableChild(new RowButton(panelLeft+X_END-INPUT_W,panelTop+INPUT_TOP,INPUT_W,() -> false,
-                Text.translatable("screen.easyelevator.door_sound_upload"),b -> submitTypedPath(),
-                () -> Text.translatable("screen.easyelevator.door_sound_upload")));
+        addRenderableWidget(pathInput);
+        addRenderableWidget(new RowButton(panelLeft+X_END-INPUT_W,panelTop+INPUT_TOP,INPUT_W,() -> false,
+                Component.translatable("screen.easyelevator.door_sound_upload"),b -> submitTypedPath(),
+                () -> Component.translatable("screen.easyelevator.door_sound_upload")));
         int footY=panelTop+INPUT_TOP+ROW+PAD_SMALL;
         // 页脚：基准层长键 + 关闭键，右边缘与设置行的"试听"右边缘对齐
-        addDrawableChild(new RowButton(panelLeft+X_TOGGLE,footY,BASE_W,
-                () -> baseFloor,Text.translatable("screen.easyelevator.floor_base"),
+        addRenderableWidget(new RowButton(panelLeft+X_TOGGLE,footY,BASE_W,
+                () -> baseFloor,Component.translatable("screen.easyelevator.floor_base"),
                 b -> ClientPlayNetworking.send(new ElevatorNetworking.SetBaseFloor(station,!baseFloor)),
-                () -> Text.translatable(baseFloor
+                () -> Component.translatable(baseFloor
                         ?"screen.easyelevator.floor_base_on":"screen.easyelevator.floor_base")));
-        addDrawableChild(new RowButton(panelLeft+X_CLOSE,footY,CLOSE_W,() -> false,
-                Text.translatable("screen.easyelevator.close"),b -> close(),null));
+        addRenderableWidget(new RowButton(panelLeft+X_CLOSE,footY,CLOSE_W,() -> false,
+                Component.translatable("screen.easyelevator.close"),b -> onClose(),null));
     }
 
     /**
@@ -200,26 +200,26 @@ public class DoorSoundScreen extends Screen {
      */
     private void addRow(int y) {
         // 开关：文字 = 行名 + 当前状态（"到站音效 开"），点击请求服务端翻转
-        addDrawableChild(new RowButton(panelLeft+X_TOGGLE,y,TOGGLE_W,
-                () -> enabled,Text.translatable("screen.easyelevator.door_sound_row"),
+        addRenderableWidget(new RowButton(panelLeft+X_TOGGLE,y,TOGGLE_W,
+                () -> enabled,Component.translatable("screen.easyelevator.door_sound_row"),
                 b -> sendCommand(!enabled,choice,false),
-                () -> Text.translatable(enabled
+                () -> Component.translatable(enabled
                         ?"screen.easyelevator.toggle_on":"screen.easyelevator.toggle_off",
-                        Text.translatable("screen.easyelevator.door_sound_row"))));
+                        Component.translatable("screen.easyelevator.door_sound_row"))));
         // 当前音效：只读凹陷条（不参与键盘导航，见 RowButton#readOnly）
-        addDrawableChild(new RowButton(panelLeft+X_VALUE,y,VALUE_W,() -> enabled,Text.empty(),b -> {},
+        addRenderableWidget(new RowButton(panelLeft+X_VALUE,y,VALUE_W,() -> enabled,Component.empty(),b -> {},
                 this::soundValue));
         // 上一项 / 下一项：循环切换音效选项，不改开关（只想试听别的音色时不必先打开开关）
-        addDrawableChild(arrow(panelLeft+X_PREV,y,Text.translatable("screen.easyelevator.sound_prev"),-1));
-        addDrawableChild(arrow(panelLeft+X_NEXT,y,Text.translatable("screen.easyelevator.sound_next"),1));
+        addRenderableWidget(arrow(panelLeft+X_PREV,y,Component.translatable("screen.easyelevator.sound_prev"),-1));
+        addRenderableWidget(arrow(panelLeft+X_NEXT,y,Component.translatable("screen.easyelevator.sound_next"),1));
         // 选择文件：把本地 .ogg 上传到服务端（服务端存权威副本再分发）
-        addDrawableChild(new RowButton(panelLeft+X_PICK,y,PICK_W,() -> false,
-                Text.translatable("screen.easyelevator.sound_pick"),b -> pickFile(),
-                () -> Text.translatable("screen.easyelevator.sound_pick")));
+        addRenderableWidget(new RowButton(panelLeft+X_PICK,y,PICK_W,() -> false,
+                Component.translatable("screen.easyelevator.sound_pick"),b -> pickFile(),
+                () -> Component.translatable("screen.easyelevator.sound_pick")));
         // 试听：请服务端以权威音效当场播一次（客户端不自己播，避免与服务端的定义分叉）
-        addDrawableChild(new RowButton(panelLeft+X_TRY,y,TRY_W,() -> false,
-                Text.translatable("screen.easyelevator.sound_try"),b -> sendCommand(enabled,choice,true),
-                () -> Text.translatable("screen.easyelevator.sound_try")));
+        addRenderableWidget(new RowButton(panelLeft+X_TRY,y,TRY_W,() -> false,
+                Component.translatable("screen.easyelevator.sound_try"),b -> sendCommand(enabled,choice,true),
+                () -> Component.translatable("screen.easyelevator.sound_try")));
     }
 
     /**
@@ -231,7 +231,7 @@ public class DoorSoundScreen extends Screen {
      * @param delta +1 / -1
      * @return 按钮控件
      */
-    private ButtonWidget arrow(int x,int y,Text glyph,int delta) {
+    private Button arrow(int x,int y,Component glyph,int delta) {
         return new RowButton(x,y,ARROW_W,() -> false,glyph,
                 b -> sendCommand(enabled,Math.floorMod(choice+delta,DoorSounds.CHOICE_COUNT),false),() -> glyph);
     }
@@ -279,8 +279,8 @@ public class DoorSoundScreen extends Screen {
      */
     private void submitTypedPath() {
         if (pathInput==null) return;
-        String raw=pathInput.getText().trim();
-        if (raw.isEmpty()) { message(Text.translatable("message.easyelevator.door_sound_upload_failed")); return; }
+        String raw=pathInput.getValue().trim();
+        if (raw.isEmpty()) { message(Component.translatable("message.easyelevator.door_sound_upload_failed")); return; }
         String value=raw;
         if (value.length()>=2 && value.startsWith("\"") && value.endsWith("\"")) value=value.substring(1,value.length()-1);
         Path path;
@@ -288,7 +288,7 @@ public class DoorSoundScreen extends Screen {
             path=value.regionMatches(true,0,"file:",0,5) ? Path.of(java.net.URI.create(value)) : Path.of(value);
         } catch (RuntimeException e) {
             LOGGER.warn("Could not parse the typed arrival-sound path [{}]", raw, e);
-            message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
+            message(Component.translatable("message.easyelevator.door_sound_upload_failed"));
             return;
         }
         upload(path);
@@ -310,10 +310,10 @@ public class DoorSoundScreen extends Screen {
     private void pickFile() {
         Path picked;
         try {
-            picked = FilePicker.pick(Text.translatable("screen.easyelevator.sound_pick").getString());
+            picked = FilePicker.pick(Component.translatable("screen.easyelevator.sound_pick").getString());
         } catch (FilePicker.UnavailableException e) {
             LOGGER.warn("No usable file dialog in this process", e);
-            message(Text.translatable("message.easyelevator.door_sound_no_dialog"));
+            message(Component.translatable("message.easyelevator.door_sound_no_dialog"));
             return;
         }
         if (picked == null) return; // 玩家取消：不打扰
@@ -341,19 +341,19 @@ public class DoorSoundScreen extends Screen {
      */
     private void upload(Path path) {
         if (!FileDropHandler.isReadableFile(path)) {
-            message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
+            message(Component.translatable("message.easyelevator.door_sound_upload_failed"));
             return;
         }
         try {
             byte[] bytes = java.nio.file.Files.readAllBytes(path);
             if (!DoorSoundPersistence.isOgg(bytes) || bytes.length > DoorSoundPersistence.MAX_AUDIO_BYTES) {
-                message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
+                message(Component.translatable("message.easyelevator.door_sound_upload_failed"));
                 return;
             }
             ClientPlayNetworking.send(new ElevatorNetworking.DoorSoundUpload(station, bytes));
         } catch (Exception e) {
             LOGGER.warn("Could not read the picked arrival-sound file {}", path, e);
-            message(Text.translatable("message.easyelevator.door_sound_upload_failed"));
+            message(Component.translatable("message.easyelevator.door_sound_upload_failed"));
         }
     }
 
@@ -362,9 +362,9 @@ public class DoorSoundScreen extends Screen {
      *
      * @param text 提示文本
      */
-    private void message(Text text) {
+    private void message(Component text) {
         // client 是 Screen 持有的 MinecraftClient 引用；玩家可能还没进世界（理论上到不了这里），故判空。
-        if (client!=null && client.player!=null) client.player.sendMessage(text,true);
+        if (minecraft!=null && minecraft.player!=null) minecraft.player.displayClientMessage(text,true);
     }
 
     /**
@@ -377,21 +377,21 @@ public class DoorSoundScreen extends Screen {
      * 副作用：仅绘制；每帧递减试听闪烁计数。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void render(GuiGraphics context,int mouseX,int mouseY,float delta) {
         if (previewFlash>0) previewFlash--; // 闪烁按帧递减，够用且不必额外挂刻事件
         renderBackground(context,mouseX,mouseY,delta);
         context.fill(panelLeft,panelTop,panelLeft+CONTENT_W,panelTop+BLOCK_H,PANEL_COLOR);
         // 标题与副标题都画在面板内部，各自占一段高度（见 TITLE_H / HEADER_H 的说明）
-        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop+PAD-2,TITLE_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.door_sound_station_floor",stationY,floorLabel),
+        context.drawCenteredString(font,title,width/2,panelTop+PAD-2,TITLE_COLOR);
+        context.drawCenteredString(font,
+                Component.translatable("screen.easyelevator.door_sound_station_floor",stationY,floorLabel),
                 panelLeft+CONTENT_W/2,panelTop+PAD+TITLE_H+GAP+4,HINT_COLOR);
         // 设置区与动作区之间的分隔线：一条浅线即可，不必画整圈边框
         int lineY=panelTop+DIVIDER_TOP;
         context.fill(panelLeft+PAD,lineY,panelLeft+CONTENT_W-PAD,lineY+1,DIVIDER);
         // 上传提示：拖拽与粘贴两条路都写出来，玩家不必猜（按钮只是第三种备选）
-        context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.door_sound_drop"),
+        context.drawCenteredString(font,
+                Component.translatable("screen.easyelevator.door_sound_drop"),
                 panelLeft+CONTENT_W/2,lineY+GAP_SMALL,HINT_COLOR);
         super.render(context,mouseX,mouseY,delta);
     }
@@ -401,15 +401,15 @@ public class DoorSoundScreen extends Screen {
      *
      * @return 显示文本（不含开关状态标记）
      */
-    private Text soundName() {
+    private Component soundName() {
         if (DoorSounds.isCustom(choice)) {
-            return Text.translatable("screen.easyelevator.sound_custom_id",DoorSoundPersistence.fileName(soundSlot));
+            return Component.translatable("screen.easyelevator.sound_custom_id",DoorSoundPersistence.fileName(soundSlot));
         }
         if (DoorSounds.isPreset(choice)) {
             String id=DoorSounds.presetId(choice);
-            return Text.translatable("screen.easyelevator.sound_id",id==null?"?":id);
+            return Component.translatable("screen.easyelevator.sound_id",id==null?"?":id);
         }
-        return Text.translatable("screen.easyelevator.sound_choice_default");
+        return Component.translatable("screen.easyelevator.sound_choice_default");
     }
 
     /**
@@ -420,10 +420,10 @@ public class DoorSoundScreen extends Screen {
      *
      * @return 要画在值格里的文本
      */
-    private Text soundValue() {
-        Text name=soundName();
-        if (!enabled) return Text.translatable("screen.easyelevator.sound_off_value",name);
-        if (previewFlash>0) return Text.translatable("screen.easyelevator.sound_flash",name);
+    private Component soundValue() {
+        Component name=soundName();
+        if (!enabled) return Component.translatable("screen.easyelevator.sound_off_value",name);
+        if (previewFlash>0) return Component.translatable("screen.easyelevator.sound_flash",name);
         return name;
     }
 
@@ -434,13 +434,13 @@ public class DoorSoundScreen extends Screen {
      * @param delta 渲染插值系数
      */
     @Override
-    public void renderBackground(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void renderBackground(GuiGraphics context,int mouseX,int mouseY,float delta) {
         context.fill(0,0,width,height,0x18000000);
     }
 
     /** @return false：调音效期间不暂停单人游戏世界，否则电梯会停在半路。 */
     @Override
-    public boolean shouldPause() { return false; }
+    public boolean isPauseScreen() { return false; }
 
     /** 关闭面板时取消拖拽登记：别的界面不该继承"拖文件上传"这个语义。 */
     @Override
@@ -457,13 +457,13 @@ public class DoorSoundScreen extends Screen {
      *   <li><b>只读值格</b>（音效名）：凹陷的深色条，无边框、无悬停高亮，一眼就知道点不动。</li>
      * </ul>
      */
-    private final class RowButton extends ButtonWidget {
+    private final class RowButton extends Button {
         /** 该按钮是否处于"已开启/已激活"状态：决定描边颜色。 */
         private final BooleanSupplier toggled;
         /** 悬停提示与键盘朗读文本。 */
-        private final Text narration;
+        private final Component narration;
         /** 每帧求值的显示文本；为 null 时退回构造时传入的固定文本。 */
-        private final Supplier<Text> dynamic;
+        private final Supplier<Component> dynamic;
         /** 只读值格：画凹陷条、不接受悬停高亮、不参与键盘导航。 */
         private final boolean readOnly;
 
@@ -472,15 +472,15 @@ public class DoorSoundScreen extends Screen {
          * @param y 上边缘（绝对像素）
          * @param w 宽度（像素）
          * @param toggled 是否处于已开启状态（决定描边颜色）
-         * @param tooltip 悬停提示与朗读文本；传 {@link Text#empty()} 表示只读值格
+         * @param tooltip 悬停提示与朗读文本；传 {@link Component#empty()} 表示只读值格
          * @param onPress 点击回调
          * @param dynamic 每帧求值的显示文本；null 表示用 {@code tooltip} 当固定文本
          */
-        RowButton(int x,int y,int w,BooleanSupplier toggled,Text tooltip,Predicate onPress,Supplier<Text> dynamic) {
-            super(x,y,w,ROW,tooltip,onPress,DEFAULT_NARRATION_SUPPLIER);
+        RowButton(int x,int y,int w,BooleanSupplier toggled,Component tooltip,Predicate onPress,Supplier<Component> dynamic) {
+            super(x,y,w,ROW,tooltip,onPress,DEFAULT_NARRATION);
             this.toggled=toggled; this.narration=tooltip; this.dynamic=dynamic;
             this.readOnly=tooltip.getString().isEmpty();
-            if (!readOnly) setTooltip(Tooltip.of(tooltip));
+            if (!readOnly) setTooltip(Tooltip.create(tooltip));
         }
 
         /**
@@ -492,15 +492,15 @@ public class DoorSoundScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void renderWidget(GuiGraphics ctx,int mouseX,int mouseY,float delta) {
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
-            Text label=dynamic==null?getMessage():dynamic.get();
+            Component label=dynamic==null?getMessage():dynamic.get();
             if (readOnly) {
                 // 只读值格：凹陷深色条，绝不画悬停高亮
                 boolean on=toggled.getAsBoolean();
                 ctx.fill(x,y,x+w,y+h,VALUE_BG);
                 ctx.fill(x,y,x+w-1,y,VALUE_INNER);
-                ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-8),x+w/2,y+(h-8)/2,
+                ctx.drawCenteredString(font,trim(label,w-8),x+w/2,y+(h-8)/2,
                         on?VALUE_COLOR:0x77828F);
                 return;
             }
@@ -509,7 +509,7 @@ public class DoorSoundScreen extends Screen {
             ctx.fill(x,y,x+w,y+h, lit?0xFFE8F1F8:on?0xFF5FA898:0xFF5C6B7A);
             ctx.fill(x+1,y+1,x+w-1,y+h-1, lit?0xFF54697F:0xFF2A3543);
             ctx.fill(x+2,y+2,x+w-2,y+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
-            ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-6),x+w/2,y+(h-8)/2,
+            ctx.drawCenteredString(font,trim(label,w-6),x+w/2,y+(h-8)/2,
                     lit?0xFFFFFF:on?0xFFD9FFF4:0xD2DEE9);
         }
 
@@ -523,21 +523,21 @@ public class DoorSoundScreen extends Screen {
          * @param maxWidth 可用像素宽度
          * @return 截断后的文本；本来就放得下时原样返回
          */
-        private Text trim(Text text,int maxWidth) {
-            if (maxWidth<=0 || textRenderer.getWidth(text)<=maxWidth) return text;
+        private Component trim(Component text,int maxWidth) {
+            if (maxWidth<=0 || font.width(text)<=maxWidth) return text;
             String raw=text.getString();
-            int limit=maxWidth-textRenderer.getWidth("...");
+            int limit=maxWidth-font.width("...");
             StringBuilder out=new StringBuilder();
             for (int i=0;i<raw.length();i++) {
-                if (textRenderer.getWidth(out.toString()+raw.charAt(i))>limit) break;
+                if (font.width(out.toString()+raw.charAt(i))>limit) break;
                 out.append(raw.charAt(i));
             }
-            return Text.literal(out+"...");
+            return Component.literal(out+"...");
         }
 
         /** @return 只读值格不参与 Tab 导航与朗读，避免"能聚焦却点不动"的困惑。 */
         @Override
-        public boolean isNarratable() { return !readOnly; }
+        public boolean isActive() { return !readOnly; }
 
         /**
          * @return 恒为 false：本面板不使用键盘 Tab 导航。
@@ -551,15 +551,15 @@ public class DoorSoundScreen extends Screen {
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,narration);
+        public void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput builder) {
+            builder.add(net.minecraft.client.gui.narration.NarratedElementType.TITLE,narration);
         }
     }
 
     /**
-     * 按钮点击回调的别名（原版把 {@code PressAction} 定义在 {@link ButtonWidget} 里，
+     * 按钮点击回调的别名（原版把 {@code PressAction} 定义在 {@link Button} 里，
      * 这里自己起个短名字，让行内构造读起来干净些）。
      */
     @FunctionalInterface
-    private interface Predicate extends ButtonWidget.PressAction { }
+    private interface Predicate extends Button.OnPress { }
 }

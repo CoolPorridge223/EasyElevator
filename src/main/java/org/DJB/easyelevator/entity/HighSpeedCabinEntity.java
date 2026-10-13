@@ -1,8 +1,8 @@
 package org.DJB.easyelevator.entity;
 
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 
@@ -35,7 +35,7 @@ public class HighSpeedCabinEntity extends AbstractCabinEntity {
      * @param type 实体类型（由 {@link Easyelevator#HIGH_SPEED_CABIN} 注册）
      * @param world 所在世界
      */
-    public HighSpeedCabinEntity(EntityType<?> type, World world) { super(type, world, ElevatorParameters.HIGH_SPEED, ElevatorParameters.PASSENGER_NUM_LIMIT); }
+    public HighSpeedCabinEntity(EntityType<?> type, Level world) { super(type, world, ElevatorParameters.HIGH_SPEED, ElevatorParameters.PASSENGER_NUM_LIMIT); }
 
     /** @return 高速轿厢物品 {@link Easyelevator#HIGH_SPEED_CABIN_ITEM}：回收后仍得到高速轿厢 */
     @Override protected Item cabinItem() { return Easyelevator.HIGH_SPEED_CABIN_ITEM; }

@@ -1,12 +1,12 @@
 package org.DJB.easyelevator.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.util.Mth;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.network.ElevatorNetworking;
@@ -90,16 +90,16 @@ public final class CabinMotion {
      *              以及已废弃的乘客偏移量（2.1.2 起客户端自行判定乘客，不再使用）
      */
     public static void receive(ElevatorNetworking.MotionFrame frame) {
-        var client = MinecraftClient.getInstance();
+        var client = Minecraft.getInstance();
         // 只在客户端世界已就绪、样本高度有限、且该 id 仍是本世界的轿厢时接受；否则静默丢弃（网络包一律视为不可信输入）。
-        if (client.world == null || !Double.isFinite(frame.y())
-                || !(client.world.getEntityById(frame.entityId()) instanceof AbstractCabinEntity cabin)) return;
+        if (client.level == null || !Double.isFinite(frame.y())
+                || !(client.level.getEntity(frame.entityId()) instanceof AbstractCabinEntity cabin)) return;
         Track track = TRACKS.computeIfAbsent(cabin, c -> new Track(c.getY()));
         // 乱序或重复的编号一律忽略：只认更新的样本，旧编号可能来自更早的一条链路。
         if (frame.tick() <= track.serverTick) return;
         track.serverTick = frame.tick();
         track.targetY = frame.y();
-        track.receivedAt = client.world.getTime();
+        track.receivedAt = client.level.getGameTime();
         cabin.useClientMotion();
     }
 
@@ -114,11 +114,11 @@ public final class CabinMotion {
      *
      * @param player 本机客户端玩家；必须与当前客户端世界一致，且只应在客户端主线程调用
      */
-    public static void beginPlayerTick(ClientPlayerEntity player) {
+    public static void beginPlayerTick(LocalPlayer player) {
         tickCabin = null;
         // 先清理轨迹：已移除（区块卸载/实体回收）或已不在本玩家世界的（换维度）条目一律丢弃，
         // 否则会把上个世界的目标高度继续套用到新世界的第一刻。
-        TRACKS.entrySet().removeIf(e -> e.getKey().isRemoved() || e.getKey().getWorld() != player.getWorld());
+        TRACKS.entrySet().removeIf(e -> e.getKey().isRemoved() || e.getKey().level() != player.level());
         for (var entry : TRACKS.entrySet()) {
             AbstractCabinEntity cabin = entry.getKey();
             Track track = entry.getValue();
@@ -126,14 +126,14 @@ public final class CabinMotion {
             track.previousY = track.physicalY;
             // 本刻位移（格）：从实体当前（客户端预测的）位置到服务端目标位置；这个量也要原样加在乘客身上。
             double dy = track.targetY - cabin.getY();
-            boolean fresh = player.getWorld().getTime() - track.receivedAt <= ElevatorParameters.MOTION_STALE_TICKS;
+            boolean fresh = player.level().getGameTime() - track.receivedAt <= ElevatorParameters.MOTION_STALE_TICKS;
             // 样本够新（链路没断，绝不外推）、玩家存活且确实在厢内、位移未超瞬移阈值，三者缺一不可；
             // 位移超阈值说明是传送/归位而不是平台运动，此时把乘客一起拽走会把人甩出轿厢。
             // tickCabin == null 保证本刻只认第一辆轿厢，避免重叠判定重复平移玩家。
             boolean riding = tickCabin == null && fresh && player.isAlive() && cabin.containsPassenger(player)
                     && Math.abs(dy) <= ElevatorParameters.MOTION_SNAP_DISTANCE;
             // 无论是否托举乘客都必须提交位置：轿厢本体要跟住服务端样本，否则下一帧的 dy 会把这点误差累积进去。
-            cabin.setPosition(cabin.getX(), track.targetY, cabin.getZ());
+            cabin.setPos(cabin.getX(), track.targetY, cabin.getZ());
             track.physicalY = track.targetY;
             if (riding) {
                 tickCabin = cabin;
@@ -155,12 +155,12 @@ public final class CabinMotion {
      * @param handler 原版客户端连接处理器，转发与自定义包的发送都走它
      * @param packet 原版此刻决定发送的包
      */
-    public static void sendMovement(ClientPlayNetworkHandler handler, Packet<?> packet) {
-        if (tickCabin != null && packet instanceof PlayerMoveC2SPacket move
+    public static void sendMovement(ClientPacketListener handler, Packet<?> packet) {
+        if (tickCabin != null && packet instanceof ServerboundMovePlayerPacket move
                 && ClientPlayNetworking.canSend(RiderMove.ID)) {
             // 只包住原版自己选中的那个包：既不重复发包，也不额外制造一次传送。
             ClientPlayNetworking.send(RiderMove.of(tickCabin.getId(), tickFrame, move));
-        } else handler.sendPacket(packet);
+        } else handler.send(packet);
     }
 
     /**
@@ -175,8 +175,8 @@ public final class CabinMotion {
      */
     public static double renderY(AbstractCabinEntity cabin, float delta) {
         Track track = TRACKS.get(cabin);
-        return track == null ? MathHelper.lerp(delta, cabin.lastRenderY, cabin.getY())
-                : MathHelper.lerp(delta, track.previousY, track.physicalY);
+        return track == null ? Mth.lerp(delta, cabin.yOld, cabin.getY())
+                : Mth.lerp(delta, track.previousY, track.physicalY);
     }
 
     /**

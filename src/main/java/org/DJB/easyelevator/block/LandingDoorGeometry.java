@@ -1,10 +1,10 @@
 package org.DJB.easyelevator.block;
 
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * 楼层电梯门的纯几何：门框与两扇可动门扇的位置全部在这里定义，方块（碰撞/轮廓）与
@@ -70,7 +70,7 @@ public final class LandingDoorGeometry {
      * @return 内缘的整扇门横坐标（1/16 格）
      */
     public static double leafEdge(float progress,boolean right) {
-        double open=MathHelper.clamp(progress,0,1);
+        double open=Mth.clamp(progress,0,1);
         return right?DOOR_WIDTH-FRAME-LEAF_TRAVEL*(1-open):FRAME+LEAF_TRAVEL*(1-open);
     }
 
@@ -83,7 +83,7 @@ public final class LandingDoorGeometry {
      * @param right true 取右扇，false 取左扇
      * @return 门扇长方体（相对根方块原点）；进度到 1（宽度归零、已收进门框）时返回 null
      */
-    public static Box leafBox(Direction facing,float progress,boolean right) {
+    public static AABB leafBox(Direction facing,float progress,boolean right) {
         double inner=leafEdge(progress,right),outer=right?DOOR_WIDTH-FRAME:FRAME;
         if(Math.abs(inner-outer)<1e-6) return null;
         return doorBox(facing,Math.min(inner,outer),0,Math.max(inner,outer),LEAF_TOP);
@@ -104,13 +104,13 @@ public final class LandingDoorGeometry {
      * @param v2 结束高度
      * @return 相对根方块原点的长方体
      */
-    public static Box doorBox(Direction facing,double u1,double v1,double u2,double v2) {
+    public static AABB doorBox(Direction facing,double u1,double v1,double u2,double v2) {
         double a=u1/16,b=u2/16,y1=v1/16,y2=v2/16;
         return switch(facing) {
-            case NORTH -> new Box(a-1,y1,0,b-1,y2,FRAME/16);      // 门宽轴 +X，门面贴在方块北侧
-            case SOUTH -> new Box(2-b,y1,1-FRAME/16,2-a,y2,1);    // 门宽轴 -X，需要镜像
-            case EAST -> new Box(1-FRAME/16,y1,a-1,1,y2,b-1);     // 门宽轴 +Z，门面贴在方块东侧
-            default -> new Box(0,y1,2-b,FRAME/16,y2,2-a);         // WEST：门宽轴 -Z，需要镜像
+            case NORTH -> new AABB(a-1,y1,0,b-1,y2,FRAME/16);      // 门宽轴 +X，门面贴在方块北侧
+            case SOUTH -> new AABB(2-b,y1,1-FRAME/16,2-a,y2,1);    // 门宽轴 -X，需要镜像
+            case EAST -> new AABB(1-FRAME/16,y1,a-1,1,y2,b-1);     // 门宽轴 +Z，门面贴在方块东侧
+            default -> new AABB(0,y1,2-b,FRAME/16,y2,2-a);         // WEST：门宽轴 -Z，需要镜像
         };
     }
 
@@ -131,14 +131,14 @@ public final class LandingDoorGeometry {
      * @return 该格子的体素形状；门洞位置为空形状
      */
     public static VoxelShape shape(Direction facing,int column,int level,float progress) {
-        int step=MathHelper.clamp(Math.round(MathHelper.clamp(progress,0,1)*SHAPE_STEPS),0,SHAPE_STEPS);
+        int step=Mth.clamp(Math.round(Mth.clamp(progress,0,1)*SHAPE_STEPS),0,SHAPE_STEPS);
         int index=((facing.ordinal()*3+column)*3+level)*(SHAPE_STEPS+1)+step;
         VoxelShape cached=SHAPE_CACHE[index];
         if(cached!=null) return cached;
         // 用量化后的进度建形状，保证"同一缓存档位 ⇒ 同一几何"
         float q=step/(float)SHAPE_STEPS;
         double left=leafEdge(q,false),right=leafEdge(q,true);
-        VoxelShape shape=VoxelShapes.empty();
+        VoxelShape shape=Shapes.empty();
         shape=add(shape,partBox(facing,column,level,0,0,FRAME,DOOR_HEIGHT));                    // 左门框立柱
         shape=add(shape,partBox(facing,column,level,DOOR_WIDTH-FRAME,0,DOOR_WIDTH,DOOR_HEIGHT)); // 右门框立柱
         shape=add(shape,partBox(facing,column,level,0,LEAF_TOP,DOOR_WIDTH,DOOR_HEIGHT));         // 门楣
@@ -152,8 +152,8 @@ public final class LandingDoorGeometry {
      * @param shape 已累积的形状
      * @param box 待并入的盒，可为 null
      * @return 并入后的形状 */
-    private static VoxelShape add(VoxelShape shape,Box box) {
-        return box==null?shape:VoxelShapes.union(shape,VoxelShapes.cuboid(box));
+    private static VoxelShape add(VoxelShape shape,AABB box) {
+        return box==null?shape:Shapes.or(shape,Shapes.create(box));
     }
 
     /**
@@ -172,8 +172,8 @@ public final class LandingDoorGeometry {
      * @param v2 结束高度
      * @return 该格内的局部盒；无交集时为 null
      */
-    private static Box partBox(Direction facing,int column,int level,double u1,double v1,double u2,double v2) {
-        Box box=doorBox(facing,u1,v1,u2,v2);
+    private static AABB partBox(Direction facing,int column,int level,double u1,double v1,double u2,double v2) {
+        AABB box=doorBox(facing,u1,v1,u2,v2);
         // 该部件相对根方块的偏移（格）：沿门宽轴移动 column-1 格，向上移动 level 格
         int lateral=column-1;double dx=0,dz=0,dy=level;
         switch(facing) {
@@ -185,6 +185,6 @@ public final class LandingDoorGeometry {
         double x1=Math.max(0,box.minX-dx),x2=Math.min(1,box.maxX-dx);
         double y1=Math.max(0,box.minY-dy),y2=Math.min(1,box.maxY-dy);
         double z1=Math.max(0,box.minZ-dz),z2=Math.min(1,box.maxZ-dz);
-        return x2<=x1||y2<=y1||z2<=z1?null:new Box(x1,y1,z1,x2,y2,z2);
+        return x2<=x1||y2<=y1||z2<=z1?null:new AABB(x1,y1,z1,x2,y2,z2);
     }
 }

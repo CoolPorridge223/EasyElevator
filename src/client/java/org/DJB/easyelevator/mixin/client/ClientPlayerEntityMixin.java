@@ -1,8 +1,8 @@
 package org.DJB.easyelevator.mixin.client;
 
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.network.packet.Packet;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.Packet;
 import org.DJB.easyelevator.client.CabinMotion;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -37,7 +37,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *   <li>{@code (ClientPlayerEntity)(Object)this} 的转型是混入类自身不继承目标类时的必然写法，不能省。</li>
  * </ul>
  */
-@Mixin(ClientPlayerEntity.class)
+@Mixin(LocalPlayer.class)
 public abstract class ClientPlayerEntityMixin {
     /**
      * 在玩家本刻 tick 的最开头提交轿厢位置，并在本机乘客确实在厢内时随厢平移玩家。
@@ -49,7 +49,7 @@ public abstract class ClientPlayerEntityMixin {
      */
     @Inject(method = "tick", at = @At("HEAD"))
     private void easyelevator$moveFloor(CallbackInfo ci) {
-        CabinMotion.beginPlayerTick((ClientPlayerEntity) (Object) this);
+        CabinMotion.beginPlayerTick((LocalPlayer) (Object) this);
     }
 
     /**
@@ -63,9 +63,9 @@ public abstract class ClientPlayerEntityMixin {
      * @param handler 原版客户端连接处理器，最终仍由它发包（自定义包也走它）
      * @param packet 原版此刻决定发送的包
      */
-    @Redirect(method = "sendMovementPackets", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/network/ClientPlayNetworkHandler;sendPacket(Lnet/minecraft/network/packet/Packet;)V"))
-    private void easyelevator$relativeMove(ClientPlayNetworkHandler handler, Packet<?> packet) {
+    @Redirect(method = "sendPosition", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/multiplayer/ClientPacketListener;send(Lnet/minecraft/network/protocol/Packet;)V"))
+    private void easyelevator$relativeMove(ClientPacketListener handler, Packet<?> packet) {
         CabinMotion.sendMovement(handler, packet);
     }
 }
