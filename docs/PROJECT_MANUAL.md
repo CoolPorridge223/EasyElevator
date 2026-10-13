@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.0+26.3** ｜ Minecraft **26.3** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.162.0+26.3** ｜ Java **25**
+> 适用模组版本 **2.3.1+26.3** ｜ Minecraft **26.3** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.162.0+26.3** ｜ Java **25**
 >
 > **本线用 Mojang 官方命名**：Minecraft 26.1 起官方发布的就是未混淆代码，Fabric 也停止维护 Yarn 映射，
 > 因此本文与源码里的类名都是官方的（`ResourceLocation` → `Identifier` 这类改名见
@@ -37,7 +37,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 维度 | 事实                                                                      |
 | --- |-------------------------------------------------------------------------|
 | 模组 ID / 命名空间 | `easyelevator`                                                          |
-| 版本 | 2.3.0（见 [gradle.properties](../gradle.properties)）                      |
+| 版本 | 2.3.1（见 [gradle.properties](../gradle.properties)）                      |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威）                                                  |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×4 型号（普通 / 高速 / 观光 / 重载）                                   |
 | 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
@@ -1273,7 +1273,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（`JAVA_HOME` 用 JDK 21/25 启动 Gradle，编译用工具链的 JDK 25；成品 `build/libs/easyelevator-2.3.0+26.3.jar`） |
+| 构建 | `.\gradlew.bat build`（`JAVA_HOME` 用 JDK 21/25 启动 Gradle，编译用工具链的 JDK 25；成品 `build/libs/easyelevator-2.3.1+26.3.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
 | 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |
@@ -1474,4 +1474,4 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
 
 ---
 
-*本手册由代码通读整理，覆盖版本 2.3.0。改动架构或接口后请同步更新本文对应章节。*
+*本手册由代码通读整理，覆盖版本 2.3.1。改动架构或接口后请同步更新本文对应章节。*
