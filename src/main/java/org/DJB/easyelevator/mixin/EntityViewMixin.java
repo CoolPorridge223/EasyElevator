@@ -23,6 +23,10 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * 而实心实体框会把整个 3x3x3 填满，导致无法进入。因此实体框只保留原版用途，真正的可碰撞几何由
  * {@link AbstractCabinEntity#collisionBoxes()} 给出的地板、顶板、侧壁与两扇滑门组成。
  *
+ * <p>Lithium 的 movement / intersection 优化会绕过本入口，分别直接查询硬碰撞实体，导致空心外壳丢失。
+ * 因此 fabric.mod.json 的 lithium:options 禁用这两项优化，使客户端移动与服务端占用检测都经过这里。
+ * 这是可选兼容声明，不依赖 Lithium 的类，也不改变未安装 Lithium 时的行为。
+ *
  * <p>关键不变量/约束：
  * <ul>
  *   <li>轿厢实体自身的碰撞查询不做处理（{@code entity instanceof AbstractCabinEntity} 时直接返回），

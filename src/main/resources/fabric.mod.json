@@ -9,6 +9,12 @@
   "license": "All-Rights-Reserved",
   "icon": "assets/easyelevator/icon.png",
   "environment": "*",
+  "custom": {
+    "lithium:options": {
+      "mixin.entity.collisions.movement": false,
+      "mixin.entity.collisions.intersection": false
+    }
+  },
   "entrypoints": {
     "fabric-datagen": [
       "org.DJB.easyelevator.client.EasyelevatorDataGenerator"

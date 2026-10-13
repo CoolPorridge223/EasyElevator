@@ -1,6 +1,13 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.1+26.3** ｜ Minecraft **26.3** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.162.0+26.3** ｜ Java **25**
+**2.3.2 Lithium 兼容说明**：空心轿厢通过 `EntityGetter.getEntityCollisions` 的 RETURN 注入外壳。
+Lithium 0.26.2 的 movement 优化绕过该调用，intersection 优化则重写 `Level.noCollision`，
+两者都直接查询硬碰撞实体，无法识别本模组 `canBeCollidedWith=false` 的空心轿厢。
+`fabric.mod.json` 中的 `custom.lithium:options` 因而将这两个选项设为 false；作用于客户端和服务端整个实例，
+其他 Lithium 优化保留。不添加 Lithium 硬依赖、不修改用户配置、不调整乘客补偿或网络校验。
+以后升级 Lithium 时，需重新核对选项与日志，按 [验收清单](TESTING.md) 执行碰撞回归。
+
+> 适用模组版本 **2.3.2+26.3** ｜ Minecraft **26.3** ｜ Fabric Loader **0.19.5** ｜ Fabric API **0.162.0+26.3** ｜ Java **25**
 >
 > **本线用 Mojang 官方命名**：Minecraft 26.1 起官方发布的就是未混淆代码，Fabric 也停止维护 Yarn 映射，
 > 因此本文与源码里的类名都是官方的（`ResourceLocation` → `Identifier` 这类改名见
@@ -37,7 +44,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 维度 | 事实                                                                      |
 | --- |-------------------------------------------------------------------------|
 | 模组 ID / 命名空间 | `easyelevator`                                                          |
-| 版本 | 2.3.1（见 [gradle.properties](../gradle.properties)）                      |
+| 版本 | 2.3.2（见 [gradle.properties](../gradle.properties)）                      |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威）                                                  |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×4 型号（普通 / 高速 / 观光 / 重载）                                   |
 | 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
@@ -1273,7 +1280,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（`JAVA_HOME` 用 JDK 21/25 启动 Gradle，编译用工具链的 JDK 25；成品 `build/libs/easyelevator-2.3.1+26.3.jar`） |
+| 构建 | `.\gradlew.bat build`（`JAVA_HOME` 用 JDK 21/25 启动 Gradle，编译用工具链的 JDK 25；成品 `build/libs/easyelevator-2.3.2+26.3.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
 | 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |
@@ -1474,4 +1481,4 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
 
 ---
 
-*本手册由代码通读整理，覆盖版本 2.3.1。改动架构或接口后请同步更新本文对应章节。*
+*本手册由代码通读整理，覆盖版本 2.3.2。改动架构或接口后请同步更新本文对应章节。*
