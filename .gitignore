@@ -9,6 +9,8 @@ logs/
 # API 查证用的临时目录/日志（解包未混淆的 Minecraft 与 Fabric API jar、构建输出），不进版本库
 .mc263/
 .mc263client/
+# 解包出来的 26.3 反编译源码（minecraft-clientOnly-*-26.3-sources.jar + minecraft-common-*-26.3-sources.jar）
+.mc263src/
 .fapi/
 build-263*.txt
 client-errors.txt
@@ -16,9 +18,11 @@ client-errors.txt
 .cpl.txt
 .entity.txt
 .*-scratch.txt
-# �Ӵ����Ų�ʱ���µ���ʱ�嵥/��־
+# 排查 26.3 时留下的临时清单与日志（javap 转储、冒烟日志、逐刻诊断输出）
 *-263-*.txt
 entity.txt
 gr.txt
 lp.txt
 smoke-263.txt
+mc-pick.txt
+mc2.txt

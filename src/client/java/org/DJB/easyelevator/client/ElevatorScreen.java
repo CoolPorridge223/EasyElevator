@@ -54,7 +54,17 @@ public class ElevatorScreen extends Screen {
     private static final int PADDING=16, HEADER=64, FOOTER=40;
     /** 配色：面板底（不透明）、表头/页脚条、按键区凹底、分隔线与外框。 */
     private static final int PANEL_COLOR=0xFF161D27, BAR_COLOR=0xFF1E2733, WELL_COLOR=0xFF0F141B, LINE_COLOR=0xFF39485A, BORDER_COLOR=0xFF4A5A6D;
-    /** 楼层指示牌（仿七段数码管）：最深底 + 红色数字，显示与门框顶部、轿厢内面板相同的楼层号。 */
+    /**
+     * 楼层指示牌（仿七段数码管）：最深底 + 红色数字，显示与门框顶部、轿厢内面板相同的楼层号。
+     *
+     * <p><b>26.3：画文字用的颜色必须自带 alpha。</b>{@code GuiGraphicsExtractor.text / centeredText}
+     * 的第一句就是 {@code if (ARGB.alpha(color) != 0)}——alpha 为 0 的颜色被<b>整段丢掉</b>，
+     * 连一个字都不会提交；而 1.21.1 的 {@code GuiGraphics.drawString} 没有这道闸，
+     * 靠 {@code Font.adjustColor} 把 {@code 0xRRGGBB} 补成 {@code 0xFFRRGGBB}。
+     * 于是"只写 6 位颜色"的旧代码到 26.3 全变成隐形字（本模组踩过：面板标题、状态行、页数行、
+     * 楼层键上的数字一个都不显示）。文字颜色一律写 {@code 0xFFRRGGBB}，要半透明就自己给 alpha。
+     * 只填充不画字的 {@code fill(...)} 不受影响。
+     */
     private static final int FLOOR_PANEL_COLOR=0xFF0A0F15, FLOOR_TEXT_COLOR=0xFFFF4A4A;
     /** 楼层指示牌（表头左侧）：与右侧"高度 / 页数"两行的整体垂直居中，只显示层号本身（3 / B1 / --）。 */
     private static final int PLAQUE_W=40, PLAQUE_H=30, PLAQUE_TOP=20;
@@ -344,11 +354,11 @@ public class ElevatorScreen extends Screen {
             // Locale.ROOT 保证小数点是 '.'、阶段键不随语言环境变形（翻译键必须与语言文件一致）。
             Component status=Component.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
                     Component.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
-            context.centeredText(font,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
+            context.centeredText(font,status,textCenter,panelTop+STATUS_Y,0xFFC9DAEA);
         }
         // 页数行：总站点数、当前页（1 基）、总页数。
         context.centeredText(font,
-                Component.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
+                Component.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0xFF8FA0B3);
         // 按键区凹底：只比按键块四周各宽 WELL_PAD 像素，把数字键"托"起来——横贯整块面板会多出一条突兀的黑带。
         // 只填充、不再给凹底描边：描边会和上下两条分隔线贴在一起，看起来像叠了三层线，显得臃肿。
         int wellLeft=gridLeft-WELL_PAD, wellTop=gridTop-WELL_PAD, wellRight=gridRight+WELL_PAD, wellBottom=gridBottom+WELL_PAD;
@@ -357,7 +367,7 @@ public class ElevatorScreen extends Screen {
         context.fill(panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
         context.fill(panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
         if(stops.isEmpty()) context.centeredText(font,Component.translatable("screen.easyelevator.empty"),
-                panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFC27A);
+                panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFFFC27A);
         super.extractRenderState(context,mouseX,mouseY,delta);
     }
 
@@ -450,7 +460,7 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x+1,y+1,x+w-1,y+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
             if(h>6) ctx.fill(x+2,y+2,x+w-2,y+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
             ctx.centeredText(font,getMessage(),x+w/2,y+(h-8)/2,
-                    !active?0xFF7C8896:lit?0xFFFFFFFF:0xD5E2EE);
+                    !active?0xFF7C8896:lit?0xFFFFFFFF:0xFFD5E2EE);
         }
     }
 
@@ -512,7 +522,7 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
             ctx.centeredText(font,getMessage(),x+s/2,y+(s-8)/2,
-                    lit?0xFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xC3D5E8);
+                    lit?0xFFFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xFFC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：楼层编号 + 该站高度，和悬停提示一致。 */

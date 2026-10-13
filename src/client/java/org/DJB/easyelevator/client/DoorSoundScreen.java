@@ -59,8 +59,10 @@ public class DoorSoundScreen extends Screen {
     private static final Logger LOGGER=LoggerFactory.getLogger("easyelevator/door-sound-screen");
     /** 面板底色（不透明，避免井道里的红字从底下透出来）。 */
     private static final int PANEL_COLOR=0xFF141B26;
-    /** 标题、副标题、值、行名的文字颜色。 */
-    private static final int TITLE_COLOR=0xFFFFFFFF, HINT_COLOR=0x9FB0C2, VALUE_COLOR=0xE6EEF7;
+    /** 标题、副标题、值、行名的文字颜色。<b>26.3 起画文字的颜色必须自带 alpha</b>：alpha 为 0 会被
+     * {@code GuiGraphicsExtractor.text} 整段丢掉（写法只能是 8 位 {@code 0xAARRGGBB}），
+     * 详见 {@link ElevatorScreen} 配色常量处的说明。 */
+    private static final int TITLE_COLOR=0xFFFFFFFF, HINT_COLOR=0xFF9FB0C2, VALUE_COLOR=0xFFE6EEF7;
     /** 值格（只读凹陷条）的底与内层颜色；分隔线的颜色。 */
     private static final int VALUE_BG=0xFF0E141C, VALUE_INNER=0xFF1B2430, DIVIDER=0xFF2A3543;
 
@@ -532,7 +534,7 @@ public class DoorSoundScreen extends Screen {
                 ctx.fill(x,y,x+w,y+h,VALUE_BG);
                 ctx.fill(x,y,x+w-1,y,VALUE_INNER);
                 ctx.centeredText(font,trim(label,w-8),x+w/2,y+(h-8)/2,
-                        on?VALUE_COLOR:0x77828F);
+                        on?VALUE_COLOR:0xFF77828F);
                 return;
             }
             boolean lit=isHovered(), on=toggled.getAsBoolean();
@@ -541,7 +543,7 @@ public class DoorSoundScreen extends Screen {
             ctx.fill(x+1,y+1,x+w-1,y+h-1, lit?0xFF54697F:0xFF2A3543);
             ctx.fill(x+2,y+2,x+w-2,y+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
             ctx.centeredText(font,trim(label,w-6),x+w/2,y+(h-8)/2,
-                    lit?0xFFFFFF:on?0xFFD9FFF4:0xD2DEE9);
+                    lit?0xFFFFFFFF:on?0xFFD9FFF4:0xFFD2DEE9);
         }
 
         /**

@@ -140,7 +140,40 @@ public final class CabinMotion {
                 tickFrame = track.serverTick;
                 AbstractCabinEntity.carryPassenger(player, dy);
             }
+            // 抬回支撑面（见 liftRidersToSupport）：本刻玩家物理可能又把自己按进地板/箱顶，这里先兜一次。
+            cabin.liftRiderToSupport(player);
         }
+    }
+
+    /**
+     * 把还在轿厢里的乘客抬回<b>脚下那块支撑面</b>（地板面，重载舱还可能是货箱顶面；<b>只抬不压</b>）。
+     * 由 {@code ClientPlayerEntityMixin} 在 {@code ClientPlayerEntity#sendPosition} 开头、也就是移动包被真正
+     * 拼出来之前调用一次；{@link #beginPlayerTick} 每刻也兜一次。
+     *
+     * <p><b>为什么必须在下发移动包之前做</b>：支撑面是 {@code mixin/EntityViewMixin} 注入的<b>实体</b>碰撞，
+     * 而"脚底恰好贴在面上"时 {@code AABB.intersects} 的严格不等号会让这一次碰撞查询<b>查不到那块面</b>，
+     * 于是玩家本刻会整段掉一格重力（实测 0.0784 格，约 8% 的刻发生一次）。这本是 1.21.1 时代就有的抖动，
+     * 但 26.3 把它放大成了致命问题：
+     *
+     * <ol>
+     *   <li>玩家相对轿厢低了 7.8 厘米，而客户端把"自己算出的绝对 Y"原样发给服务端；</li>
+     *   <li>26.3 的 {@code ServerGamePacketListenerImpl.isEntityCollidingWithAnythingNew} 改用
+     *       {@code getPreMoveCollisions}，它<b>把实体碰撞也算进去</b>（1.21.1 只看方块）——轿厢地板/箱顶
+     *       正好是实体碰撞，于是这次向下修正被判成"撞进了新的碰撞"；</li>
+     *   <li>服务端走<b>静默传送</b>把玩家拉回（这条路径不打 moved wrongly，日志里查不到）；</li>
+     *   <li>传送挂起期间 {@code ServerPlayNetworkHandlerMixin.easyelevator$canCarry()} 判真，
+     *       轿厢侧 {@code tickPassengers()} 于是让本刻 {@code canMove} 返回 false，状态机转 {@code BLOCKED}
+     *       ——<b>轿厢当刻不走</b>，确认到达后走一步，再触发一次……表现为上行一顿一顿。</li>
+     * </ol>
+     *
+     * <p>把乘客夹在支撑面以上就断掉了整条链：报给服务端的 Y 与它自己算出的位置一致，位移为零，
+     * 既不触发"新实体碰撞"也不产生待确认传送，轿厢自然不会被打断；顺带把"偶尔陷进地板/箱顶"这个老毛病也修掉了。
+     * 只做抬升，因此不影响乘客在厢内跳跃、站在更高一层货箱上或正常下落（那些情形脚底都在支撑面之上）。
+     *
+     * @param player 本机客户端玩家；只应在客户端主线程调用
+     */
+    public static void liftRidersToSupport(LocalPlayer player) {
+        for (AbstractCabinEntity cabin : TRACKS.keySet()) cabin.liftRiderToSupport(player);
     }
 
     /**

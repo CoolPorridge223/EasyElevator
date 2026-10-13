@@ -267,6 +267,53 @@ submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEX
 > 轨道/呼叫按钮确认有掉落即可。用**不在注册表里的 id** 去离线试解析会得到误导性的报错，判断"表本身对不对"
 > 要看真实服务端日志，或把表里的命名空间换成原版方块后再解析。
 
+### 9.7 资源包：物品模型要多一份"物品模型定义"
+
+1.21.4 起（26.3 同样）物品模型是**两段式**的，`models/item/<id>.json` 不再被自动发现：
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| 只需 `assets/<ns>/models/item/<id>.json`，原版按物品 id 隐式去取 | **还要** `assets/<ns>/items/<id>.json` 显式把物品指向模型（"物品模型定义"）：`{"model":{"type":"minecraft:model","model":"<ns>:item/<id>"}}` |
+
+> **踩坑方式**：漏了 `items/` 这一份，编译、打包、进游戏都不报错，**物品直接变成紫黑格子**（原版 missing model）——
+> 物品栏、手上、创造模式标签页图标全是紫黑方块（本模组 26.3 线就踩过这一处）。方块（世界里的模型）不受影响，
+> 因为 `blockstates/` 那条路没变，所以"方块好好的、物品全紫黑"正是这个病的特征。
+> 对照物：解包 26.3 客户端 jar 后看 `assets/minecraft/items/*.json`（`minecraft:item/stick` 那份就是最小例子）。
+> 本模组每件物品（四个轿厢 + 呼叫按钮 + 轨道）都要有自己的一份。
+
+### 9.8 服务端移动校验开始把"实体碰撞"算进去（本线最隐蔽的一处）
+
+26.3 的 `ServerGamePacketListenerImpl.isEntityCollidingWithAnythingNew` 改用
+`getPreMoveCollisions(...)`，而这个方法把 **`getEntityCollisions`（实体碰撞）与方块碰撞拼在一起**；
+**1.21.1 的同名检查只吃方块碰撞**。轿厢的空心外壳（地板、侧壁、门扇、重载舱的货箱）正是本模组通过
+`mixin/EntityViewMixin` 注入的**实体**碰撞，于是"乘客相对轿厢向下修正一点点"在 26.3 会被判成
+**撞进了新的碰撞**：
+
+```
+客户端：乘客脚底贴面 → 那一次实体碰撞查询漏掉支撑面（AABB 的严格不等号）→ 本刻掉一格重力 0.0784
+   ↓  把"自己算出的绝对 Y"原样发出去
+服务端：向下修正穿透了轿厢地板/箱顶 → isEntityCollidingWithAnythingNew = true → 走"静默传送"分支
+   ↓  这条路径不打 moved wrongly / moved too quickly，日志里一个字都没有
+模组：传送挂起 → ServerPlayNetworkHandlerMixin.easyelevator$canCarry() 判假
+   → AbstractCabinEntity.tickPassengers() 让本刻 canMove 返回 false → 状态机转 BLOCKED
+   ↓
+表现为：电梯上行"走一下停一下"，而且只有载人时出现、只有 26.3 出现、日志里查不到任何告警
+```
+
+**修法**：把乘客夹在**脚下那块支撑面**（地板面，重载舱还可能是货箱顶面）以上，即在
+`ClientPlayerEntity#sendPosition` 的开头（`Minecraft.tick()` 的顺序是"实体物理 → `player.sendChanges()`"，
+因此这里正好是**物理之后、`getY()` 被读进移动包之前**）调一次
+`AbstractCabinEntity.liftRiderToSupport`。支撑面直接从 `collisionBoxes()` 取，因此子类追加的几何
+（`PowerfulCabinEntity.collisionBoxesStatic()` 里的货箱）自动参与。这样报给服务端的 Y 与它自己算出的位置
+一致、位移为零，既不触发"新实体碰撞"也不产生待确认传送；顺带把"偶尔陷进地板/箱顶"这个 1.21.1 就有的
+抖动也修掉了。只抬不压，跳跃、站在更高一层箱顶、下落都不受影响。
+
+> **排查手法（值得复用）**：这一处编译期、静态阅读、日志告警都指不出来。最后的定位靠的是**两侧同时打点**：
+> 服务端在 `RiderMove.apply` 打印 `y / seenY / cabinY / serverY / adjustedY / downBy`，
+> 客户端在 `CabinMotion.beginPlayerTick` 打印 `riding / fresh / inCabin / snapOk / age` 与
+> tick 末尾的 `rel = 玩家Y − 轿厢Y`。一对照就看到"`riding=true` 但 `rel` 从 0.200000 掉到 0.121551"，
+> 即"随厢平移执行了、但玩家自己的物理没被支撑面接住"。定案后所有 `TEMP-DIAG` 代码已全部移除。
+
 ## 10. 26.3 的 GUI 也是 extract 架构（客户端迁移的第二处结构性变化）
 
 26.3 不止改了世界渲染器：**GUI 控件也从"直接画"改成了"先抽取再提交"**。本线迁移时踩到的原始报错：
@@ -291,6 +338,21 @@ submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEX
 `net/minecraft/client/gui/components/`（例如 `AbstractButton`、`Button`、`AbstractContainerScreen`
 及其子类），把"控件怎么抽取内容"这一段骨架抄过来，再把本模组原来的绘制内容填进去。
 这与第 8 节的渲染器改写是同一个思路：**先把数据抽进状态/抽取器，再统一提交**。
+
+### 10.1 文字颜色从"可省 alpha"变成了"必须带 alpha"
+
+这是 extract 架构里最容易漏、而且**编译期完全看不出来**的一处：文字会静默消失，填充色块却照常绘制，
+于是现象是"面板和按钮都在，一个字都没有"。
+
+| | 1.21.1 | 26.3 |
+| --- | --- | --- |
+| 文字颜色 | `GuiGraphics.drawString/drawCenteredString` 收 `0xRRGGBB` 也行——`Font.adjustColor` 会把 alpha 为 0 的颜色补成 `0xFF000000 \| rgb` | `GuiGraphicsExtractor.text(...)` 第一句就是 `if (ARGB.alpha(color) != 0)`：**alpha 为 0 的颜色整段丢弃**，连一个字都不提交；`adjustColor` 已随旧文字管线一起删除 |
+| 半透明 RBG 整数 | `0xC9DAEA` 被当成不透明的浅蓝 | 被当成 `alpha=0xC9` 的**半透明**浅蓝（变淡，不是消失） |
+| 只填充的 `fill(...)` | 不补 alpha | **也不补**（没有 alpha 闸），行为不变 |
+
+结论：**凡是画文字的颜色一律写 8 位 `0xAARRGGBB`**（要透明自己给 alpha）。本模组当时的症状是面板标题、
+状态行、页数行与楼层键上的数字全部不见——因为它们写的是 6 位 `0xFFFFFF` / `0xD5E2EE` / `0x77828F` 之类。
+判定方法很直接：`0xRRGGBB` 的 alpha 字节恒为 0 → 消失；`0xNNRRGGBB`（NN≠0）只是变淡。
 
 ## 11. Mixin 注入点：编译期完全查不出来的那一类
 
