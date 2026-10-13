@@ -101,10 +101,12 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * @return 可直接交给 {@code ServerPlayNetworkHandler#onPlayerMove} 的原版移动包
      */
     public ServerboundMovePlayerPacket vanilla(double adjustedY) {
-        if (position && look) return new ServerboundMovePlayerPacket.PosRot(x, adjustedY, z, yaw, pitch, ground);
-        if (position) return new ServerboundMovePlayerPacket.Pos(x, adjustedY, z, ground);
-        if (look) return new ServerboundMovePlayerPacket.Rot(yaw, pitch, ground);
-        return new ServerboundMovePlayerPacket.StatusOnly(ground);
+        // 26.3 起四个子类的构造器都在 onGround 之后多了一个"是否发生横向碰撞"标志；
+        // 本包从不携带这个标志（旧版的 6 参构造器内部也正是补 false），因此统一补 false。
+        if (position && look) return new ServerboundMovePlayerPacket.PosRot(x, adjustedY, z, yaw, pitch, ground, false);
+        if (position) return new ServerboundMovePlayerPacket.Pos(x, adjustedY, z, ground, false);
+        if (look) return new ServerboundMovePlayerPacket.Rot(yaw, pitch, ground, false);
+        return new ServerboundMovePlayerPacket.StatusOnly(ground, false);
     }
 
     /**
@@ -146,7 +148,8 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * 再执行 {@link #apply}——实体查询与玩家位置更新都只能在主线程做。
      */
     public static void register() {
-        PayloadTypeRegistry.playC2S().register(ID, CODEC);
+        // 26.3 起 FAPI 的两个注册入口改名：playC2S() → serverboundPlay()（playS2C() → clientboundPlay()）。
+        PayloadTypeRegistry.serverboundPlay().register(ID, CODEC);
         ServerPlayNetworking.registerGlobalReceiver(ID, (packet, context) ->
                 context.server().execute(() -> packet.apply(context.player())));
     }

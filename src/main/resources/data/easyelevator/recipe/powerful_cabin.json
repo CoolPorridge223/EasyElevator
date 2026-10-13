@@ -7,18 +7,10 @@
     "TPT"
   ],
   "key": {
-    "I": {
-      "item": "minecraft:iron_ingot"
-    },
-    "T": {
-      "item": "minecraft:iron_block"
-    },
-    "R": {
-      "item": "minecraft:redstone_block"
-    },
-    "P": {
-      "item": "minecraft:piston"
-    }
+    "I": "minecraft:iron_ingot",
+    "T": "minecraft:iron_block",
+    "R": "minecraft:redstone_block",
+    "P": "minecraft:piston"
   },
   "result": {
     "id": "easyelevator:powerful_cabin",

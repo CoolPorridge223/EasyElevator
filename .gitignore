@@ -6,3 +6,13 @@ logs/
 .idea/
 *.iml
 .dsh-sigmap.txt
+# API 查证用的临时目录/日志（解包未混淆的 Minecraft 与 Fabric API jar、构建输出），不进版本库
+.mc263/
+.mc263client/
+.fapi/
+build-263*.txt
+client-errors.txt
+# 排查时随手写的抓取片段/清单
+.cpl.txt
+.entity.txt
+.*-scratch.txt

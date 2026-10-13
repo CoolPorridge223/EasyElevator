@@ -1,6 +1,6 @@
 package org.DJB.easyelevator.logic;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import org.DJB.easyelevator.Easyelevator;
 
@@ -112,7 +112,7 @@ public final class DoorSounds {
      * @param slot 门槽号（内部会夹到 {@code [0, MAX_SLOTS)}）
      * @return 形如 {@code easyelevator:elevator_arrival_custom_3} 的标识符
      */
-    public static ResourceLocation soundId(int slot) {
+    public static Identifier soundId(int slot) {
         return Easyelevator.id("elevator_arrival_custom_" + clampSlot(slot));
     }
 
@@ -175,7 +175,7 @@ public final class DoorSounds {
         if (choice == CUSTOM) return slotEvent(slot);
         int index = choice - PRESET_BASE;
         if (index >= 0 && index < ARRIVAL_PRESETS.length) {
-            ResourceLocation id = ResourceLocation.tryParse(ARRIVAL_PRESETS[index]);
+            Identifier id = Identifier.tryParse(ARRIVAL_PRESETS[index]);
             if (id != null) return SoundEvent.createVariableRangeEvent(id); // of() 不写注册表，纯 ID 包装；客户端按 ID 查已加载音效
         }
         return Easyelevator.ARRIVAL;

@@ -1,12 +1,14 @@
 package org.DJB.easyelevator;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
+import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -68,9 +70,15 @@ public class Easyelevator implements ModInitializer {
             BuiltInRegistries.MENU, id("cargo"),
             new MenuType<>(CargoScreenHandler::new, FeatureFlags.VANILLA_SET));
     /** 电梯轨道方块单例：垂直放置的一列连续轨道，朝向即轿厢所在方向。 */
-    public static final Block RAIL = new ElevatorRailBlock(BlockBehaviour.Properties.of().strength(3.0f).noOcclusion());
+    public static final Block RAIL = new ElevatorRailBlock(BlockBehaviour.Properties.of()
+            // 26.3 起方块 Properties 必须带上自己的注册键：掉落表、描述键等都在构造期按它解析，
+            // 缺了会在 <clinit> 里抛 "Block id not set"（编译期查不出来）。
+            .setId(ResourceKey.create(Registries.BLOCK, id("elevator_rail")))
+            .strength(3.0f).noOcclusion());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
-    public static final Block LANDING_DOOR = new LandingDoorBlock(BlockBehaviour.Properties.of().strength(3.0f).noOcclusion().dynamicShape());
+    public static final Block LANDING_DOOR = new LandingDoorBlock(BlockBehaviour.Properties.of()
+            .setId(ResourceKey.create(Registries.BLOCK, id("call_button"))) // 同上：26.3 的方块 Properties 必须带注册键
+            .strength(3.0f).noOcclusion().dynamicShape());
     /**
      * 楼层电梯门的方块实体类型单例（注册 ID {@code easyelevator:landing_door}）。
      *
@@ -102,9 +110,11 @@ public class Easyelevator implements ModInitializer {
      * @return 尚未注册的实体类型；调用方必须立刻把它 {@code Registry.register} 到
      *         {@link BuiltInRegistries#ENTITY_TYPE}，并用与存档一致的 ID
      */
-    private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
+    private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory, Identifier id) {
+        // 26.3 起 EntityType.Builder.build 必须给一个 ResourceKey（原版要靠它做数据修复器的迁移）。
         return EntityType.Builder.of(factory, MobCategory.MISC)
-                .sized(3.0f, 3.0f).clientTrackingRange(10).updateInterval(1).build();
+                .sized(3.0f, 3.0f).clientTrackingRange(10).updateInterval(1)
+                .build(ResourceKey.create(Registries.ENTITY_TYPE, id));
     }
 
     /**
@@ -115,7 +125,7 @@ public class Easyelevator implements ModInitializer {
      * 这是必需的——轿厢以 0.20 格/刻运行，间隔追踪会明显抖动。</p>
      */
     public static final EntityType<CabinEntity> CABIN =
-            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new));
+            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new, id("cabin")));
     /**
      * 高速电梯轿厢实体类型单例（注册 ID {@code easyelevator:high_speed_cabin}）。
      *
@@ -124,7 +134,7 @@ public class Easyelevator implements ModInitializer {
      * 尺寸、追踪范围、渲染外观与普通轿厢完全一致，因此旧建筑与井道无需任何改动。</p>
      */
     public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN =
-            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new));
+            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new, id("high_speed_cabin")));
     /**
      * 观光电梯轿厢实体类型单例（注册 ID {@code easyelevator:observation_cabin}）。
      *
@@ -132,7 +142,7 @@ public class Easyelevator implements ModInitializer {
      * 用半透明玻璃材质绘制，保留四个角柱、地板与顶板。</p>
      */
     public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN =
-            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
+            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new, id("observation_cabin")));
     /**
      * 重载电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
      *
@@ -149,7 +159,7 @@ public class Easyelevator implements ModInitializer {
      * {@code PowerfulCabinEntity.heavyDuty()}。</p>
      */
     public static final EntityType<PowerfulCabinEntity> POWERFUL_CABIN =
-            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
+            Registry.register(BuiltInRegistries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new, id("powerful_cabin")));
     /**
      * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
      *
@@ -157,13 +167,13 @@ public class Easyelevator implements ModInitializer {
      * 实体类型用 Supplier 延迟读取，避免与上方静态字段的初始化顺序耦合。
      * 重载轿厢的物品还多一条 Tooltip 提示（怎么打开货舱），见 {@code CabinItem.appendTooltip}。</p>
      */
-    public static final Item CABIN_ITEM = new CabinItem(new Item.Properties().stacksTo(1), () -> CABIN);
+    public static final Item CABIN_ITEM = new CabinItem(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id("cabin"))).stacksTo(1), () -> CABIN);
     /** 高速轿厢生成物品单例：右键轨道生成高速轿厢（外观与普通一致，速度 2.5 倍）。 */
-    public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Properties().stacksTo(1), () -> HIGH_SPEED_CABIN);
+    public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id("high_speed_cabin"))).stacksTo(1), () -> HIGH_SPEED_CABIN);
     /** 观光轿厢生成物品单例：右键轨道生成观光轿厢（四面玻璃，性能与普通一致）。 */
-    public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Properties().stacksTo(1), () -> OBSERVATION_CABIN);
+    public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id("observation_cabin"))).stacksTo(1), () -> OBSERVATION_CABIN);
     /** 重载轿厢生成物品单例：右键轨道生成重载轿厢（速度 2/3、27 格货舱、限载随货量变化） */
-    public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Properties().stacksTo(1), () -> POWERFUL_CABIN);
+    public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id("powerful_cabin"))).stacksTo(1), () -> POWERFUL_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
     /**
@@ -176,12 +186,12 @@ public class Easyelevator implements ModInitializer {
     public static final SoundEvent ARRIVAL = sound("elevator_arrival");
 
     /**
-     * 构造本模组命名空间下的 {@link ResourceLocation}。
+     * 构造本模组命名空间下的 {@link Identifier}。
      *
      * @param path 注册路径，不含命名空间（例如 {@code "cabin"}）
      * @return {@code easyelevator:<path>} 形式的标识符
      */
-    public static ResourceLocation id(String path) { return ResourceLocation.fromNamespaceAndPath(MOD_ID, path); }
+    public static Identifier id(String path) { return Identifier.fromNamespaceAndPath(MOD_ID, path); }
 
     /**
      * 注册一个音效事件。
@@ -208,7 +218,8 @@ public class Easyelevator implements ModInitializer {
      */
     private static void block(String name, Block block) {
         Registry.register(BuiltInRegistries.BLOCK, id(name), block);
-        Registry.register(BuiltInRegistries.ITEM, id(name), new BlockItem(block, new Item.Properties()));
+        // 26.3 起 Item.Properties 也必须带自己的注册键（与方块同理，缺了会在类加载期抛 "Item id not set"）。
+        Registry.register(BuiltInRegistries.ITEM, id(name), new BlockItem(block, new Item.Properties().setId(ResourceKey.create(Registries.ITEM, id(name)))));
     }
 
     /**
@@ -236,7 +247,7 @@ public class Easyelevator implements ModInitializer {
         // 自定义物品栏分组：图标固定用普通轿厢物品；entries 回调在分组内容被构建时执行，
         // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、四种轿厢），
         // 避免依赖注册顺序或每次打开物品栏都重建列表。
-        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, id("main"), FabricItemGroup.builder()
+        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, id("main"), FabricCreativeModeTab.builder()
                 .title(Component.translatable("itemGroup.easyelevator"))
                 .icon(() -> new ItemStack(CABIN_ITEM))
                 .displayItems((context, entries) -> {

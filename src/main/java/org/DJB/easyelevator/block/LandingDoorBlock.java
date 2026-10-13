@@ -6,6 +6,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
@@ -63,9 +64,6 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  */
 public final class LandingDoorBlock extends HorizontalDirectionalBlock implements EntityBlock {
 
-    /** 方块编解码器，仅用于数据生成与序列化；方块本身无额外构造参数。 */
-    public static final MapCodec<LandingDoorBlock> CODEC = simpleCodec(LandingDoorBlock::new);
-
     /**
      * 门在整扇门内的横向位置，0..2（1 = 根所在中列）。
      * 轴方向为 {@code FACING.rotateYClockwise()}：列号增大即沿该水平方向 +1 格。
@@ -91,10 +89,6 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
         // 默认状态取根方块：中列、底层、关闭；FACING 必须显式赋值，否则读取状态属性会抛异常
         registerDefaultState(getStateDefinition().any().setValue(FACING,Direction.NORTH).setValue(COLUMN,1).setValue(LEVEL,0).setValue(OPEN,false));
     }
-
-    /** @return 本方块对应的编解码器 */
-    @Override
-    public MapCodec<LandingDoorBlock> codec() { return CODEC; }
 
     /**
      * 注册 4 个状态属性：朝向、列、层、开门状态。这里没有原版门的 POWERED，
@@ -215,7 +209,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
             return defaultBlockState().setValue(FACING,facing);
         }
         // actionbar 提示：告诉玩家门必须放在轨道前方 3 格、同 Y 的底部中心，而不是静默失败
-        if(!world.isClientSide && ctx.getPlayer()!=null) ctx.getPlayer().displayClientMessage(Component.translatable("message.easyelevator.door_placement"),true);
+        if(!world.isClientSide() && ctx.getPlayer() instanceof ServerPlayer speaker) speaker.sendSystemMessage(Component.translatable("message.easyelevator.door_placement"),true); // 26.3 起 Player.displayClientMessage 改名，带 actionbar 标志的版本只在 ServerPlayer 上
         return null;
     }
 
@@ -238,7 +232,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
     @Override
     public void setPlacedBy(Level world,BlockPos p,BlockState s,LivingEntity placer,ItemStack stack) {
         super.setPlacedBy(world,p,s,placer,stack);
-        if(world.isClientSide || !isRoot(s)) return;
+        if(world.isClientSide() || !isRoot(s)) return;
         for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
             if(row==0 && col==1) continue;
             world.setBlock(part(p,s.getValue(FACING),col,row),s.setValue(COLUMN,col).setValue(LEVEL,row),Block.UPDATE_ALL);
@@ -369,7 +363,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
      * @param origin 站点根方块坐标
      */
     public static void refresh(Level world,BlockPos origin) {
-        if(world.isClientSide) return;
+        if(world.isClientSide()) return;
         BlockState state=world.getBlockState(origin);
         if(!isRoot(state)) return;
         boolean open=mayOpen(world,origin);
@@ -423,7 +417,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
      */
     @Override
     protected InteractionResult useWithoutItem(BlockState state,Level world,BlockPos pos,Player player,BlockHitResult hit) {
-        if(!world.isClientSide) {
+        if(!world.isClientSide()) {
             BlockPos origin=root(state,pos);
             if(player.isShiftKeyDown()) openDoorSettings(world,origin,player);
             else openHallPanel(world,origin,player);
@@ -502,10 +496,24 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
      * @param player 操作的玩家
      * @param on true = 把这一站设为基准层；false = 取消本门的基准层标记
      */
+    /**
+     * 在快捷栏上方给玩家发一条提示。
+     *
+     * <p>26.3 起 {@code notify(player, Component, boolean)} 改名：{@code Player} 只剩
+     * {@code sendSystemMessage(Component)}，带 actionbar 标志的版本只在 {@code ServerPlayer} 上。
+     * 本模组的提示都走服务端，因此这里统一包一层；非服务端玩家（测试替身等）保持"不发提示"。
+     *
+     * @param player 目标玩家
+     * @param message 提示文本
+     */
+    private static void notify(Player player,Component message) {
+        if (player instanceof ServerPlayer serverPlayer) serverPlayer.sendSystemMessage(message,true);
+    }
+
     public static void setFloorBase(Level world,BlockPos origin,Player player,boolean on) {
-        if(!complete(world,origin)) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+        if(!complete(world,origin)) { notify(player, Component.translatable("message.easyelevator.invalid_stop")); return; }
         ElevatorLine line=ElevatorLine.scan(world,railPos(world.getBlockState(origin),origin));
-        if(line==null || !line.stops().contains(origin)) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+        if(line==null || !line.stops().contains(origin)) { notify(player, Component.translatable("message.easyelevator.invalid_stop")); return; }
         // on 时本门为基准层、同线其余门一律清除；取消时全部清除（回到"最低站点 = 1 层"的默认编号）。
         for(BlockPos stop:line.stops())
             if(world.getBlockEntity(stop) instanceof LandingDoorBlockEntity door) door.setBaseFloor(on && stop.equals(origin));
@@ -513,7 +521,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
         for(AbstractCabinEntity cabin:line.cabins(world)) ElevatorNetworking.syncPanel(cabin,cabin.plannedStops());
         // 设置面板自己也要刷新，否则里面的层号文本还停在旧编号上。
         ElevatorNetworking.broadcastDoorPanel(world,origin,ElevatorNetworking.OpenDoorPanel.PREVIEW_NONE);
-        player.displayClientMessage(Component.translatable(on?"message.easyelevator.floor_base_set":"message.easyelevator.floor_base_cleared"),true);
+        notify(player, Component.translatable(on?"message.easyelevator.floor_base_set":"message.easyelevator.floor_base_cleared"));
     }
 
     /**
@@ -534,7 +542,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
      */
     @Override
     public BlockState playerWillDestroy(Level world,BlockPos pos,BlockState state,Player player) {
-        if(!world.isClientSide && !isRoot(state)) {
+        if(!world.isClientSide() && !isRoot(state)) {
             BlockPos origin=root(state,pos);
             if(isRoot(world.getBlockState(origin))) world.destroyBlock(origin,!player.isCreative(),player);
         }
@@ -551,23 +559,22 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
      * <p>副作用：最多把同门 8 格写成空气并触发方块更新。服务端专属。
      *
      * @param state 变化前状态
-     * @param world 世界
+     * @param world 服务端世界
      * @param pos 变化位置
-     * @param next 变化后的新状态
      * @param moved 是否为移动（活塞相关），未使用
      */
     @Override
-    protected void onRemove(BlockState state,Level world,BlockPos pos,BlockState next,boolean moved) {
-        if(!world.isClientSide && !next.is(this)) {
-            BlockPos origin=root(state,pos);
-            for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
-                BlockPos p=part(origin,state.getValue(FACING),col,row);
-                if(p.equals(pos)) continue; // 自身由调用方处理，跳过以免递归
-                BlockState cell=world.getBlockState(p);
-                if(cell.is(this) && root(cell,p).equals(origin)) world.setBlock(p,Blocks.AIR.defaultBlockState(),Block.UPDATE_ALL);
-            }
+    protected void affectNeighborsAfterRemoval(BlockState state,ServerLevel world,BlockPos pos,boolean moved) {
+        // 26.3 起原版把 onRemove 改名为 affectNeighborsAfterRemoval：形参已经是 ServerLevel，
+        // 并且它只在"方块类型真的变了"时被调用，因此旧版的 !next.is(this) 守卫与 isClientSide 判断都不再需要。
+        BlockPos origin=root(state,pos);
+        for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
+            BlockPos p=part(origin,state.getValue(FACING),col,row);
+            if(p.equals(pos)) continue; // 自身由调用方处理，跳过以免递归
+            BlockState cell=world.getBlockState(p);
+            if(cell.is(this) && root(cell,p).equals(origin)) world.setBlock(p,Blocks.AIR.defaultBlockState(),Block.UPDATE_ALL);
         }
-        super.onRemove(state,world,pos,next,moved);
+        super.affectNeighborsAfterRemoval(state,world,pos,moved);
     }
 
     /**
@@ -621,7 +628,7 @@ public final class LandingDoorBlock extends HorizontalDirectionalBlock implement
         if(!(w instanceof Level world)) return s.getValue(OPEN)?1f:0f;
         BlockPos origin=root(s,p);
         // 服务端联锁兜底：状态还写着 OPEN 但此刻已不允许开门，本次碰撞就按全关算（不回写状态）
-        if(!world.isClientSide && s.getValue(OPEN) && !mayOpen(world,origin)) return 0f;
+        if(!world.isClientSide() && s.getValue(OPEN) && !mayOpen(world,origin)) return 0f;
         if(world.getBlockEntity(origin) instanceof LandingDoorBlockEntity door) return door.openProgress();
         return s.getValue(OPEN)?1f:0f;
     }

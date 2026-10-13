@@ -1,48 +1,55 @@
 # EasyElevator 工程构建与打包说明书
 
-适用版本：模组 **2.3.0**，Minecraft **1.21.1**，Fabric Loader **0.19.2**，Java **21**。
+适用版本：模组 **2.3.0+26.3**，Minecraft **26.3**，Fabric Loader **0.19.5**，Java **25**。
 
 > 面向**构建与发布**：环境固定项、命令速查、两种交付包、IDEA 设置与常见故障。
 > 姊妹文档：[项目开发手册](PROJECT_MANUAL.md)（架构与接口）、[电梯参数手册](PARAMETERS.md)（数值）、
 > [人工验收清单](TESTING.md)（进游戏验收）、[模型音效接口](ASSET_INTEGRATION.md)（替换素材）、[README](../README.md)（玩家向）。
 >
-> **版本线**：分支名一律 `mc/<MC 版本>/<加载器>`——`main` 是 **1.21.1 / Fabric** 线（也是仓库默认分支），
-> 另有 **`mc/1.20.1/fabric`** 维护线。
-> 两条线的分支划分、backport 纪律、标签与产物命名约定见 [版本线与发布流程](VERSIONING.md)。
+> **版本线**：分支名一律 `mc/<MC 版本>/<加载器>`。本文所在的 **`mc/26.3/fabric`** 是最新版本线；
+> 另有 **1.21.1 / Fabric** 线（`main`，仓库默认分支）与 **`mc/1.20.1/fabric`** 维护线。
+> 分支划分、backport 纪律与标签/产物命名约定见 [版本线与发布流程](VERSIONING.md)。
 >
-> **路径约定**：本文所有 `<JDK21>` 都是占位符，请替换为**你自己机器上的 JDK 21 目录**。工程内不写死任何本机绝对路径。
+> **⚠️ 本线的命名体系与另外两条线不同**：Minecraft 26.1 起官方发布的就是**未混淆**代码，Fabric 随之停止
+> 维护 Yarn 映射。因此本线源码用 **Mojang 官方命名**书写，构建里**没有 mappings 依赖**，插件 ID 是
+> `net.fabricmc.fabric-loom`（未混淆版本专用）。`main`（1.21.1）与 `mc/1.20.1/fabric` 仍是 Yarn 命名，
+> **两者的源码不能互相 cherry-pick**（命名不同，冲突无法自动解决）。
+>
+> **路径约定**：本线需要在 `gradle.properties` 的 `org.gradle.java.installations.paths` 里指明**本机的
+> JDK 25 目录**（工具链要用它编译与运行）。这是本工程唯一一处与机器相关的配置，换机器时改这一行即可。
 
 ## 1. 环境与已固定的构建配置
 
 | 项目 | 配置                           | 修改位置 |
 | --- |------------------------------| --- |
-| Java 开发环境 | 完整 JDK 21，包括 java 和 javac    | JAVA_HOME / IDEA Gradle JVM |
-| Java 编译版本 | toolchain=21，release=21，UTF-8 | build.gradle |
-| Gradle | Wrapper 固定 8.14.3            | gradle/wrapper/gradle-wrapper.properties |
-| Fabric Loom | 1.11.8 正式版                   | build.gradle |
-| Minecraft | 1.21.1                       | gradle.properties 的 minecraft_version |
-| Yarn 映射 | 1.21.1+build.3               | yarn_mappings |
-| Fabric Loader | 0.19.2                       | loader_version |
-| Fabric API | 0.116.17+1.21.1              | fabric_version |
-| 模组版本 | 2.3.0                        | mod_version |
+| Java 开发环境 | 完整 JDK 25（工具链）；Gradle 进程本身跑 JDK 21 或 25 都可以 | gradle.properties 的 org.gradle.java.installations.paths / JAVA_HOME |
+| Java 编译版本 | toolchain=25，release=25，UTF-8 | build.gradle |
+| Gradle | Wrapper 固定 9.6.0             | gradle/wrapper/gradle-wrapper.properties |
+| Fabric Loom | 1.17.21（插件 ID 用未混淆版本专用的 `net.fabricmc.fabric-loom`） | build.gradle |
+| Minecraft | 26.3                       | gradle.properties 的 minecraft_version |
+| 混淆映射 | **不需要**（26.1 起游戏未混淆，源码直接用官方命名） | 无 mappings 依赖 |
+| Fabric Loader | 0.19.5                       | loader_version |
+| Fabric API | 0.162.0+26.3              | fabric_version |
+| 模组版本 | 2.3.0+26.3                        | mod_version |
+| Mixin 兼容级别 | `JAVA_25` | 两个 `*.mixins.json` |
 | 文件名前缀 | easyelevator                 | archives_base_name |
 | 构建内存/并行度 | 最大堆 2 GB，最多 4 个工作线程          | org.gradle.jvmargs / org.gradle.workers.max |
 | 缓存 | 启用 Gradle 构建缓存               | org.gradle.caching |
 | 下载超时 | Wrapper 120 秒                 | networkTimeout |
 | 下载完整性 | 固定官方 Gradle SHA-256          | distributionSha256Sum |
 
-不需要另行安装全局 Gradle。使用项目自带的 `gradlew.bat`；不要把 Loom 或 Gradle 改为随机的最新版本。项目没有写死电脑上的 JDK 路径，可迁移到其他机器。归档文件关闭文件时间戳、固定文件顺序，减少同一源码重复打包时的无意义差异。
+不需要另行安装全局 Gradle。使用项目自带的 `gradlew.bat`；不要把 Loom 或 Gradle 改为随机的最新版本。本线只在 `org.gradle.java.installations.paths` 写了**本机 JDK 25 的路径**（工具链要用），换机器改这一行即可，其余配置都可迁移。归档文件关闭文件时间戳、固定文件顺序，减少同一源码重复打包时的无意义差异。
 
 ## 2. 本机推荐方式
 
-在工程根目录打开 PowerShell，把 `JAVA_HOME` 指向本机的 JDK 21 目录，然后调用 Wrapper：
+在工程根目录打开 PowerShell，把 `JAVA_HOME` 指向本机的 JDK 21（或 25），然后调用 Wrapper：
 
 ```powershell
-$env:JAVA_HOME = '<JDK21>'
+$env:JAVA_HOME = '<JDK21 或 JDK25>'
 .\gradlew.bat build --console=plain
 ```
 
-`JAVA_HOME` 必须是**完整 JDK 21**（含 `javac`）：只装 JRE、只有 `java.exe` 在 PATH 上、或 IDE 自带的精简运行时，都会在编译阶段直接失败。工程不校验你的 JDK 路径，也不修改任何系统配置；关掉这个终端 `JAVA_HOME` 即失效。
+`JAVA_HOME` 必须是**完整 JDK**（含 `javac`）：只装 JRE、只有 `java.exe` 在 PATH 上、或 IDE 自带的精简运行时，都会在启动 Wrapper 阶段直接失败。它只用来跑 Gradle 进程；**编译与运行 Minecraft 26.3 用的是工具链指定的 JDK 25**（见 `gradle.properties` 的 `org.gradle.java.installations.paths`），两者可以不是同一个 JDK。工程不修改任何系统配置；关掉这个终端 `JAVA_HOME` 即失效。
 
 第一次构建需要联网下载 Minecraft、Fabric 与 Gradle 依赖；后续会复用缓存（默认在用户目录的 `.gradle`，工程内只有 `.gradle/` 与 `build/` 两个缓存目录，都不进版本库）。
 
@@ -138,5 +145,104 @@ $env:JAVA_HOME = '<JDK21>'
 | 混入或客户端类加载错误 | 检查游戏/Loader/API版本及是否混装两个 EasyElevator 版本 |
 | 修改贴图没生效 | 检查资源路径，重新打包或在开发客户端重载资源 |
 | 出现旧版本的 JAR | build/libs 可保留旧文件，按当前 mod_version 选择；需要时先 clean 再 build |
+
+## 8. 26.3 的渲染架构（extract → submit）迁移要点
+
+26.3 把渲染器改成**两段式**，这是本次升级最大的一处结构性变化：
+
+| 1.21.1 写法 | 26.3 写法 |
+| --- | --- |
+| `EntityRenderer<T>`，覆写 `render(T, yaw, delta, PoseStack, MultiBufferSource, light)` | `EntityRenderer<T, S extends EntityRenderState>`，实现 `createRenderState()` / `extractRenderState(T, S, float)` / `submit(S, PoseStack, SubmitNodeCollector, CameraRenderState)` |
+| `BlockEntityRenderer<T>`，覆写 `render(T, delta, PoseStack, MultiBufferSource, light, overlay)` | `BlockEntityRenderer<T, S extends BlockEntityRenderState>`，实现 `createRenderState()` / `extractRenderState(T, S, float, Vec3, CrumblingOverlay)` / `submit(...)` |
+| `getTextureLocation(T entity)` | `getTextureLocation(S state)` |
+| `shouldRenderOffScreen(T)` | `shouldRenderOffScreen()`（无参）+ `shouldRender(T, Vec3)` |
+| `MultiBufferSource.getBuffer(layer)` 后直接写顶点 | `collector.submitCustomGeometry(poseStack, renderType, (pose, buffer) -> …)`；文字走 `submitText` / `submitTextBackground` |
+| `RenderLayer.getEntityCutout(id)` | `RenderTypes.entityCutout(Identifier)`（工厂搬到了 `net.minecraft.client.renderer.rendertype` 包） |
+
+**手写几何的最小可用范式**（取自 26.3 的 `AbstractEndPortalRenderer`）：
+
+```java
+submitNodeCollector.submitCustomGeometry(poseStack, RenderTypes.entityCutout(TEXTURE), (pose, buffer) ->
+        buffer.addVertex(pose, x, y, z).setColor(argb).setUv(u, v)
+              .setOverlay(OverlayTexture.NO_OVERLAY).setLight(light).setNormal(pose, nx, ny, nz));
+```
+
+顶点 API 的形状（`addVertex/setColor/setUv/setOverlay/setLight/setNormal`）在 **Mojang 版的 1.21.1 就已经是这样**
+（Yarn 才叫 `vertex/color/texture/…`），所以本工程 `BoxMesh` 的顶点写法**不用改**，改的只是"从哪拿 buffer"；
+`addVertex(PoseStack.Pose, …)` 直接吃 `PoseStack.last()`，因此 `BoxMesh` 可以整体复用。
+
+**连带的设计约束**：`submit` 只拿得到渲染状态（`S`），拿不到实体/方块实体本身。凡绘制需要的数据
+（朝向、门进度、货物内容、视觉 Y 偏移……）都必须在 `extractRenderState` 里拷进状态类；
+原本在 `render` 里现算的东西（例如 `CabinMotion.renderY`）应挪到 `extractRenderState` 里算好存进状态。
+
+## 9. 1.21.1 → 26.3 差异清单（本线移植实录）
+
+本线是从 1.21.1 线升上来的，下面每一条都是**实际踩过并修好**的（括号里是踩坑方式）。
+
+### 9.1 命名与构建（最大的一处变化）
+
+| 主题 | 1.21.1 线 | 26.3 线 |
+| --- | --- | --- |
+| 源码命名 | **Yarn** | **Mojang 官方命名**（26.1 起游戏未混淆，Fabric 停止维护 Yarn） |
+| 映射依赖 | `mappings "net.fabricmc:yarn:…:v2"` | **不需要任何 mappings** |
+| Loom 插件 ID | `fabric-loom` | **`net.fabricmc.fabric-loom`**（未混淆版本专用） |
+| 重映射任务 | 有 `remapJar` / `remapSourcesJar` | **没有**，`packageRelease` 直接取 `jar` / `sourcesJar` |
+| 模组依赖配置 | `modImplementation` / `modRuntimeOnly` | **没有**，用普通 `implementation` / `runtimeOnly` |
+| Gradle / Loom | 8.14.3 / 1.11.8 | **9.6.0 / 1.17.21** |
+| Java | 21 | **25**（工具链路径写在 `gradle.properties`） |
+| Mixin 兼容级别 | `JAVA_21` | `JAVA_25` |
+
+### 9.2 通用 API
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `ResourceLocation` | **`Identifier`**（Mojang 采用了 Yarn 的名字） |
+| `Level.isClientSide`（字段） | `isClientSide()`（方法） |
+| `getMinBuildHeight()` / `getMaxBuildHeight()` | `getMinY()` / `getMaxY()` |
+| `ClickType` | `ContainerInput` |
+| `InteractionResultHolder<T>` | **已删除**：`Item.use(...)` 直接返回 `InteractionResult` |
+| `Entity.interact(Player, Hand)` | 多一个命中位置参数：`interact(Player, Hand, Vec3)` |
+| `Entity.canBeCollidedWith()` | `canBeCollidedWith(Entity)` |
+| `Entity.lerpTo(x,y,z,yaw,pitch,steps)` | `lerpPositionAndRotationStep(steps,x,y,z,yaw,pitch)`（参数顺序也变了） |
+| `Entity.teleport(level,x,y,z,yaw,pitch,relSet)` | `teleport(PositionMoveRotation, Set<Relative>)` |
+| `Entity.spawnAtLocation(Item\|ItemStack)` | `spawnAtLocation(ServerLevel, ItemLike\|ItemStack…)` |
+| `Player.displayClientMessage(Component, boolean)` | `Player.sendSystemMessage(Component)`；带 actionbar 标志的**只在 `ServerPlayer`** 上 |
+| `Container.addListener/removeListener` | **已删除**（`Container` 只剩 `startOpen/stopOpen(ContainerUser)`） |
+| `ServerboundMovePlayerPacket` 各子类 | 多一个 `boolean horizontalCollision` |
+| 伤害处理 | 新增抽象方法 `Entity.hurtServer(ServerLevel, DamageSource, float)` |
+
+### 9.3 存档 / NBT（改动最密集的一块）
+
+26.3 把实体与方块实体的存档读写换成 **`ValueInput` / `ValueOutput` + 全 Optional** 风格：
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `readAdditionalSaveData(CompoundTag)` | `readAdditionalSaveData(ValueInput)` |
+| `addAdditionalSaveData(CompoundTag)` | `addAdditionalSaveData(ValueOutput)` |
+| `saveAdditional(CompoundTag, HolderLookup.Provider)` | `saveAdditional(ValueOutput)`（注册表查询参数没了） |
+| `loadAdditional(CompoundTag, HolderLookup.Provider)` | `loadAdditional(ValueInput)` |
+| `nbt.getInt(k)`（缺失得 0） | `nbt.getIntOr(k, 0)`；`nbt.getInt(k)` 现在返回 `Optional<Integer>` |
+| `nbt.getString/getBoolean/getLong/getFloat/getDouble` | 同上，均有 `xxxOr(k, 默认值)` 版本 |
+| `nbt.contains(k, type)` | `nbt.contains(k)`（只剩单参）；判断"由谁来决定缺失语义"改用 `getXxx(k).isPresent()` / `child(k)` |
+| `nbt.getCompound(k)` | `nbt.child(k)`（Optional）/ `nbt.childOrEmpty(k)` |
+| `nbt.getList(k, type)` + `ListTag.getCompound(i)` | `nbt.childrenList(k)`（Optional）/ `childrenListOrEmpty(k)` + **`ValueInputList.stream()`**（列表只暴露 `stream()/isEmpty()`） |
+| 写列表：`new ListTag()` + `nbt.put(k, list)` | `nbt.childrenList(k).addChild()`（返回子 `ValueOutput`） |
+| 读写物品栏：手写循环 | `ContainerHelper.saveAllItems(ValueOutput, NonNullList)` / `loadAllItems(ValueInput, NonNullList)` |
+
+### 9.4 方块与物品注册（编译期查不出来，只会在运行时炸）
+
+| 现象 | 原因与修法 |
+| --- | --- |
+| 类加载期 `NullPointerException: Block id not set` | 26.3 起 `BlockBehaviour.Properties` 必须 `.setId(ResourceKey.create(Registries.BLOCK, id))` |
+| 类加载期 `NullPointerException: Item id not set` | `Item.Properties` 同理必须 `.setId(ResourceKey.create(Registries.ITEM, id))` |
+| `simpleCodec(...)` / `codec()` 找不到 | **方块 codec 已被原版整体移除**：`CODEC` 字段与 `codec()` 覆写要整段删掉 |
+| `onRemove(BlockState,Level,BlockPos,BlockState,boolean)` 找不到 | 改名为 `affectNeighborsAfterRemoval(BlockState, ServerLevel, BlockPos, boolean)`；它只在"方块类型真的变了"时调用，形参已是 `ServerLevel`，旧版的 `!next.is(this)` 与 `isClientSide()` 判断都不再需要 |
+
+### 9.5 Fabric API 变化
+
+| 1.21.1 | 26.3 |
+| --- | --- |
+| `net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup` | **模块被移除**，替代是 `fabric-creative-tab-api-v1`：`net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab` |
+| `PayloadTypeRegistry.playS2C()` / `playC2S()` | `clientboundPlay()` / `serverboundPlay()` |
 
 日志与人工验收见 [TESTING.md](TESTING.md)。

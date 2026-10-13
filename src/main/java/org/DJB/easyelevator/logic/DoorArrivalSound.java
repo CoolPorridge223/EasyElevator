@@ -1,6 +1,8 @@
 package org.DJB.easyelevator.logic;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
 /**
  * 单扇楼层门的<b>到站提示音</b>设置：一个开关 + 一个音效选项。
@@ -78,7 +80,7 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      *
      * @param nbt 目标 NBT
      */
-    public void writeNbt(CompoundTag nbt) {
+    public void writeNbt(ValueOutput nbt) {
         if (!enabled) nbt.putBoolean(KEY_ENABLED, false);
         if (choice != DoorSounds.DEFAULT) nbt.putInt(KEY_CHOICE, choice);
     }
@@ -98,8 +100,11 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      * @param nbt 存档 NBT
      * @return 读回的设置（序号已由构造器夹进合法区间）
      */
-    public static DoorArrivalSound readNbt(CompoundTag nbt) {
-        boolean enabled = nbt.contains(KEY_ENABLED) ? nbt.getBoolean(KEY_ENABLED) : DEFAULT.enabled();
-        return new DoorArrivalSound(enabled, nbt.getInt(KEY_CHOICE));
+    public static DoorArrivalSound readNbt(ValueInput nbt) {
+        // 26.3 的读取 API 用默认值参数直接表达缺省：getBooleanOr(键, 出厂默认) 同时覆盖了
+        // "键不存在"与"键为 false"两种情况——两者都返回传入的默认值以外的语义需要显式区分，
+        // 这里键存在时读实际值、不存在时读 DEFAULT.enabled()，与旧版 contains 三元表达式完全等价。
+        boolean enabled = nbt.getBooleanOr(KEY_ENABLED, DEFAULT.enabled());
+        return new DoorArrivalSound(enabled, nbt.getIntOr(KEY_CHOICE, 0));
     }
 }

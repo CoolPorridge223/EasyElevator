@@ -7,18 +7,10 @@
     "IPI"
   ],
   "key": {
-    "I": {
-      "item": "minecraft:iron_ingot"
-    },
-    "G": {
-      "item": "minecraft:glass"
-    },
-    "R": {
-      "item": "minecraft:redstone"
-    },
-    "P": {
-      "item": "minecraft:piston"
-    }
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass",
+    "R": "minecraft:redstone",
+    "P": "minecraft:piston"
   },
   "result": {
     "id": "easyelevator:observation_cabin",

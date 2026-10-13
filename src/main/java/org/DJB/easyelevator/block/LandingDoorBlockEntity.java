@@ -7,6 +7,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
@@ -15,6 +17,8 @@ import org.DJB.easyelevator.logic.DoorSounds;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.logic.ElevatorStatus;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
 /**
  * 楼层门根方块的方块实体：只为"门扇滑动"提供连续、可插值的进度样本。
@@ -246,8 +250,8 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param nbt 目标 NBT
      * @param registries 注册表查询（本实体没有需要迁移的字段，仅透传给父类）
      */
-    @Override protected void saveAdditional(CompoundTag nbt,HolderLookup.Provider registries) {
-        super.saveAdditional(nbt,registries);
+    @Override protected void saveAdditional(ValueOutput nbt) {
+        super.saveAdditional(nbt);
         if (baseFloor) nbt.putBoolean("BaseFloor",true); // 只写 true：默认门不必多一个 false 字段
         arrivalSound.writeNbt(nbt); // 同理：整份默认设置不写任何字段，旧存档体积不变
     }
@@ -258,9 +262,9 @@ public final class LandingDoorBlockEntity extends BlockEntity {
      * @param nbt 存档 NBT
      * @param registries 注册表查询（透传父类）
      */
-    @Override protected void loadAdditional(CompoundTag nbt,HolderLookup.Provider registries) {
-        super.loadAdditional(nbt,registries);
-        baseFloor=nbt.getBoolean("BaseFloor");
+    @Override protected void loadAdditional(ValueInput nbt) {
+        super.loadAdditional(nbt);
+        baseFloor=nbt.getBooleanOr("BaseFloor",false); // 缺失 = false，与旧版 getBoolean 的默认值一致
         arrivalSound=DoorArrivalSound.readNbt(nbt); // 开关字段缺失 = 出厂默认（发声）：旧存档的门升级后照旧会响；只有玩家真的关掉才写 false
     }
 }

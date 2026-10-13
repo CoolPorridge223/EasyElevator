@@ -7,12 +7,8 @@
     "RRR"
   ],
   "key": {
-    "C": {
-      "item": "easyelevator:cabin"
-    },
-    "R": {
-      "item": "minecraft:redstone_block"
-    }
+    "C": "easyelevator:cabin",
+    "R": "minecraft:redstone_block"
   },
   "result": {
     "id": "easyelevator:high_speed_cabin",

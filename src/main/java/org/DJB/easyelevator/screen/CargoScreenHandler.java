@@ -1,12 +1,13 @@
 package org.DJB.easyelevator.screen;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
@@ -165,13 +166,15 @@ public class CargoScreenHandler extends AbstractContainerMenu {
      * @param action 原版动作类型（拾取、Shift 搬运、数字键交换、拖放分配……）
      * @param player 操作者
      */
-    @Override public void clicked(int slotIndex, int button, ClickType action, Player player) {
+    @Override public void clicked(int slotIndex, int button, ContainerInput action, Player player) {
         if (!stillValid(player)) return;
         int before = cabin == null ? 0 : cabin.cargoItems();
         super.clicked(slotIndex, button, action, player);
         cargo.setChanged();
-        if (cabin != null && cabin.cargoItems() == before && cabin.cargoSpaceBlocked())
-            player.displayClientMessage(Component.translatable("message.easyelevator.cargo_space"), true);
+        // 26.3 起 Player 只剩 sendSystemMessage(Component)，带"显示在快捷栏上方"标志的版本只在 ServerPlayer 上。
+        if (cabin != null && cabin.cargoItems() == before && cabin.cargoSpaceBlocked()
+                && player instanceof ServerPlayer serverPlayer)
+            serverPlayer.sendSystemMessage(Component.translatable("message.easyelevator.cargo_space"), true);
     }
 
     /**

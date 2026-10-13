@@ -14,13 +14,17 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -45,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.server.level.ServerLevel;
 
 /**
  * 电梯轿厢的共同父类：3x3x3 的空心轿厢，也是整条线路的服务端权威载体。
@@ -212,9 +217,9 @@ public abstract class AbstractCabinEntity extends Entity {
      * @param steps 原版要求的插值步数（单位：刻）
      */
     @Override
-    public void lerpTo(double x, double y, double z, float yaw, float pitch, int steps) {
-        if (!level().isClientSide || !clientMotionControlled)
-            super.lerpTo(x, y, z, yaw, pitch, steps);
+    protected void lerpPositionAndRotationStep(int steps, double x, double y, double z, double yaw, double pitch) {
+        if (!level().isClientSide() || !clientMotionControlled)
+            super.lerpPositionAndRotationStep(steps, x, y, z, yaw, pitch);
     }
 
     /** 读档后等待名册乘客归位的剩余刻数（刻）；0 = 本刻无需等待（名册已齐或等待窗口已用尽）。 */
@@ -585,7 +590,7 @@ public abstract class AbstractCabinEntity extends Entity {
      * 井道深处，也可能轿厢已经走到很远的高度（例如掉线期间行程照常走完）。
      */
     private Player findLostPassenger(UUID uuid) {
-        AABB column = new AABB(getX()-2, level().getMinBuildHeight(), getZ()-2, getX()+2, level().getMaxBuildHeight(), getZ()+2);
+        AABB column = new AABB(getX()-2, level().getMinY(), getZ()-2, getX()+2, level().getMaxY(), getZ()+2);
         var found = level().getEntitiesOfClass(Player.class, column,
                 e -> uuid.equals(e.getUUID()) && !e.isSpectator() && !e.isPassenger() && insideFootprint(e));
         return found.isEmpty() ? null : found.get(0);
@@ -611,8 +616,9 @@ public abstract class AbstractCabinEntity extends Entity {
         double y = getY()+Mth.clamp(Double.isFinite(offset.y) ? offset.y : .2,.2,maxFeet);
         double z = getZ()+Mth.clamp(Double.isFinite(offset.z) ? offset.z : 0,-margin,margin);
         if (p instanceof ServerPlayer sp && sp.connection != null)
-            sp.connection.teleport(x, y, z, 0, 0,
-                    java.util.EnumSet.of(RelativeMovement.X_ROT, RelativeMovement.Y_ROT)); // 相对旋转增量为零，保留视角
+            // 26.3 起传送统一走 PositionMoveRotation + 相对标记：位置给绝对值、旋转标成"相对"且增量为零，等价于保留视角。
+            sp.connection.teleport(new PositionMoveRotation(new Vec3(x, y, z), Vec3.ZERO, 0f, 0f),
+                    java.util.EnumSet.of(Relative.X_ROT, Relative.Y_ROT));
         else p.setPos(x, y, z);
         p.fallDistance = 0; // 清零下落距离：掉队期间累积的下落高度不能在归位瞬间结算成摔落伤害
         p.setDeltaMovement(p.getDeltaMovement().multiply(1, 0, 1)); // 抹掉纵向速度，避免归位后仍带着下落速度
@@ -685,7 +691,7 @@ public abstract class AbstractCabinEntity extends Entity {
      * @return 指令被接受时 true；既没有停稳在站点上、也不处于故障、线路上又有站点时 false（调用方据此提示玩家）
      */
     public boolean doorCommand(boolean open) {
-        if (level().isClientSide) return false; // 指令只在服务端执行，客户端点击后会收到服务端下发的面板刷新
+        if (level().isClientSide()) return false; // 指令只在服务端执行，客户端点击后会收到服务端下发的面板刷新
         if (open) {
             // 车体是否精确停在某个完整站点上：站点高度是整数、到站时会精确吸附到该值，
             // 因此这里的 1e-7 判定等价于"就在这一层"。线路扫不到（轨道被拆/区块未加载）时不算停在站点。
@@ -713,7 +719,8 @@ public abstract class AbstractCabinEntity extends Entity {
 
     /** @return 恒为 false：空心外壳碰撞由 EntityViewMixin 注入 {@link #collisionBoxes()}，实心包围盒会把乘客挡在轿厢外 */
     @Override
-    public boolean canBeCollidedWith() { return false; } // Hollow collision supplied by EntityViewMixin.
+    // 26.3 起原版把"能不能被别的实体碰撞"改成了按对方实体判定的 canBeCollidedWith(Entity)，语义不变。
+    public boolean canBeCollidedWith(Entity other) { return false; } // Hollow collision supplied by EntityViewMixin.
 
     /** @return 恒为 false：禁止被玩家或活塞推动，否则位置会脱离状态机控制而破坏到站精度与门联锁 */
     @Override
@@ -773,16 +780,39 @@ public abstract class AbstractCabinEntity extends Entity {
      *
      * @see #doorsOpen() 门是否完全打开
      */
+    /**
+     * 轿厢不受任何伤害。
+     *
+     * <p>26.3 起 {@code Entity.hurtServer(ServerLevel,DamageSource,float)} 变成抽象方法，不能再用
+     * "不覆写 Entity.hurt" 得到默认行为，因此这里逐行照搬 1.21.1 基类 {@code Entity.hurt} 的实现：
+     * 先做不可侵犯判定（26.3 里对应的受保护方法叫 {@code isInvulnerableToBase}，正文逐字相同），
+     * 未通过就直接返回 false；通过则 markHurt()（26.3 的 {@code markHurt} 只是把
+     * {@code syncVelocity} 置真，等价于旧版的 {@code hurtMarked}），最后仍然返回 false。
+     * 结论与旧版完全一致：无论什么伤害来源，轿厢都不掉血、也不产生其它可观察效果。
+     *
+     * @param world 服务端世界（伤害只可能在服务端结算）
+     * @param source 伤害来源
+     * @param amount 伤害数值（未使用：本实体不吸收任何伤害）
+     * @return 恒为 false：这次伤害没有生效
+     */
+    @Override public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+        if (isInvulnerableToBase(source)) return false;
+        markHurt();
+        return false;
+    }
+
     @Override
-    public InteractionResult interact(Player player, InteractionHand hand) {
+    // 26.3 起原版给 interact 多传一个命中位置（交互点），本实体不区分命中位置，忽略即可。
+    public InteractionResult interact(Player player, InteractionHand hand, Vec3 location) {
         if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
-        if (level().isClientSide) return InteractionResult.PASS; // 客户端不判定，一律放行：真正是否消费由服务端回包决定
+        if (level().isClientSide()) return InteractionResult.PASS; // 客户端不判定，一律放行：真正是否消费由服务端回包决定
 
         // 回收：潜行 + 主手空 + 厢内没有任何乘客。这里不看相位、不看门进度（运行中同样允许），
         // 也不要在这里加"正在运行就拒绝"之类的守卫——见方法注释里的说明。
         if (player.isShiftKeyDown() && player.getItemInHand(hand).isEmpty()
                 && level().getEntities(this, getBoundingBox(), this::containsPassenger).isEmpty()) {
-            if (!player.isCreative()) spawnAtLocation(cabinItem()); // 掉回本型号物品：高速车回收成高速车，观光车回收成观光车
+            // 26.3 起 spawnAtLocation 必须显式给服务端世界（掉落物只能由服务端生成）。
+        if (!player.isCreative() && level() instanceof ServerLevel serverLevel) spawnAtLocation(serverLevel, cabinItem()); // 掉回本型号物品：高速车回收成高速车，观光车回收成观光车
             discard();
             return InteractionResult.SUCCESS;
         }
@@ -790,7 +820,10 @@ public abstract class AbstractCabinEntity extends Entity {
             ElevatorNetworking.open((ServerPlayer) player, this);
             return InteractionResult.SUCCESS;
         }
-        player.displayClientMessage(Component.translatable("message.easyelevator.enter"), true); // 非乘客只提示如何进入，不泄漏站点信息
+        // 26.3 起 Player.displayClientMessage(Text, boolean) 改名：单参版在 Player 上叫 sendSystemMessage，
+        // 带"显示在快捷栏上方"标志的版本只在 ServerPlayer 上有。
+        if (player instanceof ServerPlayer serverPlayer)
+            serverPlayer.sendSystemMessage(Component.translatable("message.easyelevator.enter"), true); // 非乘客只提示如何进入，不泄漏站点信息
         return InteractionResult.PASS; // 只发了条提示、没消费这次点击：放行给身后的方块
     }
 
@@ -810,7 +843,7 @@ public abstract class AbstractCabinEntity extends Entity {
     public void tick() {
         previousDoor = entityData.get(DOOR); // 先把当刻门进度留作下一刻的插值起点
         super.tick();
-        if (level().isClientSide) return; // 客户端不跑状态机，只消费 DataTracker 与 motion_frame 包
+        if (level().isClientSide()) return; // 客户端不跑状态机，只消费 DataTracker 与 motion_frame 包
         var before = controller.phase(); // 记下旧 Phase，用于本刻末尾判断是否需要播放开关门音效与触发事件
         final ElevatorLine currentLine = line();
         final boolean unique = currentLine != null && currentLine.facing() == facing() && currentLine.cabins(level()).size() == 1; // 线路存在、朝向一致、且恰好一个轿厢，才允许运动
@@ -1028,7 +1061,7 @@ public abstract class AbstractCabinEntity extends Entity {
      * @param stationY 刚到达的站点高度（格），由状态机在到站回调里给出
      */
     private void arrivalChime(int stationY) {
-        if (level().isClientSide) return; // 只由服务端权威播放：客户端各播一次会变成双重回声
+        if (level().isClientSide()) return; // 只由服务端权威播放：客户端各播一次会变成双重回声
         LandingDoorBlockEntity door = dockedDoorAt(stationY);
         if (door == null) return;
         SoundEvent event = door.arrivalEvent(); // 该门没开提示音、或自定义槽位还没有音频时返回 null
@@ -1081,7 +1114,7 @@ public abstract class AbstractCabinEntity extends Entity {
      * 因此电梯不会为了通行而触发区块加载或额外的世界生成。
      */
     public boolean spaceClear(AABB box) {
-        if (box.minY < level().getMinBuildHeight() || box.maxY > level().getMaxBuildHeight() || !level().getWorldBorder().isWithinBounds(box)) return false; // 高度与世界边界外一律不可通行
+        if (box.minY < level().getMinY() || box.maxY > level().getMaxY() || !level().getWorldBorder().isWithinBounds(box)) return false; // 高度与世界边界外一律不可通行
         for (BlockPos p : BlockPos.betweenClosed(Mth.floor(box.minX), Mth.floor(box.minY), Mth.floor(box.minZ),
                 Mth.floor(box.maxX), Mth.floor(box.maxY), Mth.floor(box.maxZ)))
             if (!level().hasChunkAt(p)) return false;
@@ -1176,39 +1209,37 @@ public abstract class AbstractCabinEntity extends Entity {
      * <p>副作用：仅填充传入的 NBT，不改运行时状态。
      */
     @Override
-    protected void addAdditionalSaveData(CompoundTag nbt) {
+    protected void addAdditionalSaveData(ValueOutput nbt) {
+        // 26.3 的写入侧：ListTag 换成 childrenList(name) 拿到的子输出列表，逐条 addChild() 再写字段。
         nbt.putInt("RailX",railX); nbt.putInt("RailZ",railZ); nbt.putInt("Facing",facing().get3DDataValue());
         nbt.putString("Phase",controller.phase().name()); nbt.putFloat("Door",controller.door());
         if (controller.target()!=null) nbt.putLong("Target",controller.target().id()); // 无目标时不写字段，读档以 contains 判定
         nbt.putString("TargetHallDirection", controller.targetHallDirection().name());
-        ListTag list = new ListTag();
-        for (var stop : controller.pending()) { CompoundTag s = new CompoundTag(); s.putLong("Button",stop.id()); list.add(s); } // 队列只存打包坐标：Y 可从 BlockPos 解出
-        nbt.put("Queue",list);
+        ValueOutput.ValueOutputList list = nbt.childrenList("Queue");
+        for (var stop : controller.pending()) list.addChild().putLong("Button",stop.id()); // 队列只存打包坐标：Y 可从 BlockPos 解出
         // 厅外呼叫：站点打包坐标 + 方向，与队列一样只存坐标（Y 从 BlockPos 解出）；
         // 服务方向一并保存，读档后不必重新判断就能继续顺路接人。
-        ListTag calls = new ListTag();
-        for (var call : controller.hallCalls()) { CompoundTag c = new CompoundTag(); c.putLong("Button",call.id()); c.putBoolean("Up",call.up()); calls.add(c); }
-        nbt.put("HallCalls",calls);
+        ValueOutput.ValueOutputList calls = nbt.childrenList("HallCalls");
+        for (var call : controller.hallCalls()) {
+            ValueOutput c = calls.addChild(); c.putLong("Button",call.id()); c.putBoolean("Up",call.up());
+        }
         nbt.putString("Travel",controller.travel().name());
         var service = controller.stopService();
         if (service != null) {
-            CompoundTag savedService = new CompoundTag();
+            ValueOutput savedService = nbt.child("StopService");
             savedService.putLong("Station", service.station().id());
             savedService.putString("Served", service.served().name());
-            nbt.put("StopService", savedService);
         }
         // 乘客名册：读档后必须先等这些人回到世界才能继续行程，否则轿厢会先开走、乘客落到井道里（见 tickPassengers）。
         // 只存 UUID 与相对轿厢的偏移：玩家各自的世界坐标由原版玩家存档负责，offsets 与轿厢之后走到哪里无关，
         // 因此即使是"运行时存档、再次进入时轿厢停在别处"也仍然有效。
-        ListTag riders = new ListTag();
+        ValueOutput.ValueOutputList riders = nbt.childrenList("Riders");
         for (var entry : passengers.entrySet()) {
-            CompoundTag rider = new CompoundTag();
+            ValueOutput rider = riders.addChild();
             // UUID 拆成两个 long 而不是 UUID 字符串：往返无损、长度固定，也不需要额外的解析容错。
             rider.putLong("Most",entry.getKey().getMostSignificantBits()); rider.putLong("Least",entry.getKey().getLeastSignificantBits());
             rider.putDouble("X",entry.getValue().x); rider.putDouble("Y",entry.getValue().y); rider.putDouble("Z",entry.getValue().z);
-            riders.add(rider);
         }
-        nbt.put("Riders",riders);
     }
 
     /**
@@ -1223,48 +1254,48 @@ public abstract class AbstractCabinEntity extends Entity {
      * （玩家实体一定晚于区块实体载入）；同时同步门进度，防止客户端首帧插值跳变。
      */
     @Override
-    protected void readAdditionalSaveData(CompoundTag nbt) {
-        railX=nbt.getInt("RailX"); railZ=nbt.getInt("RailZ");
-        Direction direction = Direction.from3DDataValue(nbt.getInt("Facing"));
+    protected void readAdditionalSaveData(ValueInput nbt) {
+        // 26.3 的读取 API 全部改成 Optional / xxxOr 形式（getInt 返回 Optional，取默认值用 getIntOr）。
+        railX=nbt.getIntOr("RailX",0); railZ=nbt.getIntOr("RailZ",0);
+        Direction direction = Direction.from3DDataValue(nbt.getIntOr("Facing",0));
         entityData.set(FACING, (direction.getAxis().isHorizontal()?direction:Direction.NORTH).get3DDataValue()); // 非法或竖直朝向降级为 NORTH：避免后续局部坐标旋转得到零向量/非法几何
         ElevatorController.Phase phase;
-        try { phase=ElevatorController.Phase.valueOf(nbt.getString("Phase")); } catch (IllegalArgumentException e) { phase=ElevatorController.Phase.BLOCKED; } // 枚举名不存在（旧存档或损坏）时按 BLOCKED 处理，暂停而不是让异常中断实体加载
-        var queue = new ArrayList<ElevatorController.Stop>(); var list=nbt.getList("Queue",10); // 10 = NbtElement.COMPOUND_TYPE，标识列表元素类型
-        for (int i=0; i<Math.min(list.size(), ElevatorController.MAX_REQUESTS); i++) queue.add(stop(list.getCompound(i).getLong("Button"))); // 上限 MAX_REQUESTS：旧存档可能超限，多余条目直接丢弃
-        // 厅外呼叫与服务方向：旧存档没有 HallCalls/Travel 字段，getList 返回空表、valueOf 抛异常后按 NONE 处理，
+        try { phase=ElevatorController.Phase.valueOf(nbt.getStringOr("Phase","")); } catch (IllegalArgumentException e) { phase=ElevatorController.Phase.BLOCKED; } // 枚举名不存在（旧存档或损坏）时按 BLOCKED 处理，暂停而不是让异常中断实体加载
+        var queue = new ArrayList<ElevatorController.Stop>();
+        // 26.3 的列表读取是 childrenListOrEmpty(...).stream()（ValueInputList 只暴露 stream/isEmpty）。
+        nbt.childrenListOrEmpty("Queue").stream().limit(ElevatorController.MAX_REQUESTS)
+                .forEach(s -> queue.add(stop(s.getLongOr("Button",0L)))); // 上限 MAX_REQUESTS：旧存档可能超限，多余条目直接丢弃
+        // 厅外呼叫与服务方向：旧存档没有 HallCalls/Travel 字段，列表为空、valueOf 抛异常后按 NONE 处理，
         // 因此行为与旧版完全一致（没有厅外呼叫、方向由下一次请求决定）。
-        var calls = new ArrayList<ElevatorController.HallCall>(); var callList=nbt.getList("HallCalls",10); // 10 = NbtElement.COMPOUND_TYPE
-        for (int i=0; i<Math.min(callList.size(), ElevatorController.MAX_REQUESTS); i++) {
-            CompoundTag call=callList.getCompound(i); long packed=call.getLong("Button");
-            calls.add(new ElevatorController.HallCall(packed, BlockPos.of(packed).getY(), call.getBoolean("Up")));
-        }
+        var calls = new ArrayList<ElevatorController.HallCall>();
+        nbt.childrenListOrEmpty("HallCalls").stream().limit(ElevatorController.MAX_REQUESTS).forEach(c -> {
+            long packed=c.getLongOr("Button",0L);
+            calls.add(new ElevatorController.HallCall(packed, BlockPos.of(packed).getY(), c.getBooleanOr("Up",false)));
+        });
         ElevatorController.Travel travel;
-        try { travel=ElevatorController.Travel.valueOf(nbt.getString("Travel")); } catch (IllegalArgumentException e) { travel=ElevatorController.Travel.NONE; }
+        try { travel=ElevatorController.Travel.valueOf(nbt.getStringOr("Travel","")); } catch (IllegalArgumentException e) { travel=ElevatorController.Travel.NONE; }
         ElevatorController.StopService service = null;
-        if (nbt.contains("StopService", 10)) {
-            CompoundTag savedService = nbt.getCompound("StopService");
-            if (savedService.contains("Station", 4)) {
-                ElevatorController.Travel served;
-                try { served = ElevatorController.Travel.valueOf(savedService.getString("Served")); }
-                catch (IllegalArgumentException e) { served = ElevatorController.Travel.NONE; }
-                service = new ElevatorController.StopService(stop(savedService.getLong("Station")), served);
-            }
+        // 26.3 用 Optional 表达"字段在不在"：childOrEmpty(...) 对缺失的键返回空输入，里面的 Optional 取值自然为空，
+        // 等价于旧版的 contains(...) 判定。
+        ValueInput savedService = nbt.childOrEmpty("StopService");
+        if (savedService.getLong("Station").isPresent()) {
+            ElevatorController.Travel served;
+            try { served = ElevatorController.Travel.valueOf(savedService.getStringOr("Served","")); }
+            catch (IllegalArgumentException e) { served = ElevatorController.Travel.NONE; }
+            service = new ElevatorController.StopService(stop(savedService.getLongOr("Station",0L)), served);
         }
         ElevatorController.Travel targetHallDirection;
-        try { targetHallDirection = ElevatorController.Travel.valueOf(nbt.getString("TargetHallDirection")); }
+        try { targetHallDirection = ElevatorController.Travel.valueOf(nbt.getStringOr("TargetHallDirection","")); }
         catch (IllegalArgumentException e) { targetHallDirection = ElevatorController.Travel.NONE; } // 旧存档不能猜目标来源，保留停靠
-        controller.restore(phase,nbt.getFloat("Door"),nbt.contains("Target")?stop(nbt.getLong("Target")):null,
+        controller.restore(phase,nbt.getFloatOr("Door",0f),nbt.getLong("Target").map(AbstractCabinEntity::stop).orElse(null),
                 queue,calls,travel,service,targetHallDirection);
         entityData.set(PHASE,controller.phase().ordinal()); entityData.set(DOOR,controller.door()); previousDoor=controller.door(); // 连 previousDoor 一起对齐，首帧门动画不插值
         entityData.set(TARGET_Y,controller.target()==null?Integer.MIN_VALUE:controller.target().y());
         recoveringPassengers.clear();
-        passengers.clear(); // 名册整份来自存档；旧存档没有 Riders 字段时 getList 返回空表，因此行为与旧版一致（不等待）
-        var riders=nbt.getList("Riders",10); // 10 = NbtElement.COMPOUND_TYPE
-        for (int i=0; i<riders.size(); i++) {
-            CompoundTag rider=riders.getCompound(i);
-            passengers.put(new UUID(rider.getLong("Most"),rider.getLong("Least")),
-                    new Vec3(rider.getDouble("X"),rider.getDouble("Y"),rider.getDouble("Z")));
-        }
+        passengers.clear(); // 名册整份来自存档；旧存档没有 Riders 字段时列表为空，因此行为与旧版一致（不等待）
+        nbt.childrenListOrEmpty("Riders").stream().forEach(rider ->
+                passengers.put(new UUID(rider.getLongOr("Most",0L),rider.getLongOr("Least",0L)),
+                        new Vec3(rider.getDoubleOr("X",0),rider.getDoubleOr("Y",0),rider.getDoubleOr("Z",0))));
         recoveringPassengers.addAll(passengers.keySet());
         // 有乘客才开等待窗口：等待期间轿厢保持静止，乘客一出现就被放回厢内（见 tickPassengers）。
         passengerWaitTicks = passengers.isEmpty() ? 0 : ElevatorParameters.RIDER_WAIT_TICKS;

@@ -13,7 +13,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
@@ -528,32 +527,32 @@ public final class ElevatorNetworking {
      */
     public static void register() {
         RiderMove.register();
-        PayloadTypeRegistry.playS2C().register(MotionFrame.ID,MotionFrame.CODEC);
-        PayloadTypeRegistry.playS2C().register(OpenPanel.ID,OpenPanel.CODEC);
-        PayloadTypeRegistry.playS2C().register(PanelState.ID,PanelState.CODEC);
-        PayloadTypeRegistry.playS2C().register(OpenHallPanel.ID,OpenHallPanel.CODEC);
-        PayloadTypeRegistry.playS2C().register(HallPanelState.ID,HallPanelState.CODEC);
-        PayloadTypeRegistry.playS2C().register(OpenDoorPanel.ID,OpenDoorPanel.CODEC);
-        PayloadTypeRegistry.playS2C().register(DoorSoundData.ID,DoorSoundData.CODEC);
-        PayloadTypeRegistry.playC2S().register(SelectStop.ID,SelectStop.CODEC);
-        PayloadTypeRegistry.playC2S().register(DoorCommand.ID,DoorCommand.CODEC);
-        PayloadTypeRegistry.playC2S().register(HallCallButton.ID,HallCallButton.CODEC);
-        PayloadTypeRegistry.playC2S().register(DoorSoundCommand.ID,DoorSoundCommand.CODEC);
-        PayloadTypeRegistry.playC2S().register(SetBaseFloor.ID,SetBaseFloor.CODEC);
-        PayloadTypeRegistry.playC2S().register(DoorSoundUpload.ID,DoorSoundUpload.CODEC);
-        PayloadTypeRegistry.playC2S().register(RequestDoorSound.ID,RequestDoorSound.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(MotionFrame.ID,MotionFrame.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(OpenPanel.ID,OpenPanel.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(PanelState.ID,PanelState.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(OpenHallPanel.ID,OpenHallPanel.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(HallPanelState.ID,HallPanelState.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(OpenDoorPanel.ID,OpenDoorPanel.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(DoorSoundData.ID,DoorSoundData.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SelectStop.ID,SelectStop.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(DoorCommand.ID,DoorCommand.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(HallCallButton.ID,HallCallButton.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(DoorSoundCommand.ID,DoorSoundCommand.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SetBaseFloor.ID,SetBaseFloor.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(DoorSoundUpload.ID,DoorSoundUpload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(RequestDoorSound.ID,RequestDoorSound.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(SelectStop.ID,(payload,context)->context.server().execute(()->{
             // 处理器在网络线程被调用，而实体/方块查询必须在服务端主线程执行，故整体切回主线程。
             var player=context.player();
             // 旁观者或已死亡玩家不应能操作轿厢；这里再挡一次，避免只靠客户端 ui 状态。
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.serverLevel().getEntity(payload.entityId());
+            var entity=player.level().getEntity(payload.entityId());
             // Never trust a client-provided cabin, station index, distance or line identifier.
             // 客户端可伪造任意实体 id：必须确认它在本玩家世界内、确实是轿厢、且本玩家是车上乘客。
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             // 坐标同样不可信，交由轿厢对照真实线路校验（不在线路上或朝向不符时返回 false）。
             boolean accepted=cabin.requestStop(payload.button());
-            player.displayClientMessage(Component.translatable(accepted?"message.easyelevator.selected":"message.easyelevator.invalid_stop"),true);
+            player.sendSystemMessage(Component.translatable(accepted?"message.easyelevator.selected":"message.easyelevator.invalid_stop"),true);
             // Refresh so buttons placed/broken while the screen was open are reflected immediately.
             // 重新下发面板：界面停留期间可能有人增删了站点，用服务端最新快照覆盖客户端旧列表。
             open(player,cabin);
@@ -563,10 +562,10 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(DoorCommand.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.serverLevel().getEntity(payload.entityId());
+            var entity=player.level().getEntity(payload.entityId());
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             if (cabin.doorCommand(payload.open())) open(player,cabin); // 成功后刷一次面板：计划可能已经变了
-            else player.displayClientMessage(Component.translatable(payload.open()
+            else player.sendSystemMessage(Component.translatable(payload.open()
                     ?"message.easyelevator.door_no_station":"message.easyelevator.door_close_locked"),true);
         }));
         // 楼层门面板上的"上行 / 下行"按钮：坐标不可信，服务端重新扫描线路、核对"恰好一辆轿厢"后登记厅外呼叫；
@@ -574,19 +573,19 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(HallCallButton.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.serverLevel();
+            var world=player.level();
             BlockPos origin=payload.station();
             if (!world.hasChunkAt(origin)) return;
             BlockState state=world.getBlockState(origin);
-            if (!LandingDoorBlock.isRoot(state) || !LandingDoorBlock.complete(world,origin)) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+            if (!LandingDoorBlock.isRoot(state) || !LandingDoorBlock.complete(world,origin)) { player.sendSystemMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
             ElevatorLine line=ElevatorLine.scan(world,LandingDoorBlock.railPos(state,origin));
-            if (line==null || line.facing()!=state.getValue(LandingDoorBlock.FACING) || !line.stops().contains(origin)) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+            if (line==null || line.facing()!=state.getValue(LandingDoorBlock.FACING) || !line.stops().contains(origin)) { player.sendSystemMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
             var cabins=line.cabins(world);
-            if (cabins.isEmpty()) { player.displayClientMessage(Component.translatable("message.easyelevator.no_cabin"),true); return; }
-            if (cabins.size()!=1) { player.displayClientMessage(Component.translatable("message.easyelevator.multiple_cabins"),true); return; }
+            if (cabins.isEmpty()) { player.sendSystemMessage(Component.translatable("message.easyelevator.no_cabin"),true); return; }
+            if (cabins.size()!=1) { player.sendSystemMessage(Component.translatable("message.easyelevator.multiple_cabins"),true); return; }
             var cabin=cabins.getFirst();
             boolean accepted=cabin.requestHallCall(origin,payload.up());
-            player.displayClientMessage(Component.translatable(accepted?"message.easyelevator.hall_queued":"message.easyelevator.invalid_stop",
+            player.sendSystemMessage(Component.translatable(accepted?"message.easyelevator.hall_queued":"message.easyelevator.invalid_stop",
                     Component.translatable(payload.up()?"screen.easyelevator.hall_up":"screen.easyelevator.hall_down")),true);
             syncHallState(world,origin,cabin.hasHallCall(origin,true),cabin.hasHallCall(origin,false));
         }));
@@ -595,10 +594,10 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(DoorSoundCommand.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.serverLevel();
+            var world=player.level();
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
-            if (door==null) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+            if (door==null) { player.sendSystemMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
             DoorArrivalSound settings=door.arrivalSound();
             // choice < 0（CHOICE_UNCHANGED）表示"本次只改开关、不动选项"；否则整份替换。
             settings=settings.withEnabled(payload.enabled())
@@ -613,7 +612,7 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(SetBaseFloor.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            LandingDoorBlock.setFloorBase(player.serverLevel(),payload.station(),player,payload.on());
+            LandingDoorBlock.setFloorBase(player.level(),payload.station(),player,payload.on());
         }));
         // 自定义到站音效上传：客户端携带的字节视为不可信输入——重新校验玩家、整扇门、ogg 魔数与大小上限，
         // 通过后才写入权威副本目录。落盘失败只回一条提示（音效是表现层，不该把服务端刻带崩）。
@@ -621,20 +620,20 @@ public final class ElevatorNetworking {
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
             byte[] bytes=payload.bytes();
-            if (bytes.length==0 || bytes.length>MAX_AUDIO_BYTES) { player.displayClientMessage(Component.translatable("message.easyelevator.door_sound_upload_failed"),true); return; }
-            var world=player.serverLevel();
+            if (bytes.length==0 || bytes.length>MAX_AUDIO_BYTES) { player.sendSystemMessage(Component.translatable("message.easyelevator.door_sound_upload_failed"),true); return; }
+            var world=player.level();
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
-            if (door==null) { player.displayClientMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
+            if (door==null) { player.sendSystemMessage(Component.translatable("message.easyelevator.invalid_stop"),true); return; }
             int slot=door.soundSlot();
             if (!DoorSoundPersistence.store(slot,bytes)) {
-                player.displayClientMessage(Component.translatable("message.easyelevator.door_sound_upload_failed"),true); return;
+                player.sendSystemMessage(Component.translatable("message.easyelevator.door_sound_upload_failed"),true); return;
             }
             // 把落点写进日志：槽位号是坐标哈希出来的，玩家在 config 里看到的文件名（arrival_<槽>.ogg）
             // 只有配合这一行才能对上号——排查"上传了但没声"时很有用。
             org.slf4j.LoggerFactory.getLogger("easyelevator/doorsound").info(
                     "Stored arrival sound for door {} as slot {} -> {}",origin.toShortString(),slot,DoorSoundPersistence.fileName(slot));
-            player.displayClientMessage(Component.translatable("message.easyelevator.door_sound_uploaded",
+            player.sendSystemMessage(Component.translatable("message.easyelevator.door_sound_uploaded",
                     Component.translatable("screen.easyelevator.door_sound_row")),true);
             // 上传完切到"自定义文件"并打开：玩家不必再点两下才能听到结果。
             door.setArrivalSound(door.arrivalSound().withChoice(DoorSounds.CUSTOM).withEnabled(true));
@@ -667,21 +666,21 @@ public final class ElevatorNetworking {
         }));
         UseItemCallback.EVENT.register((player,world,hand)->{
             // 只看主手：副手会随主手重复触发；潜行 + 空手是拆除轿厢的保留组合，不能与之抢事件。
-            if (hand!=InteractionHand.MAIN_HAND || player.isSpectator() || player.isShiftKeyDown()) return InteractionResultHolder.pass(player.getItemInHand(hand));
+            if (hand!=InteractionHand.MAIN_HAND || player.isSpectator() || player.isShiftKeyDown()) return InteractionResult.PASS;
             // 用玩家自身碰撞箱查询，等价于"玩家是否站在轿厢内部的 3x3 空间里"。
             for (var cabin:world.getEntitiesOfClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
                 // 仅在逻辑服务端发包；客户端返回成功即可，否则会收到重复面板。
-                if (!world.isClientSide) open((ServerPlayer)player,cabin);
-                return InteractionResultHolder.success(player.getItemInHand(hand));
+                if (!world.isClientSide()) open((ServerPlayer)player,cabin);
+                return InteractionResult.SUCCESS;
             }
-            return InteractionResultHolder.pass(player.getItemInHand(hand));
+            return InteractionResult.PASS;
         });
         UseBlockCallback.EVENT.register((player,world,hand,hit)->{
             // 与上面的 UseItem 路径互补：视线命中方块时走这里，未命中方块时走上一个回调。
             // 条件必须完全一致，否则"对着方块右键"与"对着空气右键"行为会分叉。
             if (hand!=InteractionHand.MAIN_HAND || player.isSpectator() || player.isShiftKeyDown()) return InteractionResult.PASS;
             for (var cabin:world.getEntitiesOfClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
-                if (!world.isClientSide) open((ServerPlayer)player,cabin);
+                if (!world.isClientSide()) open((ServerPlayer)player,cabin);
                 return InteractionResult.SUCCESS;
             }
             // PASS 而非 SUCCESS：没站在轿厢里时必须把这次使用让给楼层门/轨道等其它方块逻辑。
@@ -786,7 +785,7 @@ public final class ElevatorNetworking {
      * @param preview 本次要提示的试听状态（打开面板时恒为 {@link OpenDoorPanel#PREVIEW_NONE}）
      */
     public static void sendDoorPanel(ServerPlayer player,BlockPos origin,int preview) {
-        if (!(player.serverLevel() instanceof ServerLevel server)) return;
+        if (!(player.level() instanceof ServerLevel server)) return;
         OpenDoorPanel payload=doorPanel(server,origin,preview,true);
         if (payload!=null) ServerPlayNetworking.send(player,payload);
     }

@@ -1,5 +1,8 @@
 plugins {
-    id 'fabric-loom' version '1.17.21'
+    // 26.1 起 Minecraft 不再混淆：非混淆版本要用 net.fabricmc.fabric-loom 这个插件 ID
+    // （混淆版本即 1.21.11 及更早用的是 net.fabricmc.fabric-loom-remap / 遗留的 fabric-loom）。
+    // 非 remap 的 Loom 没有 remapJar / remapSourcesJar 任务，见下面的 packageRelease。
+    id 'net.fabricmc.fabric-loom' version '1.17.21'
     id 'maven-publish'
 }
 
@@ -42,20 +45,19 @@ repositories {
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    // 1.21.1 仍是混淆版本，需要映射：这里用 Mojang 官方映射（迁移后的源码已按官方命名书写）。
-    // 26.1 起游戏不再混淆，改用 net.fabricmc.fabric-loom 插件后连这一行都不需要。
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    // 26.3 是未混淆版本：不需要任何 mappings 依赖（源码直接用官方命名书写）。
+    // 也不再需要 modImplementation：非 remap 的 Loom 不做重映射，模组依赖就是普通依赖。
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     // 光影栈（仅开发环境，见 gradle.properties）：让 `runClient` 能开光影复现观感。
     // 用 modRuntimeOnly：模组源码不引用它们的 API，只需要它们在运行时在场。
     // 注意 artifactId 是 Modrinth 的项目 ID（Iris = YL57xq9U、Sodium = AANobbMI），不是 slug；
     // Iris 硬依赖 Sodium 0.6.x，缺了它连游戏都起不来。
     if (project.hasProperty('iris_version') && project.iris_version) {
-        modRuntimeOnly "maven.modrinth:YL57xq9U:${project.iris_version}"
-        modRuntimeOnly "maven.modrinth:AANobbMI:${project.sodium_version}"
+        runtimeOnly "maven.modrinth:YL57xq9U:${project.iris_version}"
+        runtimeOnly "maven.modrinth:AANobbMI:${project.sodium_version}"
     }
 }
 
@@ -72,7 +74,7 @@ processResources {
     }
 }
 
-def targetJavaVersion = 21
+def targetJavaVersion = 25
 tasks.withType(JavaCompile).configureEach {
     // ensure that the encoding is set to UTF-8, no matter what the system default is
     // this fixes some edge cases with special characters not displaying correctly
@@ -86,9 +88,8 @@ tasks.withType(JavaCompile).configureEach {
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-    // if it is present.
-    // If you remove this line, sources will not be generated.
+    // 生成 sourcesJar（packageRelease 会把它放进 sources/）。
+    // 本线用的是非 remap 的 Loom：没有 RemapSourcesJar 这一步，sourcesJar 直接产出。
     withSourcesJar()
 }
 
@@ -134,8 +135,9 @@ tasks.register('packageRelease', Zip) {
     dependsOn 'build'
     archiveFileName = "${project.archives_base_name}-${project.version}-release.zip"
     destinationDirectory = layout.buildDirectory.dir('distributions')
-    from(tasks.named('remapJar')) { into 'mods' }
-    from(tasks.named('remapSourcesJar')) { into 'sources' }
+    // 非 remap 的 Loom（未混淆版本）没有 remapJar / remapSourcesJar，直接取 jar 与 sourcesJar。
+    from(tasks.named('jar')) { into 'mods' }
+    from(tasks.named('sourcesJar')) { into 'sources' }
     from('docs') { into 'docs' }
     from('README.md', 'LICENSE.txt')
 }

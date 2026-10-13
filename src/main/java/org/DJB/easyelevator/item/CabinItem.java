@@ -1,17 +1,20 @@
 package org.DJB.easyelevator.item;
 
-import java.util.List;
+import java.util.function.Consumer;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.logic.ElevatorLine;
 import java.util.function.Supplier;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 
 /**
@@ -58,13 +61,14 @@ public class CabinItem extends Item {
      *
      * @param stack 本物品的物品堆
      * @param context 提示上下文（当前未使用）
-     * @param tooltip 提示行列表，直接追加
+     * @param display 提示显示设置（当前未使用，原版据此隐藏被屏蔽的组件行）
+     * @param tooltip 提示行接收器，直接投喂组件即可追加一行（26.3 起由 List 改成 Consumer）
      * @param tooltipType 提示类型（当前未使用）
      */
-    @Override public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag tooltipType) {
-        super.appendHoverText(stack, context, tooltip, tooltipType);
+    @Override public void appendHoverText(ItemStack stack, Item.TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag tooltipType) {
+        super.appendHoverText(stack, context, display, tooltip, tooltipType);
         if (type.get() == Easyelevator.POWERFUL_CABIN)
-            tooltip.add(Component.translatable("item.easyelevator.cargo_hint").withStyle(ChatFormatting.GRAY));
+            tooltip.accept(Component.translatable("item.easyelevator.cargo_hint").withStyle(ChatFormatting.GRAY));
     }
 
     /**
@@ -91,7 +95,7 @@ public class CabinItem extends Item {
     public InteractionResult useOn(UseOnContext ctx) {
         if (!ctx.getLevel().getBlockState(ctx.getClickedPos()).is(Easyelevator.RAIL)) return InteractionResult.PASS;
         // 客户端提前返回：只放行预测，让服务端独占生成与扣物品逻辑，防止双端不一致。
-        if (ctx.getLevel().isClientSide) return InteractionResult.SUCCESS;
+        if (ctx.getLevel().isClientSide()) return InteractionResult.SUCCESS;
         // scan 要求种子方块所在区块已加载，否则返回 null（等同于“这不是一条合法线路”）。
         var line = ElevatorLine.scan(ctx.getLevel(), ctx.getClickedPos());
         String error;
@@ -99,7 +103,11 @@ public class CabinItem extends Item {
         else if (!line.cabins(ctx.getLevel()).isEmpty()) error = "message.easyelevator.existing_cabin";
         else {
             // 用注册好的实体类型创建实体：三种型号各自的构造器负责写入自己的速度与外观，物品无需分支。
-            AbstractCabinEntity cabin = type.get().create(ctx.getLevel());
+            // 26.3 起 EntityType 单参 create(Level) 被移除。二参重载内部把 reason 包进 EntitySpawnRequest(reason,false)，
+            // 真正的判定是 "!canSpawn(level) ? null : factory.create(this, level)"：reason 本身不参与，取值不影响结果；
+            // 而 canSpawn 对这个实体等价于旧版 create(Level) 里的 isEnabled(enabledFeatures) 检查
+            // （Builder 的 allowedInPeaceful 默认 true，本模组也没调用 notInPeaceful()），因此行为与旧版逐条一致。
+            AbstractCabinEntity cabin = type.get().create(ctx.getLevel(), EntitySpawnReason.TRIGGERED);
             if (cabin == null) error = "message.easyelevator.obstructed"; // 理论上不会发生；宁可按受阻处理也不空指针
             else {
                 cabin.initialize(ctx.getClickedPos(), line.facing());
@@ -113,7 +121,8 @@ public class CabinItem extends Item {
             }
         }
         // overlay = true：提示显示在快捷栏上方，不写入聊天栏，避免连续失败时刷屏。
-        if (ctx.getPlayer() != null) ctx.getPlayer().displayClientMessage(Component.translatable(error), true);
+        // 26.3 起带"显示在快捷栏上方"标志的 sendSystemMessage 只在 ServerPlayer 上（此分支必定是服务端）。
+        if (ctx.getPlayer() instanceof ServerPlayer serverPlayer) serverPlayer.sendSystemMessage(Component.translatable(error), true);
         return InteractionResult.FAIL;
     }
 }

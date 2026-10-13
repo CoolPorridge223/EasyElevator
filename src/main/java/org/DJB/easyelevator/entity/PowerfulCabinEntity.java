@@ -7,11 +7,12 @@ import org.DJB.easyelevator.logic.ElevatorParameters;
 import org.DJB.easyelevator.screen.CargoScreenHandler;
 
 import java.util.List;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -23,7 +24,10 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * 重载电梯轿厢（注册 ID {@code easyelevator:powerful_cabin}）：<b>带货舱的大载客量型号</b>。
@@ -65,7 +69,12 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     private static final EntityDataAccessor<Integer> CARGO_ITEMS = SynchedEntityData.defineId(
             PowerfulCabinEntity.class, EntityDataSerializers.INT);
     /** 货舱库存（27 格）。服务端是权威副本；变更时通过监听器重算并同步件数。 */
-    private final SimpleContainer cargo = new SimpleContainer(CargoLoad.SLOTS);
+    // 26.3 起 SimpleContainer 不再有 addListener：原版把"内容已变化"统一收敛到 setChanged()，
+    // 因此这里用匿名子类覆写 setChanged()，语义与旧的 addListener(inventory -> syncCargo()) 完全一致
+    // （setItem / removeItem / removeItemType / addItem / clearContent 都会走到 setChanged）。
+    private final SimpleContainer cargo = new SimpleContainer(CargoLoad.SLOTS) {
+        @Override public void setChanged() { super.setChanged(); syncCargo(); }
+    };
 
     /**
      * 构造重载轿厢。
@@ -78,7 +87,6 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      */
     public PowerfulCabinEntity(EntityType<?> type, Level world) {
         super(type, world, ElevatorParameters.LOW_SPEED, ElevatorParameters.HIGH_PASSENGER_NUM_LIMIT);
-        cargo.addListener(inventory -> syncCargo());
     }
 
     /**
@@ -110,7 +118,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 副作用：写同步字段（服务端）；客户端调用时什么都不做。
      */
     private void syncCargo() {
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             int count = 0;
             for (int i = 0; i < cargo.getContainerSize(); i++) count += cargo.getItem(i).getCount();
             entityData.set(CARGO_ITEMS, count);
@@ -182,7 +190,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 同一刻内不会出现"倒计时先归零、门开始关"的窗口。
      */
     @Override public void tick() {
-        if (!level().isClientSide && cargoInUse()) super.doorCommand(true);
+        if (!level().isClientSide() && cargoInUse()) super.doorCommand(true);
         super.tick();
     }
 
@@ -220,20 +228,22 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * @param player 交互玩家
      * @param hand 交互手
+     * @param location 命中位置（26.3 起原版多传一个交互点；本类不区分命中位置，透传给父类）
      * @return 处理了这次点击时 SUCCESS；交给父类处理时父类的返回值
      */
-    @Override public InteractionResult interact(Player player, InteractionHand hand) {
+    @Override public InteractionResult interact(Player player, InteractionHand hand, Vec3 location) {
         if (hand == InteractionHand.MAIN_HAND && player.isShiftKeyDown() && containsPassenger(player)) {
-            if (!level().isClientSide) {
+            if (!level().isClientSide()) {
                 if (canUseCargo(player)) {
                     player.openMenu(new SimpleMenuProvider(
                             (syncId, inventory, viewer) -> new CargoScreenHandler(syncId, inventory, this),
                             Component.translatable("screen.easyelevator.cargo")));
-                } else player.displayClientMessage(Component.translatable("message.easyelevator.cargo_stopped"), true);
+                } else if (player instanceof ServerPlayer serverPlayer)
+                    serverPlayer.sendSystemMessage(Component.translatable("message.easyelevator.cargo_stopped"), true); // actionbar 提示只在服务端发
             }
             return InteractionResult.SUCCESS;
         }
-        return super.interact(player, hand);
+        return super.interact(player, hand, location);
     }
 
     /**
@@ -361,11 +371,12 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 物品组件（自定义名称、附魔、容器内容……）都由原版负责往返，本模组不需要跟着版本更新维护一份
      * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readAdditionalSaveData}）。
      *
-     * @param nbt 待写入的实体 NBT
+     * @param nbt 待写入的实体 NBT（26.3 的写入侧类型是 ValueOutput）
      */
-    @Override protected void addAdditionalSaveData(CompoundTag nbt) {
+    @Override protected void addAdditionalSaveData(ValueOutput nbt) {
         super.addAdditionalSaveData(nbt);
-        nbt.put("Cargo", ContainerHelper.saveAllItems(new CompoundTag(), cargo.getItems(), registryAccess()));
+        // 26.3 起不再有"读回 CompoundTag 再 put"的写法：直接在 "Cargo" 子节点上写原版的 Items 列表。
+        ContainerHelper.saveAllItems(nbt.child("Cargo"), cargo.getItems());
     }
 
     /**
@@ -376,12 +387,13 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * {@code Cargo} 键缺失（旧存档）时 {@code Inventories.readNbt} 读到空复合标签，
      * 结果是空舱，行为与旧版本一致。
      *
-     * @param nbt 已序列化的实体 NBT
+     * @param nbt 已序列化的实体 NBT（26.3 的读取侧类型是 ValueInput）
      */
-    @Override protected void readAdditionalSaveData(CompoundTag nbt) {
+    @Override protected void readAdditionalSaveData(ValueInput nbt) {
         super.readAdditionalSaveData(nbt);
         cargo.clearContent();
-        ContainerHelper.loadAllItems(nbt.getCompound("Cargo"), cargo.getItems(), registryAccess());
+        // 缺失 "Cargo" 键（旧存档）时 childOrEmpty 给出空视图，loadAllItems 读到空列表 → 空舱，与旧版一致。
+        ContainerHelper.loadAllItems(nbt.childOrEmpty("Cargo"), cargo.getItems());
         syncCargo();
     }
 
@@ -404,11 +416,12 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @param reason 原版移除原因
      */
     @Override public void remove(RemovalReason reason) {
-        if (!level().isClientSide && !isRemoved()
+        // 26.3 起 spawnAtLocation 必须显式给服务端世界，因此把"非客户端"判断直接写成 instanceof ServerLevel。
+        if (level() instanceof ServerLevel serverLevel && !isRemoved()
                 && (reason == RemovalReason.KILLED || reason == RemovalReason.DISCARDED)) {
             for (int i = 0; i < cargo.getContainerSize(); i++) {
                 var stack = cargo.removeItemNoUpdate(i);
-                if (!stack.isEmpty()) spawnAtLocation(stack);
+                if (!stack.isEmpty()) spawnAtLocation(serverLevel, stack);
             }
             syncCargo();
         }
