@@ -64,8 +64,14 @@ public final class DoorSoundPack {
     private static final String SLOT_DIR = "arrival";
     /** 单个音频文件的大小上限（字节），与网络层、持久层三处保持一致。 */
     public static final int MAX_AUDIO_BYTES = 512 * 1024;
-    /** 本包使用的资源包格式版本；与 1.21.1 的资源包格式一致，写低了原版会警告"过时包"。 */
-    private static final int PACK_FORMAT = 34;
+    /**
+     * 本包使用的资源包格式版本，必须等于当前版本的 {@code SharedConstants.RESOURCE_PACK_VERSION}。
+     *
+     * <p><b>升级 Minecraft 版本时这里必须跟着改</b>：1.21.1 是 34，1.21.11 是 75。
+     * 写低了原版会把这个包判成"为旧版本制作"而不启用（只留一条过时包警告），
+     * 表现为"上传的自定义到站音效没有声音"，而存档与设置本身都是好的。
+     */
+    private static final int PACK_FORMAT = 75;
     /** {@link #checkGameDirAssumption} 的一次性标记：同一条警告不重复刷屏。 */
     private static boolean gameDirWarned;
 

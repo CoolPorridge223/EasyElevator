@@ -1,8 +1,8 @@
 # EasyElevator
 
-Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1** · Java **21**。
+Minecraft **1.21.11** · Fabric Loader **0.19.2** · Fabric API **0.141.6+1.21.11** · Java **21**。
 
-当前模组版本 **2.3.1**。六个组件：电梯轨道、楼层电梯门，以及四种电梯轿厢（普通／高速／观光／重载）。四种轿厢共用 `entity/AbstractCabinEntity` 的运动、门联锁与乘客恢复实现；重载型号另有 **27 格货舱**，货量会改变载客上限和内部货箱外观。模型含扶手、顶灯、操纵面板与载重铭牌，到站支持按楼层选择或上传音频；运行音默认静音，开关门不发声。
+当前模组版本 **2.3.1+1.21.11**。六个组件：电梯轨道、楼层电梯门，以及四种电梯轿厢（普通／高速／观光／重载）。四种轿厢共用 `entity/AbstractCabinEntity` 的运动、门联锁与乘客恢复实现；重载型号另有 **27 格货舱**，货量会改变载客上限和内部货箱外观。模型含扶手、顶灯、操纵面板与载重铭牌，到站支持按楼层选择或上传音频；运行音默认静音，开关门不发声。
 
 **文档导航**
 
@@ -203,7 +203,7 @@ Minecraft **1.21.1** · Fabric Loader **0.19.2** · Fabric API **0.116.17+1.21.1
 .\gradlew.bat build
 ```
 
-成品在 `build/libs/easyelevator-2.3.1.jar`；带 `-sources` 后缀的是源码包，不放入 mods 文件夹。
+成品在 `build/libs/easyelevator-2.3.1+1.21.11.jar`；带 `-sources` 后缀的是源码包，不放入 mods 文件夹。
 
 完整说明见 [工程构建与打包说明书](docs/BUILD_AND_PACKAGING.md)；所有运行、精度、动画、尺寸、面板和音效参数见 [电梯参数手册](docs/PARAMETERS.md)。
 

@@ -1,6 +1,6 @@
 # EasyElevator 项目开发手册
 
-> 适用模组版本 **2.3.1** ｜ Minecraft **1.21.1** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.116.17+1.21.1** ｜ Java **21**
+> 适用模组版本 **2.3.1+1.21.11** ｜ Minecraft **1.21.11** ｜ Fabric Loader **0.19.2** ｜ Fabric API **0.141.6+1.21.11** ｜ Java **21**
 >
 > 本文是**接手者/贡献者**的架构与接口手册：讲清「代码怎么分层、谁调用谁、每个关键函数做什么、参数在哪里改、对外接口是什么」。
 > 运行参数的逐项数值、构建打包、游戏内验收步骤与模型音效替换步骤分别见文末的姊妹文档，本文不再重复抄录。
@@ -33,7 +33,7 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 | 维度 | 事实                                                                      |
 | --- |-------------------------------------------------------------------------|
 | 模组 ID / 命名空间 | `easyelevator`                                                          |
-| 版本 | 2.3.0（见 [gradle.properties](../gradle.properties)）                      |
+| 版本 | 2.3.1+1.21.11（见 [gradle.properties](../gradle.properties)）                      |
 | 环境 | `*`（客户端与服务端都要安装；服务端权威）                                                  |
 | 组件 | 轨道 ×1、楼层电梯门 ×1、轿厢 ×4 型号（普通 / 高速 / 观光 / 重载）                                   |
 | 运动方式 | 直上直下；速度、加速度与加加速度都受限的 S 形曲线（形状由巡航速度与 `CRUISE_RAMP_TICKS` 解出）；不支持转弯、斜轨、分岔 |
@@ -46,13 +46,13 @@ EasyElevator 是一个**沿垂直轨道运行的电梯**模组。一件物品放
 
 | 项 | 值 | 位置 |
 | --- | --- | --- |
-| Gradle | 8.14.3（wrapper） | `build.gradle` `tasks.named('wrapper')` |
-| Fabric Loom | 1.11.8 | `build.gradle` plugins |
+| Gradle | 9.6.0（wrapper） | `build.gradle` `tasks.named('wrapper')` |
+| Fabric Loom | 1.14.10 | `build.gradle` plugins |
 | Java 目标 | 21（`options.release` + toolchain） | `build.gradle` |
-| Minecraft | 1.21.1 | `gradle.properties` |
-| Yarn 映射 | 1.21.1+build.3 | `gradle.properties` |
+| Minecraft | 1.21.11 | `gradle.properties` |
+| Yarn 映射 | 1.21.11+build.6 | `gradle.properties` |
 | Loader | 0.19.2 | `gradle.properties` |
-| Fabric API | 0.116.17+1.21.1 | `gradle.properties` |
+| Fabric API | 0.141.6+1.21.11 | `gradle.properties` |
 | 源集拆分 | `splitEnvironmentSourceSets()`（main + client） | `build.gradle` `loom` |
 | 数据生成 | `configureDataGeneration { client = true }` | `build.gradle` |
 | 源集 | `main`（服务端/公共）+ `client`（客户端），由 `loom.splitEnvironmentSourceSets()` 拆分 | `build.gradle` |
@@ -1020,7 +1020,7 @@ LandingDoorRenderer.render → door.openProgress(tickDelta) → lerp(previousPro
 | `CabinRunningSound` | `cabin` | `super(Easyelevator.RUNNING, BLOCKS, createRandom())`；`repeat=true, repeatDelay=0`；`tick()` 中实体移除或非 MOVING → `setDone()` |
 | `StatusArrow` | `BLINK_MS=500`、`UP="▲"`、`DOWN="▼"` | `moving / lit / glyph / width`；用墙钟毫秒而非游戏刻（暂停菜单里仍闪） |
 | `DoorSoundScreen` | `ROW=20, GAP=4, PAD=12`；`TOGGLE_W=86, VALUE_W=140, ARROW_W=20, PICK_W=58, TRY_W=40`；`CLOSE_W=56`；`TITLE_H=12, HEADER_H=18` | 单扇门的专属设置面板（潜行右键打开）：一行「到站音效」= 开关 + 值格 + `<` `>` + 选择文件 + 试听，底部「设为基准层」与「关闭」。打开**不暂停游戏**；`open=false` 的广播只刷新同站点已打开的面板，不抢其它界面；试听靠 `preview` 让值格闪 `▶` |
-| `DoorSoundPack` | `PACK_DIR_NAME="easyelevator_custom"`、`FINGERPRINT_FILE="sound_pack.sha1"`、`SLOT_DIR="arrival"`、`PACK_FORMAT=34` | 把权威副本投影成运行时资源包 `resourcepacks/easyelevator_custom/`（`pack.mcmeta` + `assets/easyelevator/sounds.json` + `assets/easyelevator/sounds/arrival/*.ogg`）。**先构建到临时目录再算内容指纹**，与上次一致就什么都不做（根治"每次进存档闪红屏"）；`enable` 负责写进已启用包列表 |
+| `DoorSoundPack` | `PACK_DIR_NAME="easyelevator_custom"`、`FINGERPRINT_FILE="sound_pack.sha1"`、`SLOT_DIR="arrival"`、`PACK_FORMAT=75` | 把权威副本投影成运行时资源包 `resourcepacks/easyelevator_custom/`（`pack.mcmeta` + `assets/easyelevator/sounds.json` + `assets/easyelevator/sounds/arrival/*.ogg`）。**先构建到临时目录再算内容指纹**，与上次一致就什么都不做（根治"每次进存档闪红屏"）；`enable` 负责写进已启用包列表。**`PACK_FORMAT` 必须跟当前版本的 `SharedConstants.RESOURCE_PACK_VERSION` 一致**（1.21.1 是 34、1.21.11 是 75）：写低了原版会把这个包判成"为旧版本制作"而不启用，自定义门音效就静默失效 |
 | `GlassLayers` | `CABIN_TEXTURE = Identifier.ofVanilla("textures/block/glass.png")`、`CABIN = getEntityCutout(...)`、`DOOR = CABIN` | 轿厢与楼层门共用**原版无色玻璃**贴图（资源包可直接替换）。透明像素丢弃、其余正常写深度并用环境光；正反两面法线相反、按朝向剔除，因此不会重复混合也不会挡住后绘制的楼层门；顶点色恒为白色 |
 | `FramedGlassDoor` | `frame(...)` 两个重载（含 `FaceLighting`）、`glass(...)` | 画"周围铁框 + 中间玻璃"的门扇：铁框在不透明层、玻璃在 `GlassLayers.DOOR` 层；布局与各构件 UV 取自纯算术类 `logic/FramedLeaf`（`stileUv/railUv/paneUv`），避免整张贴图铺到 2/16 格竖框上被压成"条形码" |
 | `CargoScreen` | `backgroundWidth=176, backgroundHeight=210, playerInventoryTitleY=116`、六个配色常量 | 只画不算：件数与限载都问 `CargoScreenHandler`；`drawBackground` 画面板底/表头条/每个槽位的凹槽/载重进度条，`drawForeground` 画表头三行与背包标题；`render` 末段在鼠标悬停表头文字时弹规则提示（按 220 像素自动折行）。**`renderBackground` 覆写里必须自己调 `drawBackground`**（原版链路 `Screen.render → renderBackground → drawBackground`），否则面板底不会出现 |
@@ -1269,7 +1269,7 @@ ElevatorEvents.PHASE_CHANGED.register((cabin, before, after) -> {
 
 | 目的 | 命令 |
 | --- | --- |
-| 构建 | `.\gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.1.jar`） |
+| 构建 | `.\gradlew.bat build`（需 JDK 21；成品 `build/libs/easyelevator-2.3.1+1.21.11.jar`） |
 | 发布包 / 工程包 | `packageRelease` / `packageProject`（产物在 `build/distributions/`） |
 | 开发启动 | `.\gradlew.bat runClient` |
 | 离线数据生成 | `.\gradlew.bat runDatagen`（当前无 provider，不产出文件） |
@@ -1429,30 +1429,35 @@ ID 与 §6.3 协议表逐一对应：`ElevatorNetworking` 共 **14 个** payload
 | 货舱档位 | 27 槽 / 1728 件上限 / 128 件每少 1 人 / 288 件每 1 个货箱 / 最多 6 个 |
 | 方向箭头闪烁 | 亮 0.5 s / 灭 0.5 s（墙钟毫秒） |
 
-### 12.4 注册实体类型：为什么必须用 Fabric 的无参 `build()`
+### 12.4 注册实体类型与方块/物品：必须带上自己的注册键
 
-四个轿厢共用 `Easyelevator.cabinType(factory)`，**故意不走原版带 id 的重载**：
+四个轿厢共用 `Easyelevator.cabinType(path, factory)`，**必须把注册键一并传进原版的 `build`**：
 
 ```java
-private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
-    return EntityType.Builder.create(factory, SpawnGroup.MISC)
-            .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build();   // ← 无参
+private static <T extends Entity> EntityType<T> cabinType(String path, EntityType.EntityFactory<T> factory) {
+    RegistryKey<EntityType<?>> key = RegistryKey.of(RegistryKeys.ENTITY_TYPE, id(path));
+    return Registry.register(Registries.ENTITY_TYPE, key,
+            EntityType.Builder.create(factory, SpawnGroup.MISC)
+                    .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build(key));
 }
 ```
 
-- 原版 `EntityType.Builder.build(String id)` 的第一件事是（`saveable` 默认 true）：
-  `if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, id);`——
+- 原版 `EntityType.Builder.build(RegistryKey)` 的第一件事是（`saveable` 默认 true）：
+  `if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, key.getValue().toString());`——
   向**原版数据修复器**要这个 id 的 choice type。原版 schema 里只有原版实体，模组 id 必然查不到，
   于是每次启动都为每个实体刷一条 `No data fixer registered for easyelevator:xxx`（`Util` 里以 ERROR 记录）；
   开发环境（`SharedConstants.isDevelopment` 为真）还会把异常**原样抛出**，模组初始化直接失败。
-- Fabric API 的 `EntityTypeBuilderMixin` 额外提供了一个无参 `build()`：内部就是 `build(null)`，
-  并用 `WrapOperation` 拦下那次 `Util.getChoiceType` —— “id 为 null 就查都不查”。因此既没有报错，
-  也没有副作用。
-- **不损失任何功能**：1.21.1 的原版 `build(String)` 本来就只造对象、不注册（`build` 末尾直接 `areturn`），
-  注册一直是调用方 `Registry.register(Registries.ENTITY_TYPE, id, ...)` 的事；而模组实体本来也不在原版
-  数据修复器的迁移范围内。所以那个 id 参数唯一的实际作用就是"去查一个查不到的 choice type"。
-- 新增型号时照抄 `cabinType(...)` 的写法即可，别写 `.build("easyelevator:新id")`。
-- `BlockEntityType` 走的是 Fabric 的 `FabricBlockEntityTypeBuilder`（同样是无参 `build()`），本来就安全。
+- **1.21 起原版只提供带键的 `build`**（1.21.1 时代 Fabric 提供的无参 `build()` 已随之下线），
+  所以这里必须传键；Fabric API 的 `EntityTypeBuilderMixin` 也改成用 `WrapOperation` 按**键**判断，
+  对模组命名空间直接跳过那次 `Util.getChoiceType`，因此既没有报错，也没有副作用。
+- **不损失任何功能**：原版 `build` 本来就只造对象、不注册，注册一直是调用方
+  `Registry.register(...)` 的事；而模组实体本来也不在原版数据修复器的迁移范围内。
+  那个键唯一的实际作用就是"去查一个查不到的 choice type"（以及给方块/物品解析翻译键与模型 ID）。
+- 新增型号时照抄 `cabinType(path, ...)` 的写法即可；键的路径必须与注册 ID 逐字一致。
+- **方块与物品同样必须带键**（`AbstractBlock.Settings.registryKey(...)` / `Item.Settings.registryKey(...)`，
+  见 `Easyelevator.blockKey/itemKey`）：1.21 之后缺键会在<b>类加载期</b>抛 `Block id not set` /
+  `Item id not set`，表现为"模组一进游戏就崩在静态初始化"。楼层门的方块键因此是旧的 `call_button`。
+- `BlockEntityType` 走的是 Fabric 的 `FabricBlockEntityTypeBuilder`（无参 `build()`），本来就不需要键。
 
 ### 12.5 接入新设备的检查清单
 
@@ -1470,4 +1475,4 @@ private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFacto
 
 ---
 
-*本手册由代码通读整理，覆盖版本 2.3.0。改动架构或接口后请同步更新本文对应章节。*
+*本手册由代码通读整理，覆盖版本 2.3.1+1.21.11。改动架构或接口后请同步更新本文对应章节。*
