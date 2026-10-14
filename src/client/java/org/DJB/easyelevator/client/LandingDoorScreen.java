@@ -1,12 +1,15 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
+import net.minecraft.client.gui.screen.narration.NarrationPart;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import org.DJB.easyelevator.network.ElevatorNetworking;
+
+import java.util.function.BooleanSupplier;
 
 /**
  * 楼层门上的<b>厅外呼叫面板</b>：20×20 的方形按钮竖排成一列——有效的方向键（▲ / ▼）与关闭键（×）。
@@ -24,6 +27,10 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  * <p>在整体架构中的位置：纯客户端 UI，与服务端之间只往返"请求 + 点亮状态"。面板内容（哪个方向可点、
  * 哪个方向还亮着）全部来自服务端下发的包，客户端不推导、不缓存线路，因此关掉再打开、或别人按过按钮之后
  * 再打开，看到的都是真实状态。面板打开时<b>不暂停游戏</b>（{@link #shouldPause()} 返回 false）。
+ *
+ * <p><b>1.19.2 差异</b>：绘制入口是 {@link MatrixStack} 而非 1.20 的 {@code DrawContext}；
+ * 控件也没有 {@code Builder} 与 {@code setTooltip(Tooltip)}，悬停提示在构造时以
+ * {@link ButtonWidget.TooltipSupplier} 传入（见 {@link #tooltip}）。
  */
 public class LandingDoorScreen extends Screen {
     /** 方形按钮边长（像素）、按钮间距（像素）、面板内边距（像素）。三个键同尺寸，整列才齐。 */
@@ -90,37 +97,79 @@ public class LandingDoorScreen extends Screen {
     /**
      * 绘制面板：深色底 + 标题 + 站点高度提示，再交给 super 画按钮。
      *
-     * @param context 绘制上下文
+     * <p>1.19.2 的 {@code Screen.render} 会自己调用 {@code renderBackground}，这里不再重复铺遮罩。
+     *
+     * @param matrices 渲染矩阵栈
      * @param mouseX 鼠标 X（像素）
      * @param mouseY 鼠标 Y（像素）
      * @param delta 渲染插值系数
      * 副作用：仅绘制；不读世界、不发包。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
-        renderBackground(context);
-        context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFF);
-        context.drawCenteredTextWithShadow(textRenderer,
+    public void render(MatrixStack matrices,int mouseX,int mouseY,float delta) {
+        fill(matrices,panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
+        centered(matrices,textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFF);
+        centered(matrices,textRenderer,
                 Text.translatable("screen.easyelevator.hall_station",station.getY()),
                 width/2,panelTop+panelHeight+PADDING-4,HINT_COLOR);
-        super.render(context,mouseX,mouseY,delta);
+        super.render(matrices,mouseX,mouseY,delta);
     }
 
     /** 覆盖原版背景绘制：只用一次淡黑叠加代替模糊着色器，保持世界画面清晰（与选站面板一致）。
-     * @param context 绘制上下文
-     * @param mouseX 鼠标 X（像素）
-     * @param mouseY 鼠标 Y（像素）
-     * @param delta 渲染插值系数
+     * @param matrices 渲染矩阵栈
      */
     @Override
-    public void renderBackground(DrawContext context) {
-        context.fill(0,0,width,height,0x18000000);
+    public void renderBackground(MatrixStack matrices) {
+        fill(matrices,0,0,width,height,0x18000000);
     }
 
     /** @return false：等车期间不暂停单人游戏世界，否则轿厢会停在半路。 */
     @Override
     public boolean shouldPause() { return false; }
+
+    /**
+     * 画一行水平居中、带阴影的文字。
+     *
+     * <p>1.19.2 的 {@code DrawableHelper} 只有收 {@link net.minecraft.text.OrderedText} 的居中重载，
+     * 没有 1.20 起那个直接收 {@link Text} 的版本；而 {@code TextRenderer.draw(MatrixStack, Text, ...)}
+     * 两个版本都有。因此统一包一层，画法与原版 {@code drawCenteredTextWithShadow} 完全一致。
+     *
+     * @param matrices 渲染矩阵栈
+     * @param renderer 文本渲染器
+     * @param text 这一行的文本
+     * @param centerX 水平中心（像素）
+     * @param y 这一行的顶边（像素）
+     * @param color 颜色（ARGB）
+     */
+    private static void centered(MatrixStack matrices, net.minecraft.client.font.TextRenderer renderer, Text text,
+                                 int centerX, int y, int color) {
+        renderer.draw(matrices, text, centerX - renderer.getWidth(text) / 2, y, color);
+    }
+
+    /**
+     * 做成 1.19.2 控件能接受的悬停提示供应商。
+     *
+     * <p>1.19.2 的 {@code ClickableWidget} 没有 {@code setTooltip(Tooltip)}，提示只能在构造时以
+     * {@link ButtonWidget.TooltipSupplier} 交出；而供应商要自己把提示画出来。这里按原版
+     * "鼠标右下角、必要时往左 / 往上躲"的规则定位，再交给本屏幕的
+     * {@link Screen#renderTooltip(MatrixStack, Text, int, int)}——刻意绕开
+     * {@code ButtonWidget.renderTooltip} 的默认实现，因为它依赖内部未初始化的提示字段。
+     *
+     * @param tip 固定的一句提示文本
+     * @return 供按钮使用的提示供应商
+     */
+    ButtonWidget.TooltipSupplier tooltip(Text tip) {
+        return (button, matrices, mouseX, mouseY) -> {
+            var lines = java.util.List.of(tip);
+            int tipWidth = 0;
+            for (Text line : lines) tipWidth = Math.max(tipWidth, textRenderer.getWidth(line));
+            int tipX = mouseX + 12;
+            if (tipX + tipWidth > width - 4) tipX = mouseX - 16 - tipWidth;
+            int tipY = mouseY - 12;
+            if (tipY + lines.size() * 10 > height - 4) tipY = height - 4 - lines.size() * 10;
+            renderTooltip(matrices, lines, tipX, tipY);
+        };
+    }
 
     /**
      * 面板上的方形按键（方向键与关闭键共用）：一个方块 + 中间的字符（▲ / ▼ / ×）。
@@ -131,7 +180,7 @@ public class LandingDoorScreen extends Screen {
      */
     private final class SquareButton extends ButtonWidget {
         /** 该键"点亮/变红"的判据：方向键读服务端推送的状态，关闭键恒为 false。 */
-        private final java.util.function.BooleanSupplier pending;
+        private final BooleanSupplier pending;
         /** 键盘朗读与悬停提示用的文本（"上行呼叫 / 下行呼叫 / 关闭"）。 */
         private final Text narration;
 
@@ -143,35 +192,34 @@ public class LandingDoorScreen extends Screen {
          * @param tooltip 悬停提示（"上行呼叫 / 下行呼叫 / 关闭"）
          * @param onPress 点击回调：方向键发 HallCallButton，关闭键关闭界面
          */
-        SquareButton(int x,int y,String glyph,java.util.function.BooleanSupplier pending,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(glyph),onPress,DEFAULT_NARRATION_SUPPLIER);
+        SquareButton(int x,int y,String glyph,BooleanSupplier pending,Text tooltip,PressAction onPress) {
+            super(x,y,BUTTON,BUTTON,Text.literal(glyph),onPress,LandingDoorScreen.this.tooltip(tooltip));
             this.pending=pending; this.narration=tooltip;
-            setTooltip(Tooltip.of(tooltip));
         }
 
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
-         * @param ctx 绘制上下文
+         * @param matrices 渲染矩阵栈
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        public void renderButton(MatrixStack matrices,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=pending.getAsBoolean();
-            int x=getX(), y=getY(), s=getWidth();
+            int bx=x, by=y, s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；配色与选站面板的楼层键同源。
-            ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:0xFF6B7A88);
-            ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:0xFF2B3542);
-            ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:0xFF212A36);
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
+            fill(matrices,bx,by,bx+s,by+s, lit?0xFFE8F1F8:queued?0xFFE08585:0xFF6B7A88);
+            fill(matrices,bx+1,by+1,bx+s-1,by+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:0xFF2B3542);
+            fill(matrices,bx+2,by+2,bx+s-2,by+s-2, lit?0xFF41566C:queued?0xFF33222A:0xFF212A36);
+            centered(matrices,textRenderer,getMessage(),bx+s/2,by+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本（方向或"关闭"）。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,narration);
+        public void appendNarrations(NarrationMessageBuilder builder) {
+            builder.put(NarrationPart.TITLE,narration);
         }
     }
 }

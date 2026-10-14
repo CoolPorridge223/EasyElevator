@@ -6,7 +6,7 @@
   "screen.easyelevator.cargo_rule": "27 格货舱。每 128 件占 1 人载重，不足一档也计入；每 288 件显示一个货箱。按实际件数计，容器内物品不另计。装卸时保持开门，关闭面板后恢复运行。",
   "message.easyelevator.cargo_stopped": "当前状态无法装卸货物。",
   "message.easyelevator.cargo_space": "请让乘客或动物离开轿厢后部货箱区域后继续装货。",
-  "itemGroup.easyelevator": "简易电梯",
+  "itemGroup.easyelevator.main": "简易电梯",
   "block.easyelevator.elevator_rail": "电梯轨道",
   "block.easyelevator.call_button": "电梯门",
   "item.easyelevator.cabin": "电梯轿厢",

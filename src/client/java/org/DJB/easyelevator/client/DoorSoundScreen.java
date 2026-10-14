@@ -1,10 +1,11 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
+import net.minecraft.client.gui.screen.narration.NarrationPart;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
@@ -369,30 +370,31 @@ public class DoorSoundScreen extends Screen {
     /**
      * 绘制面板：一块不透明深色底 + 标题 + 副标题 + 设置区与动作区之间的分隔线。
      *
-     * @param context 绘制上下文
+     * <p>1.19.2 的 {@code Screen.render} 会自动调用 {@code renderBackground}，这里不再自己铺遮罩。
+     *
+     * @param matrices 渲染矩阵栈
      * @param mouseX 鼠标 X（像素）
      * @param mouseY 鼠标 Y（像素）
      * @param delta 渲染插值系数
      * 副作用：仅绘制；每帧递减试听闪烁计数。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void render(MatrixStack matrices,int mouseX,int mouseY,float delta) {
         if (previewFlash>0) previewFlash--; // 闪烁按帧递减，够用且不必额外挂刻事件
-        renderBackground(context);
-        context.fill(panelLeft,panelTop,panelLeft+CONTENT_W,panelTop+BLOCK_H,PANEL_COLOR);
+        fill(matrices,panelLeft,panelTop,panelLeft+CONTENT_W,panelTop+BLOCK_H,PANEL_COLOR);
         // 标题与副标题都画在面板内部，各自占一段高度（见 TITLE_H / HEADER_H 的说明）
-        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop+PAD-2,TITLE_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,
+        centered(matrices,textRenderer,title,width/2,panelTop+PAD-2,TITLE_COLOR);
+        centered(matrices,textRenderer,
                 Text.translatable("screen.easyelevator.door_sound_station_floor",stationY,floorLabel),
                 panelLeft+CONTENT_W/2,panelTop+PAD+TITLE_H+GAP+4,HINT_COLOR);
         // 设置区与动作区之间的分隔线：一条浅线即可，不必画整圈边框
         int lineY=panelTop+DIVIDER_TOP;
-        context.fill(panelLeft+PAD,lineY,panelLeft+CONTENT_W-PAD,lineY+1,DIVIDER);
+        fill(matrices,panelLeft+PAD,lineY,panelLeft+CONTENT_W-PAD,lineY+1,DIVIDER);
         // 上传提示：拖拽与粘贴两条路都写出来，玩家不必猜（按钮只是第三种备选）
-        context.drawCenteredTextWithShadow(textRenderer,
+        centered(matrices,textRenderer,
                 Text.translatable("screen.easyelevator.door_sound_drop"),
                 panelLeft+CONTENT_W/2,lineY+GAP_SMALL,HINT_COLOR);
-        super.render(context,mouseX,mouseY,delta);
+        super.render(matrices,mouseX,mouseY,delta);
     }
 
     /**
@@ -427,19 +429,57 @@ public class DoorSoundScreen extends Screen {
     }
 
     /** 覆盖原版背景绘制：只用一次淡黑叠加代替模糊着色器，保持世界画面清晰（与另两个面板一致）。
-     * @param context 绘制上下文
-     * @param mouseX 鼠标 X（像素）
-     * @param mouseY 鼠标 Y（像素）
-     * @param delta 渲染插值系数
+     * @param matrices 渲染矩阵栈
      */
     @Override
-    public void renderBackground(DrawContext context) {
-        context.fill(0,0,width,height,0x18000000);
+    public void renderBackground(MatrixStack matrices) {
+        fill(matrices,0,0,width,height,0x18000000);
     }
 
     /** @return false：调音效期间不暂停单人游戏世界，否则电梯会停在半路。 */
     @Override
     public boolean shouldPause() { return false; }
+
+    /**
+     * 画一行水平居中、带阴影的文字。
+     *
+     * <p>1.19.2 的 {@code DrawableHelper} 只有收 {@link net.minecraft.text.OrderedText} 的居中重载，
+     * 没有 1.20 起那个直接收 {@link Text} 的版本；而 {@code TextRenderer.draw(MatrixStack, Text, ...)}
+     * 两个版本都有。因此统一包一层，画法与原版 {@code drawCenteredTextWithShadow} 完全一致。
+     *
+     * @param matrices 渲染矩阵栈
+     * @param renderer 文本渲染器
+     * @param text 这一行的文本
+     * @param centerX 水平中心（像素）
+     * @param y 这一行的顶边（像素）
+     * @param color 颜色（ARGB）
+     */
+    private static void centered(MatrixStack matrices, net.minecraft.client.font.TextRenderer renderer, Text text,
+                                 int centerX, int y, int color) {
+        renderer.draw(matrices, text, centerX - renderer.getWidth(text) / 2, y, color);
+    }
+
+    /**
+     * 做成 1.19.2 控件能接受的悬停提示供应商（1.20 起改成 {@code setTooltip(Tooltip)}）。
+     *
+     * <p>供应商要自己把提示画出来：这里按原版"鼠标右下角、必要时往左 / 往上躲"的规则定位，
+     * 再交给本屏幕的 {@link Screen#renderTooltip(MatrixStack, Text, int, int)}。
+     *
+     * @param tip 固定的一句提示文本
+     * @return 供按钮使用的提示供应商
+     */
+    ButtonWidget.TooltipSupplier tooltip(Text tip) {
+        return (button, matrices, mouseX, mouseY) -> {
+            var lines = java.util.List.of(tip);
+            int tipWidth = 0;
+            for (Text line : lines) tipWidth = Math.max(tipWidth, textRenderer.getWidth(line));
+            int tipX = mouseX + 12;
+            if (tipX + tipWidth > width - 4) tipX = mouseX - 16 - tipWidth;
+            int tipY = mouseY - 12;
+            if (tipY + lines.size() * 10 > height - 4) tipY = height - 4 - lines.size() * 10;
+            renderTooltip(matrices, lines, tipX, tipY);
+        };
+    }
 
     /** 关闭面板时取消拖拽登记：别的界面不该继承"拖文件上传"这个语义。 */
     @Override
@@ -476,42 +516,42 @@ public class DoorSoundScreen extends Screen {
          * @param dynamic 每帧求值的显示文本；null 表示用 {@code tooltip} 当固定文本
          */
         RowButton(int x,int y,int w,BooleanSupplier toggled,Text tooltip,Predicate onPress,Supplier<Text> dynamic) {
-            super(x,y,w,ROW,tooltip,onPress,DEFAULT_NARRATION_SUPPLIER);
+            // 1.19.2 的提示只能在构造时交出：只读值格（提示为空）用 EMPTY，其余走本屏幕的 tooltip 供应商。
+            super(x,y,w,ROW,tooltip,onPress,tooltip.getString().isEmpty()
+                    ? ButtonWidget.EMPTY : DoorSoundScreen.this.tooltip(tooltip));
             this.toggled=toggled; this.narration=tooltip; this.dynamic=dynamic;
             this.readOnly=tooltip.getString().isEmpty();
-            if (!readOnly) setTooltip(Tooltip.of(tooltip));
         }
 
         /**
          * 画控件本体（不调用父类，避免再叠一层原版长条贴图）。
          *
-         * @param ctx 绘制上下文
+         * @param matrices 渲染矩阵栈
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
-            int x=getX(), y=getY(), w=getWidth(), h=getHeight();
+        public void renderButton(MatrixStack matrices,int mouseX,int mouseY,float delta) {
+            int bx=x, by=y, w=getWidth(), h=getHeight();
             Text label=dynamic==null?getMessage():dynamic.get();
             if (readOnly) {
                 // 只读值格：凹陷深色条，绝不画悬停高亮
                 boolean on=toggled.getAsBoolean();
-                ctx.fill(x,y,x+w,y+h,VALUE_BG);
-                ctx.fill(x,y,x+w-1,y,VALUE_INNER);
-                ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-8),x+w/2,y+(h-8)/2,
+                fill(matrices,bx,by,bx+w,by+h,VALUE_BG);
+                fill(matrices,bx,by,bx+w-1,by,VALUE_INNER);
+                centered(matrices,textRenderer,trim(label,w-8),bx+w/2,by+(h-8)/2,
                         on?VALUE_COLOR:0x77828F);
                 return;
             }
             boolean lit=isHovered(), on=toggled.getAsBoolean();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；"已开启"用一条青边表示状态，不用整块青底
-            ctx.fill(x,y,x+w,y+h, lit?0xFFE8F1F8:on?0xFF5FA898:0xFF5C6B7A);
-            ctx.fill(x+1,y+1,x+w-1,y+h-1, lit?0xFF54697F:0xFF2A3543);
-            ctx.fill(x+2,y+2,x+w-2,y+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
-            ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-6),x+w/2,y+(h-8)/2,
+            fill(matrices,bx,by,bx+w,by+h, lit?0xFFE8F1F8:on?0xFF5FA898:0xFF5C6B7A);
+            fill(matrices,bx+1,by+1,bx+w-1,by+h-1, lit?0xFF54697F:0xFF2A3543);
+            fill(matrices,bx+2,by+2,bx+w-2,by+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
+            centered(matrices,textRenderer,trim(label,w-6),bx+w/2,by+(h-8)/2,
                     lit?0xFFFFFF:on?0xFFD9FFF4:0xD2DEE9);
         }
-
         /**
          * 把过长的文本按像素宽度截断并加省略号。
          *
@@ -550,8 +590,8 @@ public class DoorSoundScreen extends Screen {
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,narration);
+        public void appendNarrations(NarrationMessageBuilder builder) {
+            builder.put(NarrationPart.TITLE,narration);
         }
     }
 

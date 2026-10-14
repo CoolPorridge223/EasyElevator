@@ -196,7 +196,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
             for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
                 BlockPos p=part(root,facing,col,row);
                 if(world.isOutOfHeightLimit(p) || !world.getWorldBorder().contains(p) || !world.isChunkLoaded(p)
-                        || !world.getBlockState(p).isReplaceable()
+                        || !world.getBlockState(p).getMaterial().isReplaceable()
                         || (ctx.getPlayer()!=null && (!world.canPlayerModifyAt(ctx.getPlayer(),p)
                         || !ctx.getPlayer().canPlaceOn(p,ctx.getSide(),ctx.getStack())))) return null;
             }
@@ -232,7 +232,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
             world.setBlockState(part(p,s.get(FACING),col,row),s.with(COLUMN,col).with(LEVEL,row),Block.NOTIFY_ALL);
         }
         refresh(world,p);
-        world.scheduleBlockTick(p,this,1);
+        world.createAndScheduleBlockTick(p,this,1);
     }
 
     /**
@@ -253,7 +253,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     public void scheduledTick(BlockState s,ServerWorld world,BlockPos p,Random random) {
         if(!isRoot(s)) return;
         refresh(world,p);
-        world.scheduleBlockTick(p,this,1);
+        world.createAndScheduleBlockTick(p,this,1);
     }
 
     /**

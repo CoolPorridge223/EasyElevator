@@ -1,9 +1,10 @@
 package org.DJB.easyelevator.client;
 
-import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
+import net.minecraft.client.gui.screen.narration.NarrationPart;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
@@ -42,6 +43,11 @@ import java.util.Set;
  * <p>按键配色：普通为灰色描边；<b>轿厢当前停靠层</b>用绿色描边 + 冷绿底面；<b>已加入停靠计划</b>（正在执行
  * 的目的站或排队中的站点）整体偏红；悬停/键盘聚焦时点亮为白色。计划由服务端在变化时用
  * {@link ElevatorNetworking.PanelState} 推送（见 {@link #applyPlanned}）。
+ *
+ * <p><b>1.19.2 差异</b>：绘制入口是 {@link MatrixStack} 而非 1.20 的 {@code DrawContext}
+ * （居中文字用 {@code DrawableHelper.drawCenteredTextWithShadow}，放大用矩阵栈而非
+ * {@code context.getMatrices()}）；控件没有 {@code Builder} 与 {@code setTooltip(Tooltip)}，
+ * 悬停提示在构造时以 {@link ButtonWidget.TooltipSupplier} 传入（见 {@link #tooltip}）。
  */
 public class ElevatorScreen extends Screen {
     /** 方形按钮边长（像素）与按钮间距（像素）。边长 20 与原版按钮同高，间距 4 不至于挤在一起。 */
@@ -145,7 +151,7 @@ public class ElevatorScreen extends Screen {
      *
      * <p>副作用：向屏幕添加控件；不发包、不改世界。翻页按钮只改 page 并重建控件。
      */
-    /** 把 value 夹在 [min,max] 内（1.20.1 的目标语言是 Java 17，没有 {@code Math.clamp}）。 */
+    /** 把 value 夹在 [min,max] 内（目标语言是 Java 17，没有 {@code Math.clamp}）。 */
     private static int clamp(int value,int min,int max) { return value<min?min:Math.min(value,max); }
 
     @Override
@@ -301,38 +307,42 @@ public class ElevatorScreen extends Screen {
      * 渲染面板：全屏浅遮罩 → 面板底与外框 → 表头条（标题、楼层指示牌、状态/页数）→ 按键区凹底
      * → 页脚条与分隔线 → 最后交给 super 画按钮。
      *
+     * <p>1.19.2 的 {@code Screen.render} 会自动调用 {@code renderBackground} 铺遮罩，
+     * 因此这里不再自己调一次（1.20.1 的调用链不同，才需要显式调用）。
+     *
+     * @param matrices 渲染矩阵栈
      * @param mouseX 鼠标 X（像素，屏幕坐标）
      * @param mouseY 鼠标 Y（像素，屏幕坐标）
      * @param delta 渲染插值系数（0..1）
      * 副作用：仅绘制；状态行每帧读取轿厢的 Y（格）与 Phase，因此会随服务端同步刷新。
      */
     @Override
-    public void render(DrawContext context,int mouseX,int mouseY,float delta) {
+    public void render(MatrixStack matrices,int mouseX,int mouseY,float delta) {
         var cabin=cabin();
         updateDoorButtons(cabin); // 可用性跟着轿厢状态走，因此放在 render 里每帧刷新
-        renderBackground(context);
         // 面板底：不透明深色（早先用半透明时，井道与轿厢内面板的红字会从底下透出来）+ 1 像素外框。
-        context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
-        drawFrame(context,panelLeft,panelTop,panelWidth,panelHeight,BORDER_COLOR);
+        fill(matrices,panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
+        drawFrame(matrices,panelLeft,panelTop,panelWidth,panelHeight,BORDER_COLOR);
         // 表头条：比面板底略亮，让"显示区"和按键区分开；标题居中放最上，其下是状态与页数两行。
-        context.fill(panelLeft+1,panelTop+1,panelLeft+panelWidth-1,panelTop+HEADER,BAR_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
-        context.fill(panelLeft+1,panelTop+HEADER,panelLeft+panelWidth-1,panelTop+HEADER+1,LINE_COLOR);
+        fill(matrices,panelLeft+1,panelTop+1,panelLeft+panelWidth-1,panelTop+HEADER,BAR_COLOR);
+        centered(matrices,textRenderer,title,panelLeft+panelWidth/2,panelTop+6,0xFFEAF2FA);
+        fill(matrices,panelLeft+1,panelTop+HEADER,panelLeft+panelWidth-1,panelTop+HEADER+1,LINE_COLOR);
         // 楼层指示牌：内凹的"数码管"（外框 → 面板 → 最深底），层号放大 2 倍、只显示数字本身。
         int floor=cabin==null?0:cabin.floorNumber();
         int plaqueLeft=panelLeft+PADDING, plaqueTop=panelTop+PLAQUE_TOP;
-        context.fill(plaqueLeft,plaqueTop,plaqueLeft+PLAQUE_W,plaqueTop+PLAQUE_H,BORDER_COLOR);
-        context.fill(plaqueLeft+1,plaqueTop+1,plaqueLeft+PLAQUE_W-1,plaqueTop+PLAQUE_H-1,0xFF2B3542);
-        context.fill(plaqueLeft+2,plaqueTop+2,plaqueLeft+PLAQUE_W-2,plaqueTop+PLAQUE_H-2,FLOOR_PANEL_COLOR);
-        context.getMatrices().push();
+        fill(matrices,plaqueLeft,plaqueTop,plaqueLeft+PLAQUE_W,plaqueTop+PLAQUE_H,BORDER_COLOR);
+        fill(matrices,plaqueLeft+1,plaqueTop+1,plaqueLeft+PLAQUE_W-1,plaqueTop+PLAQUE_H-1,0xFF2B3542);
+        fill(matrices,plaqueLeft+2,plaqueTop+2,plaqueLeft+PLAQUE_W-2,plaqueTop+PLAQUE_H-2,FLOOR_PANEL_COLOR);
+        matrices.push();
         // 以指示牌中心为原点放大；缩放后仍按"文字宽度的一半"定位，保证严格居中。
-        context.getMatrices().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-textRenderer.fontHeight*FLOOR_TEXT_SCALE)/2f,0);
-        context.getMatrices().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
+        // 1.19.2 没有 DrawContext，矩阵栈直接由渲染方法传入。
+        matrices.translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-textRenderer.fontHeight*FLOOR_TEXT_SCALE)/2f,0);
+        matrices.scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
         // 不带阴影：带阴影时字会整体偏右下 1 像素，放大 2 倍后看起来就是"没居中"。
         // 深底红字本身对比度足够，这里用手动居中的无阴影绘制。
         Text floorLabel=Text.literal(FloorIndicator.format(floor));
-        context.drawText(textRenderer,floorLabel,-textRenderer.getWidth(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
-        context.getMatrices().pop();
+        textRenderer.draw(matrices,floorLabel,-textRenderer.getWidth(floorLabel)/2,0,FLOOR_TEXT_COLOR);
+        matrices.pop();
         // 右侧剩余区域的水平中心：状态行与页数行都对齐到这里，避免和左边放大的指示牌挤在一起。
         int textCenter=plaqueLeft+PLAQUE_W+(panelLeft+panelWidth-PADDING-plaqueLeft-PLAQUE_W)/2;
         if(cabin!=null) {
@@ -340,55 +350,97 @@ public class ElevatorScreen extends Screen {
             // Locale.ROOT 保证小数点是 '.'、阶段键不随语言环境变形（翻译键必须与语言文件一致）。
             Text status=Text.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
                     Text.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
-            context.drawCenteredTextWithShadow(textRenderer,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
+            centered(matrices,textRenderer,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
         }
         // 页数行：总站点数、当前页（1 基）、总页数。
-        context.drawCenteredTextWithShadow(textRenderer,
+        centered(matrices,textRenderer,
                 Text.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
         // 按键区凹底：只比按键块四周各宽 WELL_PAD 像素，把数字键"托"起来——横贯整块面板会多出一条突兀的黑带。
         // 只填充、不再给凹底描边：描边会和上下两条分隔线贴在一起，看起来像叠了三层线，显得臃肿。
         int wellLeft=gridLeft-WELL_PAD, wellTop=gridTop-WELL_PAD, wellRight=gridRight+WELL_PAD, wellBottom=gridBottom+WELL_PAD;
-        context.fill(wellLeft,wellTop,wellRight,wellBottom,WELL_COLOR);
+        fill(matrices,wellLeft,wellTop,wellRight,wellBottom,WELL_COLOR);
         // 页脚条：与表头同色，放翻页/开门/关门/完成。
-        context.fill(panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
-        context.fill(panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
-        if(stops.isEmpty()) context.drawCenteredTextWithShadow(textRenderer,Text.translatable("screen.easyelevator.empty"),
+        fill(matrices,panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
+        fill(matrices,panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
+        if(stops.isEmpty()) centered(matrices,textRenderer,Text.translatable("screen.easyelevator.empty"),
                 panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFC27A);
-        super.render(context,mouseX,mouseY,delta);
+        super.render(matrices,mouseX,mouseY,delta);
     }
 
     /**
      * 画 1 像素矩形外框（四条 fill 拼成）：比整块 fill 再挖空更直观，也避免多一次全屏填充。
      *
-     * @param context 绘制上下文
+     * @param matrices 渲染矩阵栈
      * @param x 左上角 X
      * @param y 左上角 Y
      * @param w 宽（像素）
      * @param h 高（像素）
      * @param color 颜色（ARGB）
      */
-    private static void drawFrame(DrawContext context,int x,int y,int w,int h,int color) {
-        context.fill(x,y,x+w,y+1,color);
-        context.fill(x,y+h-1,x+w,y+h,color);
-        context.fill(x,y,x+1,y+h,color);
-        context.fill(x+w-1,y,x+w,y+h,color);
+    private static void drawFrame(MatrixStack matrices,int x,int y,int w,int h,int color) {
+        fill(matrices,x,y,x+w,y+1,color);
+        fill(matrices,x,y+h-1,x+w,y+h,color);
+        fill(matrices,x,y,x+1,y+h,color);
+        fill(matrices,x+w-1,y,x+w,y+h,color);
     }
 
     /** 覆盖原版背景绘制。副作用：仅用一次全屏浅色叠加代替原版模糊着色器。
      * 为什么这样做：Screen.renderBackground 会应用原版模糊（blur）后处理，会把世界连同文字一起糊掉；
      * 这里只做 0x18000000 的淡黑叠加，既压暗背景又保持世界与文字清晰，也不会二次模糊已经画好的标题/状态文字。
-     * 1.20.1 的签名只有 context 一个参数（鼠标坐标与帧插值由调用方 {@link #render} 传入的版本是 1.21 才有的）。
+     * 1.19.2 的签名是 {@code renderBackground(MatrixStack)}。
      */
     @Override
-    public void renderBackground(DrawContext context) {
+    public void renderBackground(MatrixStack matrices) {
         // Screen.renderBackground applies the vanilla blur shader. A light tint keeps the world
         // and its text sharp, and cannot blur title/status text already drawn by another pass.
-        context.fill(0,0,width,height,0x18000000);
+        fill(matrices,0,0,width,height,0x18000000);
     }
 
     /** @return false，电梯运行期间不暂停单人游戏世界，否则轿厢会在面板打开时停住。 */
     @Override
     public boolean shouldPause() { return false; }
+
+    /**
+     * 画一行水平居中、带阴影的文字。
+     *
+     * <p>1.19.2 的 {@code DrawableHelper} 只有收 {@link net.minecraft.text.OrderedText} 的居中重载，
+     * 没有 1.20 起那个直接收 {@link Text} 的版本；而 {@code TextRenderer.draw(MatrixStack, Text, ...)}
+     * 两个版本都有。因此统一包一层，画法与原版 {@code drawCenteredTextWithShadow} 完全一致
+     * （先按文本宽度算左边距，再交给文本渲染器）。
+     *
+     * @param matrices 渲染矩阵栈
+     * @param renderer 文本渲染器（屏幕用 {@code textRenderer}，按钮用同一个实例）
+     * @param text 这一行的文本
+     * @param centerX 水平中心（像素）
+     * @param y 这一行的顶边（像素）
+     * @param color 颜色（ARGB）
+     */
+    private static void centered(MatrixStack matrices, net.minecraft.client.font.TextRenderer renderer, Text text,
+                                 int centerX, int y, int color) {
+        renderer.draw(matrices, text, centerX - renderer.getWidth(text) / 2, y, color);
+    }
+
+    /**
+     * 做成 1.19.2 控件能接受的悬停提示供应商（1.20 起改成 {@code setTooltip(Tooltip)}）。
+     *
+     * <p>供应商要自己把提示画出来：这里按原版"鼠标右下角、必要时往左 / 往上躲"的规则定位，
+     * 再交给本屏幕的 {@link Screen#renderTooltip(MatrixStack, Text, int, int)}。
+     *
+     * @param tip 固定的一句提示文本
+     * @return 供按钮使用的提示供应商
+     */
+    ButtonWidget.TooltipSupplier tooltip(Text tip) {
+        return (button, matrices, mouseX, mouseY) -> {
+            var lines = java.util.List.of(tip);
+            int tipWidth = 0;
+            for (Text line : lines) tipWidth = Math.max(tipWidth, textRenderer.getWidth(line));
+            int tipX = mouseX + 12;
+            if (tipX + tipWidth > width - 4) tipX = mouseX - 16 - tipWidth;
+            int tipY = mouseY - 12;
+            if (tipY + lines.size() * 10 > height - 4) tipY = height - 4 - lines.size() * 10;
+            renderTooltip(matrices, lines, tipX, tipY);
+        };
+    }
 
     /**
      * 面板上的扁平按钮（翻页 / 开门 / 关门 / 完成共用）：1 像素描边 + 深色底面 + 顶部一道高光。
@@ -408,8 +460,7 @@ public class ElevatorScreen extends Screen {
          * @param tooltip 悬停提示
          */
         FlatButton(int x,int y,int w,int h,Text message,PressAction onPress,Text tooltip) {
-            super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
-            setTooltip(Tooltip.of(tooltip));
+            super(x,y,w,h,message,onPress,ElevatorScreen.this.tooltip(tooltip));
         }
 
         /**
@@ -423,25 +474,25 @@ public class ElevatorScreen extends Screen {
          * @param onPress 点击回调
          */
         FlatButton(int x,int y,int w,int h,Text message,PressAction onPress) {
-            super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
+            super(x,y,w,h,message,onPress,ButtonWidget.EMPTY);
         }
 
         /**
          * 画按钮本体（不调用父类，避免再叠一层原版长条贴图）。
          *
-         * @param ctx 绘制上下文
+         * @param matrices 渲染矩阵栈
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        public void renderButton(MatrixStack matrices,int mouseX,int mouseY,float delta) {
             boolean lit=active&&(isHovered()||isFocused());
-            int x=getX(), y=getY(), w=getWidth(), h=getHeight();
-            ctx.fill(x,y,x+w,y+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
-            ctx.fill(x+1,y+1,x+w-1,y+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
-            if(h>6) ctx.fill(x+2,y+2,x+w-2,y+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+w/2,y+(h-8)/2,
+            int bx=x, by=y, w=getWidth(), h=getHeight();
+            fill(matrices,bx,by,bx+w,by+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
+            fill(matrices,bx+1,by+1,bx+w-1,by+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
+            if(h>6) fill(matrices,bx+2,by+2,bx+w-2,by+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
+            centered(matrices,textRenderer,getMessage(),bx+w/2,by+(h-8)/2,
                     !active?0xFF7C8896:lit?0xFFFFFFFF:0xD5E2EE);
         }
     }
@@ -469,9 +520,8 @@ public class ElevatorScreen extends Screen {
          * @param onPress 点击回调：发送 SelectStop 请求
          */
         StationButton(int x,int y,String label,int stationY,long packed,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(label),onPress,DEFAULT_NARRATION_SUPPLIER);
+            super(x,y,BUTTON,BUTTON,Text.literal(label),onPress,ElevatorScreen.this.tooltip(tooltip));
             this.label=label; this.stationY=stationY; this.packed=packed;
-            setTooltip(Tooltip.of(tooltip));
         }
 
         /** @return 轿厢是否正停在这一层（必须已停稳：运行途中经过某一层不算，也不会闪一下绿色）。 */
@@ -486,28 +536,28 @@ public class ElevatorScreen extends Screen {
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
-         * @param ctx 绘制上下文
+         * @param matrices 渲染矩阵栈
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderButton(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        public void renderButton(MatrixStack matrices,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=isPlanned(), current=isCurrentFloor();
-            int x=getX(), y=getY(), s=getWidth();
+            int bx=x, by=y, s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面，形成按键的立体感；配色与面板深色底协调。
             // 计划中的站点整体偏红（含底色与文字）；当前层用绿色描边 + 冷绿底面，两种高亮互不遮盖。
-            ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:current?0xFF7FCB93:0xFF5A6A7B);
-            ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
-            ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2,
+            fill(matrices,bx,by,bx+s,by+s, lit?0xFFE8F1F8:queued?0xFFE08585:current?0xFF7FCB93:0xFF5A6A7B);
+            fill(matrices,bx+1,by+1,bx+s-1,by+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
+            fill(matrices,bx+2,by+2,bx+s-2,by+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
+            centered(matrices,textRenderer,getMessage(),bx+s/2,by+(s-8)/2,
                     lit?0xFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：楼层编号 + 该站高度，和悬停提示一致。 */
         @Override
-        public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,
+        public void appendNarrations(NarrationMessageBuilder builder) {
+            builder.put(NarrationPart.TITLE,
                     Text.translatable("screen.easyelevator.station",label,stationY));
         }
     }

@@ -2,7 +2,7 @@ package org.DJB.easyelevator.mixin.client;
 
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.network.packet.Packet;
+import net.minecraft.network.Packet;
 import org.DJB.easyelevator.client.CabinMotion;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -79,7 +79,7 @@ public abstract class ClientPlayerEntityMixin {
      * @param packet 原版此刻决定发送的包
      */
     @Redirect(method = "sendMovementPackets", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/network/ClientPlayNetworkHandler;sendPacket(Lnet/minecraft/network/packet/Packet;)V"))
+            target = "Lnet/minecraft/client/network/ClientPlayNetworkHandler;sendPacket(Lnet/minecraft/network/Packet;)V"))
     private void easyelevator$relativeMove(ClientPlayNetworkHandler handler, Packet<?> packet) {
         CabinMotion.sendMovement(handler, packet);
     }

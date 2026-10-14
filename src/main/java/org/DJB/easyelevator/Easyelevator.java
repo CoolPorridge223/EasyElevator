@@ -1,10 +1,11 @@
 package org.DJB.easyelevator;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
+import net.fabricmc.fabric.api.client.itemgroup.FabricItemGroupBuilder;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
+import net.minecraft.block.Material;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityDimensions;
@@ -13,10 +14,9 @@ import net.minecraft.entity.SpawnGroup;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.resource.featuretoggle.FeatureFlags;
+import net.minecraft.util.registry.Registry;
 import net.minecraft.screen.ScreenHandlerType;
 import org.DJB.easyelevator.screen.CargoScreenHandler;
 import net.minecraft.sound.SoundEvent;
@@ -44,6 +44,10 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
  * 重载 {@link #POWERFUL_CABIN} / {@link #POWERFUL_CABIN_ITEM}（速度 2/3、27 格货舱、限载随货量在 1..20 之间变化）。
  * 四种轿厢的实体 ID 与物品 ID 一一对应；只有重载型号额外注册一个容器菜单 {@link #CARGO_SCREEN}。</p>
  *
+ * <p>1.19.2 差异：原版注册表入口是 {@link Registry} 上的静态字段（{@code Registry.BLOCK} 等），
+ * 1.20.1 才拆成 {@code net.minecraft.registry.Registries}；物品栏分组也还是
+ * {@link FabricItemGroupBuilder}（1.20.1 起换成 {@code FabricItemGroup} + ITEM_GROUP 注册表）。</p>
+ *
  * <p>注册顺序约束：所有注册都必须在 {@link #onInitialize()} 内、且晚于类加载时创建的静态单例字段，
  * 否则可能出现“注册了未初始化的实例”或 Fabric API 未就绪的问题。注册 ID 一经发布不可更改，
  * 否则旧存档（方块状态、实体、物品 NBT）与旧物品会全部失效。</p>
@@ -58,8 +62,8 @@ public class Easyelevator implements ModInitializer {
      * 面板都是纯客户端屏幕（不改物品栏、不与服务端做槽位事务），只有货舱需要原版的容器同步——
      * 27 格物品、拖放分配、多人同时装卸、光标物品回收全部由原版事务保证，因此这里老老实实注册一个菜单。
      *
-     * <p>{@link net.minecraft.resource.featuretoggle.FeatureFlags#VANILLA_FEATURES} 表示本菜单
-     * 不依赖任何实验性世界开关（它只用原版物品与槽位能力），因此在普通存档里也能开。
+     * <p>1.19.2 的 {@link ScreenHandlerType} 只有一个工厂参数：1.20.1 才加入
+     * {@code FeatureFlags}（本菜单只用原版物品与槽位能力，不依赖任何实验性世界开关，因此丢掉那个参数没有语义损失）。
      * 类型工厂指向 {@code CargoScreenHandler} 的<b>两参构造器</b>（客户端空壳，见该类的类注释）：
      * 服务端实例由 {@code PowerfulCabinEntity.interact} 直接 new 出来并绑定轿厢。
      *
@@ -67,12 +71,12 @@ public class Easyelevator implements ModInitializer {
      * {@code PowerfulCabinEntity} 的使用（那个类按名字引用本字段），放在 {@link #MOD_ID} 之后即可。
      */
     public static final ScreenHandlerType<CargoScreenHandler> CARGO_SCREEN = Registry.register(
-            Registries.SCREEN_HANDLER, id("cargo"),
-            new ScreenHandlerType<>(CargoScreenHandler::new, FeatureFlags.VANILLA_FEATURES));
+            Registry.SCREEN_HANDLER, id("cargo"),
+            new ScreenHandlerType<>(CargoScreenHandler::new));
     /** 电梯轨道方块单例：垂直放置的一列连续轨道，朝向即轿厢所在方向。 */
-    public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
+    public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.of(Material.METAL).strength(3.0f).nonOpaque());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
-    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque().dynamicBounds());
+    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.of(Material.METAL).strength(3.0f).nonOpaque().dynamicBounds());
     /**
      * 楼层电梯门的方块实体类型单例（注册 ID {@code easyelevator:landing_door}）。
      *
@@ -81,7 +85,7 @@ public class Easyelevator implements ModInitializer {
      * 用 Fabric 的 builder 而不是原版 {@code BlockEntityType.Builder}，因为原版 {@code build()}
      * 需要额外的 datafixer 类型参数，而本方块实体没有需要数据迁移的旧存档字段。
      */
-    public static final BlockEntityType<LandingDoorBlockEntity> LANDING_DOOR_BE = Registry.register(Registries.BLOCK_ENTITY_TYPE,
+    public static final BlockEntityType<LandingDoorBlockEntity> LANDING_DOOR_BE = Registry.register(Registry.BLOCK_ENTITY_TYPE,
             id("landing_door"), FabricBlockEntityTypeBuilder.create(LandingDoorBlockEntity::new, LANDING_DOOR).build());
     /**
      * 造一台轿厢的实体类型（碰撞箱、追踪参数四种型号完全一致），由调用方负责注册。
@@ -94,7 +98,7 @@ public class Easyelevator implements ModInitializer {
      * </pre>
      * 原版 schema 里只有原版实体，模组 id 一定查不到，于是每次注册都会在日志里刷一条
      * <b>{@code No data fixer registered for easyelevator:xxx}</b>（开发环境里 {@code SharedConstants.isDevelopment}
-     * 为真，还会把异常直接抛出去，模组初始化直接崩）。1.20.1 的原版 {@code EntityType.Builder}
+     * 为真，还会把异常直接抛出去，模组初始化直接崩）。1.19.2 / 1.20.1 的原版 {@code EntityType.Builder}
      * 没有无参 {@code build()}，Fabric 用 {@link FabricEntityTypeBuilder} 包了一层：它的 {@code build()}
      * 以 {@code null} 当 id 走同一条路径，并在 {@code Util.getChoiceType} 之前拦下"id == null 就不查"，
      * 因此既没有那条报错，也不会有别的副作用——{@code build(String)} 本来就<b>只造对象、不注册</b>，
@@ -103,7 +107,7 @@ public class Easyelevator implements ModInitializer {
      * @param factory 实体构造工厂，例如 {@code CabinEntity::new}
      * @param <T> 轿厢实体类型
      * @return 尚未注册的实体类型；调用方必须立刻把它 {@code Registry.register} 到
-     *         {@link Registries#ENTITY_TYPE}，并用与存档一致的 ID
+     *         {@link Registry#ENTITY_TYPE}，并用与存档一致的 ID
      */
     private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
         return FabricEntityTypeBuilder.create(SpawnGroup.MISC, factory)
@@ -118,7 +122,7 @@ public class Easyelevator implements ModInitializer {
      * 这是必需的——轿厢以 0.20 格/刻运行，间隔追踪会明显抖动。</p>
      */
     public static final EntityType<CabinEntity> CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new));
+            Registry.register(Registry.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new));
     /**
      * 高速电梯轿厢实体类型单例（注册 ID {@code easyelevator:high_speed_cabin}）。
      *
@@ -127,7 +131,7 @@ public class Easyelevator implements ModInitializer {
      * 尺寸、追踪范围、渲染外观与普通轿厢完全一致，因此旧建筑与井道无需任何改动。</p>
      */
     public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new));
+            Registry.register(Registry.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new));
     /**
      * 观光电梯轿厢实体类型单例（注册 ID {@code easyelevator:observation_cabin}）。
      *
@@ -135,7 +139,7 @@ public class Easyelevator implements ModInitializer {
      * 用半透明玻璃材质绘制，保留四个角柱、地板与顶板。</p>
      */
     public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
+            Registry.register(Registry.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
     /**
      * 重载电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
      *
@@ -152,7 +156,7 @@ public class Easyelevator implements ModInitializer {
      * {@code PowerfulCabinEntity.heavyDuty()}。</p>
      */
     public static final EntityType<PowerfulCabinEntity> POWERFUL_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
+            Registry.register(Registry.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
     /**
      * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
      *
@@ -189,14 +193,14 @@ public class Easyelevator implements ModInitializer {
     /**
      * 注册一个音效事件。
      *
-     * <p>副作用：写入 {@link Registries#SOUND_EVENT} 注册表；音效的实际音频文件由
+     * <p>副作用：写入 {@link Registry#SOUND_EVENT} 注册表；音效的实际音频文件由
      * {@code assets/easyelevator/sounds.json} 按同一 ID 提供，两边 ID 必须保持一致。</p>
      *
      * @param name 音效注册路径（不含命名空间）
      * @return 已注册的音效事件，供实体在服务端播放
      */
     private static SoundEvent sound(String name) {
-        return Registry.register(Registries.SOUND_EVENT, id(name), SoundEvent.of(id(name)));
+        return Registry.register(Registry.SOUND_EVENT, id(name), new SoundEvent(id(name)));
     }
 
     /**
@@ -210,8 +214,8 @@ public class Easyelevator implements ModInitializer {
      * @param block 要注册的方块单例
      */
     private static void block(String name, Block block) {
-        Registry.register(Registries.BLOCK, id(name), block);
-        Registry.register(Registries.ITEM, id(name), new BlockItem(block, new Item.Settings()));
+        Registry.register(Registry.BLOCK, id(name), block);
+        Registry.register(Registry.ITEM, id(name), new BlockItem(block, new Item.Settings()));
     }
 
     /**
@@ -221,7 +225,8 @@ public class Easyelevator implements ModInitializer {
      * 货舱菜单类型都在那一刻注册），而入表动作必须发生在此方法内；网络通道最后注册，
      * 因为其 payload 类型会引用前面已注册的实体类型。</p>
      *
-     * <p>副作用：写入 BLOCK / ITEM / ITEM_GROUP 注册表，并注册 S2C 与 C2S 自定义数据包。
+     * <p>副作用：写入 BLOCK / ITEM 注册表（1.19.2 的物品栏分组不进注册表，直接进
+     * {@code ItemGroup.GROUPS} 数组），并注册 S2C 与 C2S 自定义数据包。
      * （ENTITY_TYPE / BLOCK_ENTITY_TYPE / SCREEN_HANDLER / SOUND_EVENT 都是静态字段自注册，
      * 不经过本方法。）</p>
      */
@@ -232,21 +237,37 @@ public class Easyelevator implements ModInitializer {
         // 兼容性 hack：楼层电梯门沿用旧的 call_button ID（现在显示为“电梯门”），
         // 使旧存档中的方块状态、旧物品堆以及旧配方/掉落表在升级后继续有效。
         block("call_button", LANDING_DOOR);
-        Registry.register(Registries.ITEM, id("cabin"), CABIN_ITEM);
-        Registry.register(Registries.ITEM, id("high_speed_cabin"), HIGH_SPEED_CABIN_ITEM);
-        Registry.register(Registries.ITEM, id("observation_cabin"), OBSERVATION_CABIN_ITEM);
-        Registry.register(Registries.ITEM, id("powerful_cabin"), POWERFUL_CABIN_ITEM);
-        // 自定义物品栏分组：图标固定用普通轿厢物品；entries 回调在分组内容被构建时执行，
+        Registry.register(Registry.ITEM, id("cabin"), CABIN_ITEM);
+        Registry.register(Registry.ITEM, id("high_speed_cabin"), HIGH_SPEED_CABIN_ITEM);
+        Registry.register(Registry.ITEM, id("observation_cabin"), OBSERVATION_CABIN_ITEM);
+        Registry.register(Registry.ITEM, id("powerful_cabin"), POWERFUL_CABIN_ITEM);
+        // 自定义物品栏分组：图标固定用普通轿厢物品；内容回调在分组被打开时执行，
         // 因此这里只放入“可被玩家直接获得”的物品（轨道、楼层门、四种轿厢），
         // 避免依赖注册顺序或每次打开物品栏都重建列表。
-        Registry.register(Registries.ITEM_GROUP, id("main"), FabricItemGroup.builder()
-                .displayName(Text.translatable("itemGroup.easyelevator"))
+        //
+        // 1.19.2 的 Fabric API 只提供 FabricItemGroupBuilder：它的 build() 直接创建 ItemGroup 并追加进
+        // ItemGroup.GROUPS，没有 1.20.1 的 ITEM_GROUP 注册表；显示名由构造时的 Identifier 推导为
+        // "itemGroup.<namespace>.<path>"，因此语言文件里的键是 itemGroup.easyelevator.main。
+        ITEM_GROUP = FabricItemGroupBuilder.create(id("main"))
                 .icon(() -> new ItemStack(CABIN_ITEM))
-                .entries((context, entries) -> {
-                    entries.add(RAIL); entries.add(LANDING_DOOR);
-                    entries.add(CABIN_ITEM); entries.add(HIGH_SPEED_CABIN_ITEM); entries.add(OBSERVATION_CABIN_ITEM); entries.add(POWERFUL_CABIN_ITEM);
-                }).build());
+                .appendItems(stacks -> {
+                    stacks.add(new ItemStack(RAIL));
+                    stacks.add(new ItemStack(LANDING_DOOR));
+                    stacks.add(new ItemStack(CABIN_ITEM));
+                    stacks.add(new ItemStack(HIGH_SPEED_CABIN_ITEM));
+                    stacks.add(new ItemStack(OBSERVATION_CABIN_ITEM));
+                    stacks.add(new ItemStack(POWERFUL_CABIN_ITEM));
+                }).build();
         // 网络注册必须晚于实体注册：payload 与处理逻辑会按实体 ID 查找已登记的轿厢。
         ElevatorNetworking.register();
     }
+
+    /**
+     * 本模组的自定义物品栏分组单例（1.19.2 专用）。
+     *
+     * <p>与 1.20.1 那套 {@code Registries.ITEM_GROUP} 注册不同，1.19.2 的
+     * {@link FabricItemGroupBuilder#build()} 已经把分组追加进 {@code ItemGroup.GROUPS}，
+     * 因此本字段只用来持有引用（方便其它代码取用），<b>不要</b>再手动注册一次，否则分组会重复出现。
+     */
+    public static ItemGroup ITEM_GROUP;
 }

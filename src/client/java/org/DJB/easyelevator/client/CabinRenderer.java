@@ -4,7 +4,6 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.Frustum;
-import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EntityRenderer;
@@ -12,7 +11,8 @@ import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.RotationAxis;
+import net.minecraft.util.math.Quaternion;
+import net.minecraft.util.math.Vec3f;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.entity.AbstractCabinEntity;
 import org.DJB.easyelevator.entity.PowerfulCabinEntity;
@@ -330,6 +330,20 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
     @Override public Identifier getTexture(T entity) { return TEXTURE; }
 
     /**
+     * 把"绕世界 Y 轴旋转若干度"变成 1.19.2 的矩阵操作。
+     *
+     * <p>1.19.2 还没有 1.19.3 起的 {@code RotationAxis.POSITIVE_Y.rotationDegrees(...)}，
+     * 对应写法是四元数构造器 {@code new Quaternion(Vec3f, float, boolean)}：绕给定轴、按<b>角度</b>旋转。
+     * 旋转方向与原版一致（右手系、Y 轴向上、逆时针为正）。
+     *
+     * @param degrees 绕 Y 轴的旋转角度（度，逆时针为正）
+     * @return 可直接交给 {@link MatrixStack#multiply(Quaternion)} 的旋转
+     */
+    private static Quaternion yawDegrees(float degrees) {
+        return new Quaternion(Vec3f.POSITIVE_Y, degrees, true);
+    }
+
+    /**
      * 视锥剔除：用"向后加宽一格"的包围盒判定，容纳背面的抱轨导靴（见 {@link #drawGuideShoes}）。
      *
      * <p>导靴为了夹住轨道必须伸出背板约 0.94 格，超出了实体注册尺寸的包围盒；默认剔除用的是
@@ -363,7 +377,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         // 因此碰撞箱、判定与服务端位置完全不受影响，这里只做外观平滑。
         matrices.translate(0, CabinMotion.renderY(cabin,delta) - net.minecraft.util.math.MathHelper.lerp(delta,cabin.lastRenderY,cabin.getY()), 0);
         // 把 +Z 面转到 FACING 指定的轿厢门方向（NORTH=+Z，EAST=+X，WEST=-X，SOUTH=+Z 默认 0 度）。
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(cabin.facing()) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
+        // 1.19.2 还没有 1.19.3 起的 RotationAxis 工具类，用"绕 Y 轴 + 角度"的四元数等价替代。
+        matrices.multiply(yawDegrees(switch(cabin.facing()) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
         // 正面 Z（格）与门板背面 Z（格），均取自 ElevatorParameters，保证与楼层门框的间隙一致。
         float front=(float)ElevatorParameters.CABIN_FRONT_Z;
         float doorBack=(float)ElevatorParameters.CABIN_DOOR_BACK_Z;
@@ -394,8 +409,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
         if(cabin instanceof PowerfulCabinEntity powerful) drawCargo(powerful,matrices,out,light);
         // 第 2 组（文字层）：面板上的楼层号（红色），与选站面板、楼层门框顶部显示的是同一个由服务端同步的楼层号；
         // 重载型号再多一行后壁铭牌上的限载人数。两次都是同一类文字层，之间不会发生层切换（见类注释）。
-        drawFloorDisplay(cabin,matrices,buffers);
-        if(heavyDuty) drawCapacityPlate(cabin,matrices,buffers);
+        drawFloorDisplay(cabin,matrices);
+        if(heavyDuty) drawCapacityPlate(cabin,matrices);
         // 第 3 组（玻璃 cutout 层，仅观光型号）：玻璃墙与玻璃门。必须是最后一组，返回前不再写任何顶点。
         if(cabin.glassWalls()) {
             drawObservationGlass(matrices,buffers,front,doorBack,light);
@@ -760,22 +775,21 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      *
      * @param cabin 轿厢（提供同步过来的楼层号与运行状态）
      * @param matrices 渲染矩阵栈（已包含轿厢朝向与位置）
-     * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
      */
-    private static void drawFloorDisplay(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers) {
+    private static void drawFloorDisplay(AbstractCabinEntity cabin,MatrixStack matrices) {
         int floor=cabin.floorNumber();
         if(floor==0) return; // 还没经过任何站点（或线路无效）：不显示，避免出现"0 层"（负数 = 地下 B1、B2…，要显示）
         // 两行都按"行心"定位（见 ARROW_LINE_CENTRE 的注释）：
         // 第一行运行方向箭头（▲ 上行 / ▼ 下行，闪烁），停靠时整行留空；第二行是当前到达层数
         // （FloorIndicator.format：基准层 1、其上 2,3…、其下 B1,B2…）。
         String arrow=StatusArrow.glyph(cabin.status());
-        if(!arrow.isEmpty()) drawPanelLine(matrices,buffers,Text.literal(arrow),ARROW_LINE_CENTRE,ARROW_SCALE);
+        if(!arrow.isEmpty()) drawPanelLine(matrices,Text.literal(arrow),ARROW_LINE_CENTRE,ARROW_SCALE);
 
         // 如果电梯超载，则在面板处显示“超载”，否则显示到达楼层
         Text numText = Text.literal(FloorIndicator.format(floor));
         if (cabin.phase() == ElevatorController.Phase.OVERLOAD)
             numText = Text.translatable("phase.easyelevator.overload");
-        drawPanelLine(matrices,buffers,numText,FLOOR_LINE_CENTRE,FLOOR_SCALE);
+        drawPanelLine(matrices,numText,FLOOR_LINE_CENTRE,FLOOR_SCALE);
     }
 
     /**
@@ -795,10 +809,10 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param matrices 渲染矩阵栈（已包含轿厢位置与朝向）
      * @param buffers 顶点缓冲提供者：直接用管线给的这一个，由管线统一 flush
      */
-    private static void drawCapacityPlate(AbstractCabinEntity cabin,MatrixStack matrices,VertexConsumerProvider buffers) {
+    private static void drawCapacityPlate(AbstractCabinEntity cabin,MatrixStack matrices) {
         int limit=cabin.passengerNumLimit();
         if(limit<=0) return; // 不限载的型号（普通 / 高速 / 观光）没有这块牌子，别把红字画在墙上
-        drawCabinLine(matrices,buffers,Text.translatable("text.easyelevator.capacity",limit),
+        drawCabinLine(matrices,Text.translatable("text.easyelevator.capacity",limit),
                 0,CAPACITY_PLATE_CENTRE_Y,CAPACITY_PLATE_FRONT_Z,0,0,CAPACITY_SCALE);
     }
 
@@ -816,8 +830,8 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param lineCentre 行心所在的高度（格，相对显示窗中心，正 = 向上）
      * @param scale 这一行的字号（格/像素）
      */
-    private static void drawPanelLine(MatrixStack matrices,VertexConsumerProvider buffers,Text text,float lineCentre,float scale) {
-        drawCabinLine(matrices,buffers,text,1.243f,1.5f,.55f,-90,lineCentre,scale); // 显示窗中心，再沿 -X 让开 0.003 格
+    private static void drawPanelLine(MatrixStack matrices,Text text,float lineCentre,float scale) {
+        drawCabinLine(matrices,text,1.243f,1.5f,.55f,-90,lineCentre,scale); // 显示窗中心，再沿 -X 让开 0.003 格
     }
 
     /**
@@ -839,21 +853,22 @@ public class CabinRenderer<T extends AbstractCabinEntity> extends EntityRenderer
      * @param x 板面中心 X（轿厢局部坐标，格）
      * @param y 板面中心 Y（格）
      * @param z 文字所在的 Z（格）：比板面略靠轿厢内一步，避免与板面共面闪烁
-     * @param yawDegrees 文字正面的偏航角（0 = 朝 +Z；右侧壁面板为 -90 = 朝 -X）
+     * @param yaw 文字正面的偏航角（0 = 朝 +Z；右侧壁面板为 -90 = 朝 -X）
      * @param lineCentre 行心相对板面中心的竖直偏移（格，正 = 向上）
      * @param scale 这一行的字号（格/像素）
      */
-    private static void drawCabinLine(MatrixStack matrices,VertexConsumerProvider buffers,Text text,
-                                      float x,float y,float z,float yawDegrees,float lineCentre,float scale) {
+    private static void drawCabinLine(MatrixStack matrices,Text text,
+                                      float x,float y,float z,float yaw,float lineCentre,float scale) {
         TextRenderer textRenderer=MinecraftClient.getInstance().textRenderer;
         float yOffset=-(lineCentre+textRenderer.fontHeight*scale/2f)/scale;
         matrices.push();
         // 实体渲染器传进来的矩阵已经平移到实体位置，因此这里全部用轿厢局部坐标。
         matrices.translate(x,y,z);
-        if(yawDegrees!=0) matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(yawDegrees)); // 正面（局部 +Z）转到板面朝向
+        if(yaw!=0) matrices.multiply(yawDegrees(yaw)); // 正面（局部 +Z）转到板面朝向
         matrices.scale(scale,-scale,scale); // Y 取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒
-        textRenderer.draw(text,-textRenderer.getWidth(text)/2f,yOffset,FLOOR_COLOR,true,
-                matrices.peek().getPositionMatrix(),buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+        // 1.19.2 用"MatrixStack + 文本"的文字重载：收 Matrix4f + VertexConsumerProvider 的那个重载
+        // 在本版本上会与泛型重载打架（编译期报"找不到合适的方法"），因此这里走同样的绘制但不指定图层。
+        textRenderer.draw(matrices,text,-textRenderer.getWidth(text)/2f,yOffset,FLOOR_COLOR);
         matrices.pop();
     }
 }

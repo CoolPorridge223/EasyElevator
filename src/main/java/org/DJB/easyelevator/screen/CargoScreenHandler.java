@@ -191,7 +191,7 @@ public class CargoScreenHandler extends ScreenHandler {
      * @param index 被 Shift 点击的槽位序号
      * @return 原版约定：被移动的那一堆（未移动时返回 {@link ItemStack#EMPTY}）
      */
-    @Override public ItemStack quickMove(PlayerEntity player, int index) {
+    @Override public ItemStack transferSlot(PlayerEntity player, int index) {
         if (!canUse(player) || index < 0 || index >= slots.size()) return ItemStack.EMPTY;
         Slot slot = slots.get(index);
         if (!slot.hasStack()) return ItemStack.EMPTY;

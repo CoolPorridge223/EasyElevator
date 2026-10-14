@@ -58,7 +58,7 @@ public class ElevatorRailBlock extends HorizontalFacingBlock {
             BlockState adjacent = ctx.getWorld().getBlockState(ctx.getBlockPos().offset(d));
             if (adjacent.isOf(this)) return getDefaultState().with(FACING, adjacent.get(FACING));
         }
-        return getDefaultState().with(FACING, ctx.getHorizontalPlayerFacing().getOpposite());
+        return getDefaultState().with(FACING, ctx.getPlayerFacing().getOpposite());
     }
 
     /**

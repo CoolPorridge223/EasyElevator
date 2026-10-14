@@ -4,7 +4,6 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.block.entity.BlockEntityRenderer;
@@ -14,7 +13,8 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.RotationAxis;
+import net.minecraft.util.math.Quaternion;
+import net.minecraft.util.math.Vec3f;
 import org.DJB.easyelevator.Easyelevator;
 import org.DJB.easyelevator.block.LandingDoorBlock;
 import org.DJB.easyelevator.block.LandingDoorBlockEntity;
@@ -22,7 +22,6 @@ import org.DJB.easyelevator.block.LandingDoorGeometry;
 import org.DJB.easyelevator.logic.ElevatorStatus;
 import org.DJB.easyelevator.logic.FloorIndicator;
 import org.DJB.easyelevator.logic.LeafUv;
-import org.joml.Matrix4f;
 
 /**
  * 楼层门渲染器：按连续进度把两扇门扇画出来，并在门框顶部显示轿厢当前楼层。
@@ -179,16 +178,19 @@ public class LandingDoorRenderer implements BlockEntityRenderer<LandingDoorBlock
         matrices.push();
         // 高度取显示屏中线：字体坐标的 y 是这一行的**顶边**，所以再下移半个字高，两行才会被屏幕装住。
         matrices.translate(.5+facing.getOffsetX()*offset,SCREEN_CENTRE_Y,.5+facing.getOffsetZ()*offset);
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(switch(facing) {case NORTH->180;case EAST->90;case WEST->-90;default->0;}));
+        // 1.19.2 没有 RotationAxis 工具类（1.19.3 才引入），用"绕 Y 轴 + 角度"的四元数等价替代。
+        matrices.multiply(new Quaternion(Vec3f.POSITIVE_Y,
+                switch(facing) {case NORTH->180f;case EAST->90f;case WEST->-90f;default->0f;}, true));
         // Y 轴取负：字体内部坐标是 Y 向下，与告示牌一致；不取负文字会上下颠倒。
         matrices.scale(FLOOR_SCALE,-FLOOR_SCALE,FLOOR_SCALE);
-        Matrix4f matrix=matrices.peek().getPositionMatrix();
         float textY=-textRenderer.fontHeight/2f; // 行心 → 顶边（见上）
-        // 最高亮度：井道或走廊再暗也能看清红字。POLYGON_OFFSET 与原版告示牌一致，避免与屏幕面片闪烁。
+        // 最高亮度：井道或走廊再暗也能看清红字。
+        // 1.19.2 用"MatrixStack + 字符串"的文字重载（收 Matrix4f 的版本在这个版本上会与泛型重载打架），
+        // 画法与原版告示牌一致；不写图层偏移参数，等价于默认的普通文字层。
         // 只在"正在运行 + 闪烁的亮相"画箭头；灭相与停靠都不画，位置由上面的 statusWidth 固定住。
         if(!arrowText.getString().isEmpty())
-            textRenderer.draw(arrowText,start,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        textRenderer.draw(floorText,start+statusWidth+STATUS_GAP,textY,FLOOR_COLOR,true,matrix,buffers,TextRenderer.TextLayerType.POLYGON_OFFSET,0,LightmapTextureManager.MAX_LIGHT_COORDINATE);
+            textRenderer.draw(matrices,arrowText.getString(),start,textY,FLOOR_COLOR);
+        textRenderer.draw(matrices,floorText.getString(),start+statusWidth+STATUS_GAP,textY,FLOOR_COLOR);
         matrices.pop();
     }
 

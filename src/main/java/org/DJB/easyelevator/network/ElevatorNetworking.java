@@ -545,7 +545,7 @@ public final class ElevatorNetworking {
             var player=context.player();
             // 旁观者或已死亡玩家不应能操作轿厢；这里再挡一次，避免只靠客户端 ui 状态。
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.getServerWorld().getEntityById(payload.entityId());
+            var entity=serverWorld(player).getEntityById(payload.entityId());
             // Never trust a client-provided cabin, station index, distance or line identifier.
             // 客户端可伪造任意实体 id：必须确认它在本玩家世界内、确实是轿厢、且本玩家是车上乘客。
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
@@ -561,7 +561,7 @@ public final class ElevatorNetworking {
         Packets.onServer(DoorCommand.ID,DoorCommand.CODEC,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.getServerWorld().getEntityById(payload.entityId());
+            var entity=serverWorld(player).getEntityById(payload.entityId());
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             if (cabin.doorCommand(payload.open())) open(player,cabin); // 成功后刷一次面板：计划可能已经变了
             else player.sendMessage(Text.translatable(payload.open()
@@ -572,7 +572,7 @@ public final class ElevatorNetworking {
         Packets.onServer(HallCallButton.ID,HallCallButton.CODEC,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.getServerWorld();
+            var world=serverWorld(player);
             BlockPos origin=payload.station();
             if (!world.isChunkLoaded(origin)) return;
             BlockState state=world.getBlockState(origin);
@@ -593,7 +593,7 @@ public final class ElevatorNetworking {
         Packets.onServer(DoorSoundCommand.ID,DoorSoundCommand.CODEC,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.getServerWorld();
+            var world=serverWorld(player);
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
             if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
@@ -611,7 +611,7 @@ public final class ElevatorNetworking {
         Packets.onServer(SetBaseFloor.ID,SetBaseFloor.CODEC,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            LandingDoorBlock.setFloorBase(player.getServerWorld(),payload.station(),player,payload.on());
+            LandingDoorBlock.setFloorBase(serverWorld(player),payload.station(),player,payload.on());
         }));
         // 自定义到站音效上传：客户端携带的字节视为不可信输入——重新校验玩家、整扇门、ogg 魔数与大小上限，
         // 通过后才写入权威副本目录。落盘失败只回一条提示（音效是表现层，不该把服务端刻带崩）。
@@ -620,7 +620,7 @@ public final class ElevatorNetworking {
             if (player.isSpectator() || !player.isAlive()) return;
             byte[] bytes=payload.bytes();
             if (bytes.length==0 || bytes.length>MAX_AUDIO_BYTES) { player.sendMessage(Text.translatable("message.easyelevator.door_sound_upload_failed"),true); return; }
-            var world=player.getServerWorld();
+            var world=serverWorld(player);
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
             if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
@@ -784,12 +784,23 @@ public final class ElevatorNetworking {
      * @param preview 本次要提示的试听状态（打开面板时恒为 {@link OpenDoorPanel#PREVIEW_NONE}）
      */
     public static void sendDoorPanel(ServerPlayerEntity player,BlockPos origin,int preview) {
-        // 1.20.1 的 ServerPlayerEntity#getServerWorld() 直接返回 ServerWorld；
+        // 1.19.2 的 ServerPlayerEntity#getWorld() 返回的就是 ServerWorld（1.20.1 起改名为
+        // getServerWorld()），因此统一走下面的 serverWorld(player) 取服务端世界。
         // 这里不能写成 instanceof 模式匹配——在 Java 17 里"模式类型 = 表达式类型"是编译错误。
-        ServerWorld server = player.getServerWorld();
+        ServerWorld server = serverWorld(player);
         OpenDoorPanel payload=doorPanel(server,origin,preview,true);
         if (payload!=null) Packets.sendServer(player,payload);
     }
+    /**
+     * 取玩家所在的<b>服务端</b>世界。
+     *
+     * <p>1.19.2 的 {@code ServerPlayerEntity#getWorld()} 已经是 {@link ServerWorld}（1.20.1 才改名成
+     * {@code getServerWorld()}），因此这里只是一层名字适配：调用点统一用它，将来升级版本只需要改这一处。
+     *
+     * @param player 服务端玩家
+     * @return 玩家所在的 {@link ServerWorld}
+     */
+    private static ServerWorld serverWorld(ServerPlayerEntity player) { return player.getWorld(); }
     /**
      * 构造某扇门的设置面板快照（打开面板与"改动后刷新"两条路径的唯一来源）。
      *

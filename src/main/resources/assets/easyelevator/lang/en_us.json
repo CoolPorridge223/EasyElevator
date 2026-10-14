@@ -6,7 +6,7 @@
   "screen.easyelevator.cargo_rule": "27 slots. Each started batch of 128 items replaces one passenger; each 288 items adds a crate. Counts individual items, excluding nested contents. Doors stay open while loading. Close this screen to resume service.",
   "message.easyelevator.cargo_stopped": "The current condition makes it impossible to load the cargo.",
   "message.easyelevator.cargo_space": "Move passengers or animals away from the rear cargo area before loading more.",
-  "itemGroup.easyelevator": "Easy Elevator",
+  "itemGroup.easyelevator.main": "Easy Elevator",
   "block.easyelevator.elevator_rail": "Elevator Rail",
   "block.easyelevator.call_button": "Landing Door",
   "item.easyelevator.cabin": "Elevator Cabin",

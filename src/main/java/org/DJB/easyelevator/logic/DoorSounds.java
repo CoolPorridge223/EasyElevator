@@ -120,7 +120,7 @@ public final class DoorSounds {
      * @param slot 门槽号
      * @return 该槽位的到站音效事件（见 {@link #soundId}）
      */
-    public static SoundEvent slotEvent(int slot) { return SoundEvent.of(soundId(slot)); }
+    public static SoundEvent slotEvent(int slot) { return new SoundEvent(soundId(slot)); }
 
     /**
      * 某个槽位的音频文件名主干（不含目录与扩展名）。
@@ -176,7 +176,7 @@ public final class DoorSounds {
         int index = choice - PRESET_BASE;
         if (index >= 0 && index < ARRIVAL_PRESETS.length) {
             Identifier id = Identifier.tryParse(ARRIVAL_PRESETS[index]);
-            if (id != null) return SoundEvent.of(id); // of() 不写注册表，纯 ID 包装；客户端按 ID 查已加载音效
+            if (id != null) return new SoundEvent(id); // 构造器不写注册表，纯 ID 包装（1.20.1 的 SoundEvent.of 就是它）；客户端按 ID 查已加载音效
         }
         return Easyelevator.ARRIVAL;
     }

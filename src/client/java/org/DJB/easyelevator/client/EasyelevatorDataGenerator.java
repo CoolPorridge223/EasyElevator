@@ -11,11 +11,14 @@ public class EasyelevatorDataGenerator implements DataGeneratorEntrypoint {
 
     /** 初始化数据生成器。
      * @param fabricDataGenerator Fabric 提供的数据生成器
-     * 副作用：创建（当前为空的）数据包 Pack。注意：这里没有注册任何 FabricDataProvider，
-     * 因此现阶段运行数据生成不会产出任何文件，入口先保留以便后续新增 provider。
+     * 副作用：无。注意：这里没有注册任何 FabricDataProvider，因此现阶段运行数据生成不会产出任何文件；
+     * 入口先保留以便后续新增 provider。
+     *
+     * <p>1.19.2 的 Fabric API 还没有 1.20 起的 {@code Pack} 概念（{@code fabricDataGenerator.createPack()}），
+     * provider 直接在 {@code onInitializeDataGenerator} 里用 {@code addProvider(...)} 登记即可，
+     * 因此本方法目前是空的。
      */
     @Override
     public void onInitializeDataGenerator(FabricDataGenerator fabricDataGenerator) {
-        FabricDataGenerator.Pack pack = fabricDataGenerator.createPack();
     }
 }

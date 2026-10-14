@@ -64,8 +64,14 @@ public final class DoorSoundPack {
     private static final String SLOT_DIR = "arrival";
     /** 单个音频文件的大小上限（字节），与网络层、持久层三处保持一致。 */
     public static final int MAX_AUDIO_BYTES = 512 * 1024;
-    /** 本包使用的资源包格式版本；与 1.21.1 的资源包格式一致，写低了原版会警告"过时包"。 */
-    private static final int PACK_FORMAT = 34;
+    /**
+     * 本包使用的资源包格式版本。
+     *
+     * <p>1.19.2 的资源包格式是 9（1.19.3 起才跳到 12，1.21.1 是 34）。写小了原版会提示"过时包"，
+     * 写大了会被判为不兼容而<b>拒绝启用</b>——那样自定义到站音效就永远静音，因此这个数字必须
+     * 跟着游戏版本走，跨线合并时最容易漏。
+     */
+    private static final int PACK_FORMAT = 9;
     /** {@link #checkGameDirAssumption} 的一次性标记：同一条警告不重复刷屏。 */
     private static boolean gameDirWarned;
 
@@ -234,20 +240,23 @@ public final class DoorSoundPack {
             if (alreadyEnabled(manager)) return false; // 已经启用（上一次会话记住的选择）
             // 还没启用：按扫描出来的真实 profile id 启用。原版目录包的 id 前缀是实现细节，
             // 所以先从扫描结果里认出本包，认不出再退回两种约定写法。
+            //
+            // 1.19.2 的 ResourcePackManager 没有单个 enable(String)：它只有整表替换的
+            // setEnabledProfiles(Collection)，因此这里自己拼一份"原有列表 + 本包"。
             String id = profileId(manager);
             if (id == null) {
-                manager.enable("file/" + PACK_DIR_NAME);
-                if (!alreadyEnabled(manager)) manager.enable(PACK_DIR_NAME);
-            } else {
-                manager.enable(id);
+                id = manager.hasProfile("file/" + PACK_DIR_NAME) ? "file/" + PACK_DIR_NAME : PACK_DIR_NAME;
             }
+            java.util.List<String> enabled = new java.util.ArrayList<>(manager.getEnabledNames());
+            if (!enabled.contains(id)) enabled.add(id);
+            manager.setEnabledProfiles(enabled);
             if (!alreadyEnabled(manager)) {
                 // 启用失败（包格式被判为不兼容、目录被别的东西占名）：记一条日志并返回，
                 // 不抛异常——玩家仍能用预设音效，只是听不到自定义文件。
                 LOGGER.warn("Found the elevator sound pack but could not enable it; custom arrival audio stays silent.");
                 return false;
             }
-            persistEnabled(client);
+            persistEnabled(client, id);
             LOGGER.info("Enabled the elevator arrival-sound resource pack; reloading resources once.");
             return true;
         } catch (RuntimeException e) {
@@ -259,17 +268,21 @@ public final class DoorSoundPack {
     /**
      * 把"启用了哪些资源包"写进 {@code options.txt}，让这次启用跨启动保留。
      *
-     * <p>两步都不能少：{@code refreshResourcePacks} 把资源包管理器的启用列表同步到
-     * {@code GameOptions.resourcePacks}（{@code manager.enable()} 只改管理器自己的内存列表，
-     * 选项对象并不知道），{@code write()} 再把它落盘。少了前者，写出去的文件里仍然是旧列表。
+     * <p>1.19.2 的 {@code GameOptions} 没有 {@code refreshResourcePacks(...)}：资源包管理器的启用列表与
+     * {@code GameOptions.resourcePacks} 是两份独立数据，原版只在"玩家在资源包界面点完成"时同步。
+     * 因此这里自己把 profile id 追加进 {@code options.resourcePacks}（原版 {@code options.txt} 里
+     * {@code resourcePacks:} 一行存的就是这份列表）再 {@code write()} 落盘。少了这一步，
+     * 下次启动 {@code scanPacks()} 会发现本包并未启用，于是又"新启用一次"、又重载一次资源——
+     * 表现就是每次进存档都闪一遍红色 Mojang 加载画面。
      *
      * <p>失败只记日志：写不进去的后果仅仅是下次启动再启用一次（多一次重载），不影响音效可用性。
      *
      * @param client 客户端实例
+     * @param id 本次启用的资源包 profile id
      */
-    private static void persistEnabled(MinecraftClient client) {
+    private static void persistEnabled(MinecraftClient client, String id) {
         try {
-            client.options.refreshResourcePacks(client.getResourcePackManager());
+            if (!client.options.resourcePacks.contains(id)) client.options.resourcePacks.add(id);
             client.options.write();
         } catch (RuntimeException e) {
             LOGGER.warn("Could not persist the enabled resource pack list", e);

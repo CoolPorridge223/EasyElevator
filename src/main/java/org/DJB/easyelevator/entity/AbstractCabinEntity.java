@@ -11,7 +11,8 @@ import net.minecraft.item.Item;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.text.Text;
@@ -681,7 +682,7 @@ public abstract class AbstractCabinEntity extends Entity {
         double z = getZ()+MathHelper.clamp(Double.isFinite(offset.z) ? offset.z : 0,-margin,margin);
         if (p instanceof ServerPlayerEntity sp && sp.networkHandler != null)
             sp.networkHandler.requestTeleport(x, y, z, 0, 0,
-                    java.util.EnumSet.of(PositionFlag.X_ROT, PositionFlag.Y_ROT)); // 相对旋转增量为零，保留视角
+                    java.util.EnumSet.of(PlayerPositionLookS2CPacket.Flag.X_ROT, PlayerPositionLookS2CPacket.Flag.Y_ROT)); // 相对旋转增量为零，保留视角
         else p.setPosition(x, y, z);
         p.fallDistance = 0; // 清零下落距离：掉队期间累积的下落高度不能在归位瞬间结算成摔落伤害
         p.setVelocity(p.getVelocity().multiply(1, 0, 1)); // 抹掉纵向速度，避免归位后仍带着下落速度
@@ -779,6 +780,21 @@ public abstract class AbstractCabinEntity extends Entity {
     /** @return 恒为 true：轿厢可被准星选中，否则无法右键打开选站面板 */
     @Override
     public boolean canHit() { return true; }
+
+    /**
+     * 生成实体时下发的生成包（1.19.2 的 {@link Entity} 把这一项声明为抽象方法）。
+     *
+     * <p>1.20.1 起原版改用"生成数据（spawn data）"自动组包，这个方法随之消失；本线保留它只为满足
+     * 1.19.2 的抽象契约。用原版最普通的 {@link EntitySpawnS2CPacket}：位置、朝向、实体类型与数据跟踪项
+     * 都在包内，四个型号共用同一份实现（差别只有注册类型本身），因此不需要按子类覆写。
+     *
+     * <p>注意它<b>不是</b>运动同步路径：轿厢的绝对 double 高度走自有的 {@code motion_frame} 包，
+     * 原版生成包只在实体首次进入客户端视野时用一次。
+     *
+     * @return 携带本实体当前状态的原版生成包
+     */
+    @Override
+    public net.minecraft.network.Packet<?> createSpawnPacket() { return new EntitySpawnS2CPacket(this); }
 
     /** @return 恒为 false：空心外壳碰撞由 EntityViewMixin 注入 {@link #collisionBoxes()}，实心包围盒会把乘客挡在轿厢外 */
     @Override
