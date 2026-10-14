@@ -1,5 +1,9 @@
 plugins {
-    id 'fabric-loom' version '1.11.8'
+    // 1.21.11 是最后一个混淆版本：仍用 remap 版 Loom（插件 ID 的遗留别名 fabric-loom）。
+    // 1.11.8 起不来：它无法处理 1.21.11 的 Fabric API javadoc（javadoc 必须带 intermediary 命名空间），
+    // 按 Fabric 的 1.21.11 公告（https://fabricmc.net/2025/12/05/12111.html）改用 Loom 1.14 线；
+    // Loom 1.14 要求 Gradle >= 9.2，故下面的 wrapper 也一并升到 9.6.0。
+    id 'fabric-loom' version '1.14.10'
     id 'maven-publish'
 }
 
@@ -96,10 +100,10 @@ tasks.withType(AbstractArchiveTask).configureEach {
 }
 
 tasks.named('wrapper') {
-    gradleVersion = '8.14.3'
+    gradleVersion = '9.6.0'
     distributionType = Wrapper.DistributionType.BIN
     networkTimeout = 120000
-    distributionSha256Sum = 'bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531'
+    distributionSha256Sum = 'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01'
 }
 
 // Allowlisted portable project: no local paths, caches, credentials, test worlds or downloaded tools.
