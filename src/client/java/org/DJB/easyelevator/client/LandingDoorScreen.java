@@ -133,8 +133,13 @@ public class LandingDoorScreen extends Screen {
     private final class SquareButton extends ButtonWidget {
         /** 该键"点亮/变红"的判据：方向键读服务端推送的状态，关闭键恒为 false。 */
         private final java.util.function.BooleanSupplier pending;
-        /** 键盘朗读与悬停提示用的文本（"上行呼叫 / 下行呼叫 / 关闭"）。 */
-        private final Text narration;
+        /**
+         * 键盘朗读与悬停提示用的文本（"上行呼叫 / 下行呼叫 / 关闭"）。
+         *
+         * <p>写全限定名是必须的：{@code ButtonWidget} 自带的嵌套类型 {@code ButtonWidget.Text}
+         * 会在子类里遮蔽 {@code import net.minecraft.text.Text}。
+         */
+        private final net.minecraft.text.Text narration;
 
         /**
          * @param x 按钮左上角 X（像素）
@@ -144,8 +149,9 @@ public class LandingDoorScreen extends Screen {
          * @param tooltip 悬停提示（"上行呼叫 / 下行呼叫 / 关闭"）
          * @param onPress 点击回调：方向键发 HallCallButton，关闭键关闭界面
          */
-        SquareButton(int x,int y,String glyph,java.util.function.BooleanSupplier pending,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(glyph),onPress,DEFAULT_NARRATION_SUPPLIER);
+        SquareButton(int x,int y,String glyph,java.util.function.BooleanSupplier pending,
+                net.minecraft.text.Text tooltip,PressAction onPress) {
+            super(x,y,BUTTON,BUTTON,net.minecraft.text.Text.literal(glyph),onPress,DEFAULT_NARRATION_SUPPLIER);
             this.pending=pending; this.narration=tooltip;
             setTooltip(Tooltip.of(tooltip));
         }
@@ -153,13 +159,16 @@ public class LandingDoorScreen extends Screen {
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>1.21.11 起 {@code PressableWidget#renderWidget} 是 final（内部只做"画按钮 + 设光标"），
+         * 自绘外观改由抽象方法 {@code drawIcon} 承担；父类每帧都会调用它，观感与旧版一致。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void drawIcon(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=pending.getAsBoolean();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面；配色与选站面板的楼层键同源。

@@ -9,19 +9,22 @@
           "name": "easyelevator:call_button"
         }
       ],
-      "conditions": [
-        {
-          "condition": "minecraft:survives_explosion"
-        },
-        {
-          "condition": "minecraft:block_state_property",
-          "block": "easyelevator:call_button",
-          "properties": {
-            "column": "1",
-            "level": "0"
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:survives_explosion"
+          },
+          {
+            "type": "minecraft:match_block",
+            "blocks": "easyelevator:call_button",
+            "state": {
+              "column": "1",
+              "level": "0"
+            }
           }
-        }
-      ]
+        ]
+      }
     }
   ]
 }

@@ -70,9 +70,11 @@ public class Easyelevator implements ModInitializer {
             Registries.SCREEN_HANDLER, id("cargo"),
             new ScreenHandlerType<>(CargoScreenHandler::new, FeatureFlags.VANILLA_FEATURES));
     /** 电梯轨道方块单例：垂直放置的一列连续轨道，朝向即轿厢所在方向。 */
-    public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque());
+    public static final Block RAIL = new ElevatorRailBlock(AbstractBlock.Settings.create()
+            .registryKey(blockKey("elevator_rail")).strength(3.0f).nonOpaque());
     /** 楼层电梯门方块单例：唯一根方块（COLUMN=1, LEVEL=0）是站点与控制器，注册 ID 复用旧的 call_button。 */
-    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create().strength(3.0f).nonOpaque().dynamicBounds());
+    public static final Block LANDING_DOOR = new LandingDoorBlock(AbstractBlock.Settings.create()
+            .registryKey(blockKey("call_button")).strength(3.0f).nonOpaque().dynamicBounds());
     /**
      * 楼层电梯门的方块实体类型单例（注册 ID {@code easyelevator:landing_door}）。
      *
@@ -160,13 +162,17 @@ public class Easyelevator implements ModInitializer {
      * 实体类型用 Supplier 延迟读取，避免与上方静态字段的初始化顺序耦合。
      * 重载轿厢的物品还多一条 Tooltip 提示（怎么打开货舱），见 {@code CabinItem.appendTooltip}。</p>
      */
-    public static final Item CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> CABIN);
+    public static final Item CABIN_ITEM = new CabinItem(new Item.Settings()
+            .registryKey(itemKey("cabin")).maxCount(1), () -> CABIN);
     /** 高速轿厢生成物品单例：右键轨道生成高速轿厢（外观与普通一致，速度 2.5 倍）。 */
-    public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> HIGH_SPEED_CABIN);
+    public static final Item HIGH_SPEED_CABIN_ITEM = new CabinItem(new Item.Settings()
+            .registryKey(itemKey("high_speed_cabin")).maxCount(1), () -> HIGH_SPEED_CABIN);
     /** 观光轿厢生成物品单例：右键轨道生成观光轿厢（四面玻璃，性能与普通一致）。 */
-    public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> OBSERVATION_CABIN);
+    public static final Item OBSERVATION_CABIN_ITEM = new CabinItem(new Item.Settings()
+            .registryKey(itemKey("observation_cabin")).maxCount(1), () -> OBSERVATION_CABIN);
     /** 重载轿厢生成物品单例：右键轨道生成重载轿厢（速度 2/3、27 格货舱、限载随货量变化） */
-    public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Settings().maxCount(1), () -> POWERFUL_CABIN);
+    public static final Item POWERFUL_CABIN_ITEM = new CabinItem(new Item.Settings()
+            .registryKey(itemKey("powerful_cabin")).maxCount(1), () -> POWERFUL_CABIN);
     /** 运行音效单例：轿厢移动时播放，音量 RUNNING_VOLUME = 0.6f。 */
     public static final SoundEvent RUNNING = sound("elevator_running");
     /**
@@ -185,6 +191,29 @@ public class Easyelevator implements ModInitializer {
      * @return {@code easyelevator:<path>} 形式的标识符
      */
     public static Identifier id(String path) { return Identifier.of(MOD_ID, path); }
+
+    /**
+     * 构造方块的注册键。
+     *
+     * <p><b>为什么方块与物品必须自己带键</b>：1.21 之后原版在构造期就会用注册键去解析掉落表、
+     * 翻译键与模型 ID，没带键会直接抛 {@code Block id not set} / {@code Item id not set}，
+     * 而这是<b>类加载期</b>的异常——表现为"模组一进游戏就崩在静态初始化"。
+     * 键的路径必须与 {@link #block} 里 {@code Registry.register} 用的 ID 完全一致
+     * （楼层门的方块键因此是旧的 {@code call_button}，不是 {@code landing_door}）。
+     *
+     * @param path 方块的注册路径（不含命名空间）
+     * @return {@link Registries#BLOCK} 下对应的注册键
+     */
+    public static RegistryKey<Block> blockKey(String path) { return RegistryKey.of(RegistryKeys.BLOCK, id(path)); }
+
+    /**
+     * 构造物品的注册键；语义与 {@link #blockKey} 完全相同（缺键会在类加载期抛 {@code Item id not set}），
+     * 同时它也是原版解析物品模型定义（{@code assets/<命名空间>/items/<路径>.json}）的依据。
+     *
+     * @param path 物品的注册路径（不含命名空间）
+     * @return {@link Registries#ITEM} 下对应的注册键
+     */
+    public static RegistryKey<Item> itemKey(String path) { return RegistryKey.of(RegistryKeys.ITEM, id(path)); }
 
     /**
      * 注册一个音效事件。
@@ -206,12 +235,15 @@ public class Easyelevator implements ModInitializer {
      * 二者共用一个 ID，缺任意一半都会导致方块存在但无法被玩家获得（或反之）。
      * 物品栏可见性由 {@code assets/easyelevator/lang} 中以该 ID 派生的翻译键决定。</p>
      *
+     * <p>方块物品同样必须带上自己的注册键（见 {@link #blockKey}）：1.21 之后 {@code Item.Settings}
+     * 会从键推出模型 ID 与翻译键，缺键会在构造期抛 {@code Item id not set}。</p>
+     *
      * @param name 方块与物品共用的注册路径（不含命名空间）
      * @param block 要注册的方块单例
      */
     private static void block(String name, Block block) {
         Registry.register(Registries.BLOCK, id(name), block);
-        Registry.register(Registries.ITEM, id(name), new BlockItem(block, new Item.Settings()));
+        Registry.register(Registries.ITEM, id(name), new BlockItem(block, new Item.Settings().registryKey(itemKey(name))));
     }
 
     /**

@@ -1,6 +1,7 @@
 package org.DJB.easyelevator.client;
 
 import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.RenderLayers;
 import net.minecraft.util.Identifier;
 
 /**
@@ -16,6 +17,6 @@ public final class GlassLayers {
 
     public static final Identifier CABIN_TEXTURE=Identifier.ofVanilla("textures/block/glass.png");
     public static final Identifier DOOR_TEXTURE=CABIN_TEXTURE;
-    public static final RenderLayer CABIN=RenderLayer.getEntityCutout(CABIN_TEXTURE);
+    public static final RenderLayer CABIN=RenderLayers.entityCutout(CABIN_TEXTURE);
     public static final RenderLayer DOOR=CABIN;
 }

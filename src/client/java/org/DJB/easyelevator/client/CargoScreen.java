@@ -59,7 +59,9 @@ public class CargoScreen extends HandledScreen<CargoScreenHandler> {
      */
     @Override protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
         context.fill(x, y, x + backgroundWidth, y + backgroundHeight, PANEL_COLOR);
-        context.drawBorder(x, y, backgroundWidth, backgroundHeight, BORDER_COLOR);
+        // 1.21.11 删掉了 DrawContext#drawBorder；drawStrokedRectangle(x,y,w,h,color) 就是它的继任者
+        // （同样是"沿矩形内侧画 1 像素四边"：上/下两条满宽，左/右两条让开上下各 1 像素）。
+        context.drawStrokedRectangle(x, y, backgroundWidth, backgroundHeight, BORDER_COLOR);
         context.fill(x + 1, y + 1, x + 175, y + 46, BAR_COLOR);
         for (var slot : handler.slots) {
             context.fill(x + slot.x - 1, y + slot.y - 1, x + slot.x + 17, y + slot.y + 17, BORDER_COLOR);

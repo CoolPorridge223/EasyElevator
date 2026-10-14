@@ -73,7 +73,8 @@ import java.util.UUID;
  *   <li>门未完全关闭（DOOR 未降到 0）不得移动；楼层门联锁由 {@link LandingDoorBlock#refresh}
  *       依据本实体 Y（误差 &lt;= {@link ElevatorParameters#POSITION_EPSILON} 格）与门进度决定。</li>
  *   <li>位置用绝对 double，经 {@code MotionFrame} 包同步，绕过原版相对位置包的定点量化。</li>
- *   <li>碰撞体不是实体包围盒：{@link #isCollidable()} 返回 false，空心外壳由 EntityViewMixin 注入
+ *   <li>碰撞体不是实体包围盒：原版"其它实体能否与本实体碰撞"（1.21 之后是 {@code Entity#isCollidable(Entity)}）
+ *       默认就返回 false，本类不再覆写；空心外壳由 EntityViewMixin 注入
  *       {@link #collisionBoxes()}，否则实心包围盒会把乘客挡在轿厢外。</li>
  *   <li>BLOCKED 表示受阻暂停（断轨、朝向不一致、井道有方块或实体障碍、区块未加载、目的站门被拆），
  *       不是失败；条件恢复后继续原行程。</li>

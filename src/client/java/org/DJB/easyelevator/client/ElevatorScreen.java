@@ -240,7 +240,7 @@ public class ElevatorScreen extends Screen {
      * <b>开门键的判据与服务端共用 {@link ElevatorController#canOpenDoor}</b>，因此按钮亮着点了就一定会被受理：
      * <ul>
      *   <li>正常停靠（停在某一层）时可用——已经全开时按下只是续满停留时间，相当于按住开门键；</li>
-     *   <li>故障脱困（{@link ElevatorStatus#faulted}，例如断轨或被卡在两层之间）时也可用，
+     *   <li>故障脱困 ，例如断轨或被卡在两层之间）时也可用，
      *       让被困的乘客能自己开门走出来；</li>
      *   <li>本线路一扇完整的门都没有（{@code stops} 为空，例如轿厢刚放到轨道上还没建门）时也可用——
      *       这辆车永远不会动，门关着就必须能开出来；</li>
@@ -322,15 +322,17 @@ public class ElevatorScreen extends Screen {
         context.fill(plaqueLeft,plaqueTop,plaqueLeft+PLAQUE_W,plaqueTop+PLAQUE_H,BORDER_COLOR);
         context.fill(plaqueLeft+1,plaqueTop+1,plaqueLeft+PLAQUE_W-1,plaqueTop+PLAQUE_H-1,0xFF2B3542);
         context.fill(plaqueLeft+2,plaqueTop+2,plaqueLeft+PLAQUE_W-2,plaqueTop+PLAQUE_H-2,FLOOR_PANEL_COLOR);
-        context.getMatrices().push();
+        context.getMatrices().pushMatrix();
         // 以指示牌中心为原点放大；缩放后仍按"文字宽度的一半"定位，保证严格居中。
-        context.getMatrices().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-textRenderer.fontHeight*FLOOR_TEXT_SCALE)/2f,0);
-        context.getMatrices().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE,1f);
+        // 1.21.11 的 DrawContext#getMatrices 返回二维的 org.joml.Matrix3x2fStack：入栈/出栈叫 pushMatrix/popMatrix，
+        // translate/scale 只有 (x,y) 两个分量（界面本来就是 2D，旧代码里那个 z=0 / z=1f 没有意义）。
+        context.getMatrices().translate(plaqueLeft+PLAQUE_W/2f,plaqueTop+(PLAQUE_H-textRenderer.fontHeight*FLOOR_TEXT_SCALE)/2f);
+        context.getMatrices().scale(FLOOR_TEXT_SCALE,FLOOR_TEXT_SCALE);
         // 不带阴影：带阴影时字会整体偏右下 1 像素，放大 2 倍后看起来就是"没居中"。
         // 深底红字本身对比度足够，这里用手动居中的无阴影绘制。
         Text floorLabel=Text.literal(FloorIndicator.format(floor));
         context.drawText(textRenderer,floorLabel,-textRenderer.getWidth(floorLabel)/2,0,FLOOR_TEXT_COLOR,false);
-        context.getMatrices().pop();
+        context.getMatrices().popMatrix();
         // 右侧剩余区域的水平中心：状态行与页数行都对齐到这里，避免和左边放大的指示牌挤在一起。
         int textCenter=plaqueLeft+PLAQUE_W+(panelLeft+panelWidth-PADDING-plaqueLeft-PLAQUE_W)/2;
         if(cabin!=null) {
@@ -403,8 +405,13 @@ public class ElevatorScreen extends Screen {
          * @param message 按钮文字（翻页为 `&lt;` `&gt;`，其余为翻译键）
          * @param onPress 点击回调
          * @param tooltip 悬停提示
+         *
+         * <p>注意：{@code Text} 必须写全限定名。{@code ButtonWidget} 自带一个嵌套类型
+         * {@code ButtonWidget.Text}，它在子类里会遮蔽 {@code import net.minecraft.text.Text}，
+         * 短名会被解析成那个按钮子类（正是这些面板原先报错的原因）。
          */
-        FlatButton(int x,int y,int w,int h,Text message,PressAction onPress,Text tooltip) {
+        FlatButton(int x,int y,int w,int h,net.minecraft.text.Text message,PressAction onPress,
+                net.minecraft.text.Text tooltip) {
             super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
             setTooltip(Tooltip.of(tooltip));
         }
@@ -419,12 +426,15 @@ public class ElevatorScreen extends Screen {
          * @param message 按钮文字
          * @param onPress 点击回调
          */
-        FlatButton(int x,int y,int w,int h,Text message,PressAction onPress) {
+        FlatButton(int x,int y,int w,int h,net.minecraft.text.Text message,PressAction onPress) {
             super(x,y,w,h,message,onPress,DEFAULT_NARRATION_SUPPLIER);
         }
 
         /**
          * 画按钮本体（不调用父类，避免再叠一层原版长条贴图）。
+         *
+         * <p>1.21.11 起 {@code PressableWidget#renderWidget} 是 final（内部只做"画按钮 + 设光标"），
+         * 自绘外观改由抽象方法 {@code drawIcon} 承担；父类每帧都会调用它，观感与旧版一致。
          *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
@@ -432,7 +442,7 @@ public class ElevatorScreen extends Screen {
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void drawIcon(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=active&&(isHovered()||isFocused());
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
             ctx.fill(x,y,x+w,y+h, !active?0xFF2A3441:lit?0xFFE8F1F8:0xFF5A6A7B);
@@ -449,7 +459,7 @@ public class ElevatorScreen extends Screen {
      * <p>配色优先级：悬停/键盘聚焦（点亮为白色）&gt; 已加入停靠计划（红色）&gt; 轿厢当前停靠层（绿色）&gt; 普通灰色。
      * 为什么不用原版 ButtonWidget 的默认外观：原版按钮是 200×20 的三段式贴图，压成 20×20 后左右边框挤在一起，
      * 看起来像被压扁的长条；这里直接画描边 + 底色 + 数字，更接近真实面板上的按键，以后想换成贴图也只需要
-     * 改本类的 {@link #renderWidget}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
+     * 改本类的 {@link #drawIcon}。点击音效、悬停提示、键盘朗读等行为仍由 {@link ButtonWidget} 提供。
      */
     private final class StationButton extends ButtonWidget {
         private final String label;  // 楼层编号文本（基准层 1、其上 2,3…、其下 B1,B2…），同时是按钮上的字
@@ -464,9 +474,11 @@ public class ElevatorScreen extends Screen {
          * @param packed 站点根方块的打包坐标（{@code BlockPos.asLong()}），用于停靠计划高亮
          * @param tooltip 悬停提示（楼层编号 + 具体高度）
          * @param onPress 点击回调：发送 SelectStop 请求
+         *
+         * <p>同样是 {@code ButtonWidget.Text} 遮蔽问题：{@code tooltip} 必须写全限定类型。
          */
-        StationButton(int x,int y,String label,int stationY,long packed,Text tooltip,PressAction onPress) {
-            super(x,y,BUTTON,BUTTON,Text.literal(label),onPress,DEFAULT_NARRATION_SUPPLIER);
+        StationButton(int x,int y,String label,int stationY,long packed,net.minecraft.text.Text tooltip,PressAction onPress) {
+            super(x,y,BUTTON,BUTTON,net.minecraft.text.Text.literal(label),onPress,DEFAULT_NARRATION_SUPPLIER);
             this.label=label; this.stationY=stationY; this.packed=packed;
             setTooltip(Tooltip.of(tooltip));
         }
@@ -483,13 +495,16 @@ public class ElevatorScreen extends Screen {
         /**
          * 画方形按键本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>1.21.11 起 {@code PressableWidget#renderWidget} 是 final（内部只做"画按钮 + 设光标"），
+         * 自绘外观改由抽象方法 {@code drawIcon} 承担；父类每帧都会调用它，观感与旧版一致。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void drawIcon(DrawContext ctx,int mouseX,int mouseY,float delta) {
             boolean lit=isHovered()||isFocused(), queued=isPlanned(), current=isCurrentFloor();
             int x=getX(), y=getY(), s=getWidth();
             // 三层嵌套色块 = 描边 + 底面 + 内凹面，形成按键的立体感；配色与面板深色底协调。
@@ -505,7 +520,7 @@ public class ElevatorScreen extends Screen {
         @Override
         public void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
             builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE,
-                    Text.translatable("screen.easyelevator.station",label,stationY));
+                    net.minecraft.text.Text.translatable("screen.easyelevator.station",label,stationY));
         }
     }
 }

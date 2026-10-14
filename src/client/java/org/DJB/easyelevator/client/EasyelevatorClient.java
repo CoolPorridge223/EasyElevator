@@ -62,11 +62,17 @@ public class EasyelevatorClient implements ClientModInitializer {
         // 四种轿厢（普通 / 高速 / 观光 / 重载）共用同一个渲染器：泛型参数取共同的父类，
         // 因此每个实体类型各注册一次即可；外观差异（观光型号的玻璃墙、重载型号的重载内饰与双灯补光）
         // 由实体自身的 glassWalls() / heavyDuty() 决定，而不是按实体类型分支——将来加型号时这里只需要多一行注册。
+        //
+        // 1.21.9 起 EntityRendererFactory.create 的返回值是 EntityRenderer<E, ? extends EntityRenderState>，
+        // 而渲染数据的提取与提交都由渲染器自己负责（createRenderState / updateRenderState / render），
+        // 因此这里每个型号直接传构造器引用：类型参数 E 由 EntityType 推出来，渲染状态类型由
+        // CabinRenderer 自己绑成 CabinRenderer.CabinRenderState（四种型号共用同一份状态）。
         EntityRendererRegistry.register(Easyelevator.CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.HIGH_SPEED_CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.OBSERVATION_CABIN,CabinRenderer::new);
         EntityRendererRegistry.register(Easyelevator.POWERFUL_CABIN,CabinRenderer::new);
         // 楼层门门扇是连续滑动的几何，方块模型做不到逐帧插值，因此交给方块实体渲染器绘制（门框仍由方块模型画）。
+        // 同样地，门扇几何在渲染状态里算好（见 LandingDoorRenderer.updateRenderState），渲染时只提交命令。
         BlockEntityRendererRegistry.register(Easyelevator.LANDING_DOOR_BE,LandingDoorRenderer::new);
         // 网络回调不在主线程：所有客户端状态修改都必须回到客户端线程（context.client().execute）执行，避免数据竞争。
         ClientPlayNetworking.registerGlobalReceiver(ElevatorNetworking.MotionFrame.ID,(payload,context)->

@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import org.DJB.easyelevator.logic.DoorSoundPersistence;
@@ -256,19 +257,17 @@ public class DoorSoundScreen extends Screen {
      * <p>为什么需要它：对话框与拖拽都可能受启动器环境影响，而"把路径粘贴进来按回车"不依赖任何
      * 系统集成，是最后一道保险。顺手支持 Ctrl+V 粘贴（原版输入框本身就处理，这里不必重复实现）。
      *
-     * @param keyCode 键码
-     * @param scanCode 扫描码（未使用）
-     * @param modifiers 修饰键（未使用）
+     * @param input 按键事件（1.21.11 起 {@code Screen#keyPressed} 收 {@link KeyInput} 而不是三个 int）
      * @return 已消费时为 true
      */
     @Override
-    public boolean keyPressed(int keyCode,int scanCode,int modifiers) {
-        if ((keyCode==org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER||keyCode==org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER)
+    public boolean keyPressed(KeyInput input) {
+        if ((input.key()==org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER||input.key()==org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER)
                 && pathInput!=null && pathInput.isFocused()) {
             submitTypedPath();
             return true;
         }
-        return super.keyPressed(keyCode,scanCode,modifiers);
+        return super.keyPressed(input);
     }
 
     /**
@@ -460,10 +459,15 @@ public class DoorSoundScreen extends Screen {
     private final class RowButton extends ButtonWidget {
         /** 该按钮是否处于"已开启/已激活"状态：决定描边颜色。 */
         private final BooleanSupplier toggled;
-        /** 悬停提示与键盘朗读文本。 */
-        private final Text narration;
+        /**
+         * 悬停提示与键盘朗读文本。
+         *
+         * <p>类型写全限定名是必须的：{@code ButtonWidget} 自己有一个嵌套类型 {@code ButtonWidget.Text}，
+         * 在它的子类里会把 {@code import net.minecraft.text.Text} 遮蔽掉，写成短名就会被解析成那个按钮子类。
+         */
+        private final net.minecraft.text.Text narration;
         /** 每帧求值的显示文本；为 null 时退回构造时传入的固定文本。 */
-        private final Supplier<Text> dynamic;
+        private final Supplier<net.minecraft.text.Text> dynamic;
         /** 只读值格：画凹陷条、不接受悬停高亮、不参与键盘导航。 */
         private final boolean readOnly;
 
@@ -472,11 +476,12 @@ public class DoorSoundScreen extends Screen {
          * @param y 上边缘（绝对像素）
          * @param w 宽度（像素）
          * @param toggled 是否处于已开启状态（决定描边颜色）
-         * @param tooltip 悬停提示与朗读文本；传 {@link Text#empty()} 表示只读值格
+         * @param tooltip 悬停提示与朗读文本；传 {@link net.minecraft.text.Text#empty()} 表示只读值格
          * @param onPress 点击回调
          * @param dynamic 每帧求值的显示文本；null 表示用 {@code tooltip} 当固定文本
          */
-        RowButton(int x,int y,int w,BooleanSupplier toggled,Text tooltip,Predicate onPress,Supplier<Text> dynamic) {
+        RowButton(int x,int y,int w,BooleanSupplier toggled,net.minecraft.text.Text tooltip,Predicate onPress,
+                Supplier<net.minecraft.text.Text> dynamic) {
             super(x,y,w,ROW,tooltip,onPress,DEFAULT_NARRATION_SUPPLIER);
             this.toggled=toggled; this.narration=tooltip; this.dynamic=dynamic;
             this.readOnly=tooltip.getString().isEmpty();
@@ -486,15 +491,18 @@ public class DoorSoundScreen extends Screen {
         /**
          * 画控件本体（不调用父类，避免再叠一层原版长条贴图）。
          *
+         * <p>1.21.11 起 {@code PressableWidget#renderWidget} 是 final（它只做"画按钮 + 设光标"），
+         * 自绘外观改由抽象方法 {@code drawIcon} 承担，父类每帧都会调用它，因此观感与旧版完全一致。
+         *
          * @param ctx 绘制上下文
          * @param mouseX 鼠标 X（像素）
          * @param mouseY 鼠标 Y（像素）
          * @param delta 渲染插值系数
          */
         @Override
-        protected void renderWidget(DrawContext ctx,int mouseX,int mouseY,float delta) {
+        protected void drawIcon(DrawContext ctx,int mouseX,int mouseY,float delta) {
             int x=getX(), y=getY(), w=getWidth(), h=getHeight();
-            Text label=dynamic==null?getMessage():dynamic.get();
+            net.minecraft.text.Text label=dynamic==null?getMessage():dynamic.get();
             if (readOnly) {
                 // 只读值格：凹陷深色条，绝不画悬停高亮
                 boolean on=toggled.getAsBoolean();
@@ -523,7 +531,7 @@ public class DoorSoundScreen extends Screen {
          * @param maxWidth 可用像素宽度
          * @return 截断后的文本；本来就放得下时原样返回
          */
-        private Text trim(Text text,int maxWidth) {
+        private net.minecraft.text.Text trim(net.minecraft.text.Text text,int maxWidth) {
             if (maxWidth<=0 || textRenderer.getWidth(text)<=maxWidth) return text;
             String raw=text.getString();
             int limit=maxWidth-textRenderer.getWidth("...");
@@ -532,18 +540,25 @@ public class DoorSoundScreen extends Screen {
                 if (textRenderer.getWidth(out.toString()+raw.charAt(i))>limit) break;
                 out.append(raw.charAt(i));
             }
-            return Text.literal(out+"...");
+            return net.minecraft.text.Text.literal(out+"...");
         }
 
-        /** @return 只读值格不参与 Tab 导航与朗读，避免"能聚焦却点不动"的困惑。 */
+        /**
+         * @return 只读值格不参与 Tab 导航与朗读，避免"能聚焦却点不动"的困惑。
+         *
+         * <p>1.21.11 删掉了 {@code Selectable#isNarratable}，取而代之的是这个判据：原版用它同时决定
+         * "能不能被 Tab 选中 / 被朗读"（{@code getNavigationPath}、{@code Screen} 的朗读）以及
+         * "能不能被鼠标命中"。只读值格本来就点不动（点击回调是空操作），因此排除掉它既保住了旧行为，
+         * 又不会丢掉任何操作。
+         */
         @Override
-        public boolean isNarratable() { return !readOnly; }
+        public boolean isInteractable() { return !readOnly && super.isInteractable(); }
 
         /**
          * @return 恒为 false：本面板不使用键盘 Tab 导航。
          *
          * <p>为什么必须显式关掉：{@code ButtonWidget} 默认让"第一个控件"获得焦点，而焦点会走
-         * {@link #renderWidget} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
+         * {@link #drawIcon} 的悬停高亮分支——于是面板一打开，某个键就自己亮着白边，看起来像被选中了。
          * 这些键都可以用鼠标点，关掉键盘焦点对玩家没有损失。
          */
         @Override
