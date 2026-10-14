@@ -14,6 +14,8 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.resource.featuretoggle.FeatureFlags;
 import net.minecraft.screen.ScreenHandlerType;
 import org.DJB.easyelevator.screen.CargoScreenHandler;
@@ -84,27 +86,28 @@ public class Easyelevator implements ModInitializer {
     /**
      * 造一台轿厢的实体类型（碰撞箱、追踪参数四种型号完全一致），由调用方负责注册。
      *
-     * <p><b>这里必须用 Fabric 的无参 {@code build()}，不能用原版的 {@code build(String id)}</b>——
-     * 后者会在 {@code saveable}（默认 true）时先向<b>原版数据修复器</b>要这个 id 的 choice type：
+     * <p><b>1.21 之后原版只提供 {@code build(RegistryKey)}，Fabric 的无参 {@code build()} 已随之下线</b>，
+     * 因此这里必须把注册键一并传进去。这个键会被原版交给<b>数据修复器</b>查 choice type：
      * <pre>
-     *   if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, id);
+     *   if (this.saveable) Util.getChoiceType(TypeReferences.ENTITY_TREE, key.getValue().toString());
      * </pre>
-     * 原版 schema 里只有原版实体，模组 id 一定查不到，于是每次注册都会在日志里刷一条
-     * <b>{@code No data fixer registered for easyelevator:xxx}</b>（开发环境里 {@code SharedConstants.isDevelopment}
-     * 为真，还会把异常直接抛出去，模组初始化直接崩）。Fabric API 的 {@code EntityTypeBuilderMixin}
-     * 提供无参 {@code build()} → 内部走 {@code build(null)}，并用 {@code WrapOperation} 拦下
-     * {@code Util.getChoiceType}："id == null 就直接不查"，因此既没有那条报错，也不会有别的副作用
-     * ——1.21.1 的原版 {@code build(String)} 本来就<b>只造对象、不注册</b>，注册一直是调用方的事，
-     * 所以丢掉那个 id 参数不损失任何功能（mod 实体本来也不在原版数据修复器的迁移范围里）。
+     * 原版 schema 里只有原版实体，模组 id 一定查不到，于是会刷一条
+     * <b>{@code No data fixer registered for easyelevator:xxx}</b>，开发环境（{@code SharedConstants.isDevelopment}）
+     * 下还会把异常直接抛出去、模组初始化崩掉。Fabric API 的 {@code EntityTypeBuilderMixin} 现在改为
+     * 用 {@code WrapOperation} 拦下这次查询并按<b>键</b>判断（模组命名空间直接跳过），
+     * 因此传键是安全的，也不会再有那条报错——原版 {@code build} 本来就<b>只造对象、不注册</b>，
+     * 注册一直是调用方的事，mod 实体也不在原版数据修复器的迁移范围里。
      *
+     * @param path 注册路径（例如 {@code "cabin"}），同时用于造注册键与注册 ID
      * @param factory 实体构造工厂，例如 {@code CabinEntity::new}
      * @param <T> 轿厢实体类型
-     * @return 尚未注册的实体类型；调用方必须立刻把它 {@code Registry.register} 到
-     *         {@link Registries#ENTITY_TYPE}，并用与存档一致的 ID
+     * @return 已注册的实体类型（注册键与存档里记录的 ID 一致）
      */
-    private static <T extends Entity> EntityType<T> cabinType(EntityType.EntityFactory<T> factory) {
-        return EntityType.Builder.create(factory, SpawnGroup.MISC)
-                .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build();
+    private static <T extends Entity> EntityType<T> cabinType(String path, EntityType.EntityFactory<T> factory) {
+        RegistryKey<EntityType<?>> key = RegistryKey.of(RegistryKeys.ENTITY_TYPE, id(path));
+        return Registry.register(Registries.ENTITY_TYPE, key,
+                EntityType.Builder.create(factory, SpawnGroup.MISC)
+                        .dimensions(3.0f, 3.0f).maxTrackingRange(10).trackingTickInterval(1).build(key));
     }
 
     /**
@@ -115,7 +118,7 @@ public class Easyelevator implements ModInitializer {
      * 这是必需的——轿厢以 0.20 格/刻运行，间隔追踪会明显抖动。</p>
      */
     public static final EntityType<CabinEntity> CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("cabin"), cabinType(CabinEntity::new));
+            cabinType("cabin", CabinEntity::new);
     /**
      * 高速电梯轿厢实体类型单例（注册 ID {@code easyelevator:high_speed_cabin}）。
      *
@@ -124,7 +127,7 @@ public class Easyelevator implements ModInitializer {
      * 尺寸、追踪范围、渲染外观与普通轿厢完全一致，因此旧建筑与井道无需任何改动。</p>
      */
     public static final EntityType<HighSpeedCabinEntity> HIGH_SPEED_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("high_speed_cabin"), cabinType(HighSpeedCabinEntity::new));
+            cabinType("high_speed_cabin", HighSpeedCabinEntity::new);
     /**
      * 观光电梯轿厢实体类型单例（注册 ID {@code easyelevator:observation_cabin}）。
      *
@@ -132,7 +135,7 @@ public class Easyelevator implements ModInitializer {
      * 用半透明玻璃材质绘制，保留四个角柱、地板与顶板。</p>
      */
     public static final EntityType<ObservationCabinEntity> OBSERVATION_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("observation_cabin"), cabinType(ObservationCabinEntity::new));
+            cabinType("observation_cabin", ObservationCabinEntity::new);
     /**
      * 重载电梯轿厢实体类型单例（注册 ID {@code easyelevator:powerful_cabin}）。
      *
@@ -149,7 +152,7 @@ public class Easyelevator implements ModInitializer {
      * {@code PowerfulCabinEntity.heavyDuty()}。</p>
      */
     public static final EntityType<PowerfulCabinEntity> POWERFUL_CABIN =
-            Registry.register(Registries.ENTITY_TYPE, id("powerful_cabin"), cabinType(PowerfulCabinEntity::new));
+            cabinType("powerful_cabin", PowerfulCabinEntity::new);
     /**
      * 电梯轿厢生成物品单例；maxCount(1) 限制为一格一个，避免一次放置多台轿厢。
      *

@@ -1,12 +1,14 @@
 package org.DJB.easyelevator.item;
 
+import net.minecraft.component.type.TooltipDisplayComponent;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.SpawnReason;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemUsageContext;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.util.Formatting;
-import java.util.List;
+import java.util.function.Consumer;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import org.DJB.easyelevator.Easyelevator;
@@ -58,13 +60,15 @@ public class CabinItem extends Item {
      *
      * @param stack 本物品的物品堆
      * @param context 提示上下文（当前未使用）
-     * @param tooltip 提示行列表，直接追加
+     * @param displayComponent 显示组件（原版用它筛选哪些行要显示，本模组只加自己的提示行，不参与筛选）
+     * @param textConsumer 提示行接收器（1.21 之后原版把"提示行列表"换成了消费者，直接 accept 即追加）
      * @param tooltipType 提示类型（当前未使用）
      */
-    @Override public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType tooltipType) {
-        super.appendTooltip(stack, context, tooltip, tooltipType);
+    @Override public void appendTooltip(ItemStack stack, TooltipContext context, TooltipDisplayComponent displayComponent,
+                                       Consumer<Text> textConsumer, TooltipType tooltipType) {
+        super.appendTooltip(stack, context, displayComponent, textConsumer, tooltipType);
         if (type.get() == Easyelevator.POWERFUL_CABIN)
-            tooltip.add(Text.translatable("item.easyelevator.cargo_hint").formatted(Formatting.GRAY));
+            textConsumer.accept(Text.translatable("item.easyelevator.cargo_hint").formatted(Formatting.GRAY));
     }
 
     /**
@@ -91,7 +95,7 @@ public class CabinItem extends Item {
     public ActionResult useOnBlock(ItemUsageContext ctx) {
         if (!ctx.getWorld().getBlockState(ctx.getBlockPos()).isOf(Easyelevator.RAIL)) return ActionResult.PASS;
         // 客户端提前返回：只放行预测，让服务端独占生成与扣物品逻辑，防止双端不一致。
-        if (ctx.getWorld().isClient) return ActionResult.SUCCESS;
+        if (ctx.getWorld().isClient()) return ActionResult.SUCCESS;
         // scan 要求种子方块所在区块已加载，否则返回 null（等同于“这不是一条合法线路”）。
         var line = ElevatorLine.scan(ctx.getWorld(), ctx.getBlockPos());
         String error;
@@ -99,7 +103,9 @@ public class CabinItem extends Item {
         else if (!line.cabins(ctx.getWorld()).isEmpty()) error = "message.easyelevator.existing_cabin";
         else {
             // 用注册好的实体类型创建实体：三种型号各自的构造器负责写入自己的速度与外观，物品无需分支。
-            AbstractCabinEntity cabin = type.get().create(ctx.getWorld());
+            // 1.21 之后原版删掉了 create(World) 重载，必须显式给出生成原因；这里用 MOB_SUMMONED
+            // （轿厢是"被放下"的静态设备，不参与自然生成/刷怪笼判定，具体取值只影响原版生成事件）。
+            AbstractCabinEntity cabin = type.get().create(ctx.getWorld(), SpawnReason.MOB_SUMMONED);
             if (cabin == null) error = "message.easyelevator.obstructed"; // 理论上不会发生；宁可按受阻处理也不空指针
             else {
                 cabin.initialize(ctx.getBlockPos(), line.facing());

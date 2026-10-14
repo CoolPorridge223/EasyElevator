@@ -46,27 +46,32 @@ import org.DJB.easyelevator.logic.RiderMotionHistory;
  * @param yaw 玩家朝向角，单位：度
  * @param pitch 玩家俯仰角，单位：度
  * @param ground 原版"是否在地面上"标志
+ * @param horizontalCollision 原版"水平方向是否撞到方块"标志（1.21 之后原版移动包新增的字段：
+ *        服务端用它做"卡墙"判定，这里必须逐字照抄，否则乘客贴墙行进时会被判定为作弊）
  * @param position 原版标志：本包是否携带位置变化
  * @param look 原版标志：本包是否携带视角变化
  */
 public record RiderMove(int cabinId, long tick, double x, double y, double z,
-                        float yaw, float pitch, boolean ground, boolean position, boolean look)
+                        float yaw, float pitch, boolean ground, boolean horizontalCollision,
+                        boolean position, boolean look)
         implements CustomPayload {
     /** 负载类型 id，注册与路由键：{@code easyelevator:rider_move}。 */
     public static final Id<RiderMove> ID = new Id<>(Easyelevator.id("rider_move"));
     /** 线格式编解码器：字段顺序必须与 {@link #decode}/{@link #encode} 严格一致，否则两端静默错位。 */
     public static final PacketCodec<RegistryByteBuf, RiderMove> CODEC = new PacketCodec<>() {
-        /** 从字节流按固定顺序读回一包移动：VarInt 实体 id、long 样本编号、3 个 double 坐标、两个 float 视角、3 个布尔标志。 */
+        /** 从字节流按固定顺序读回一包移动：VarInt 实体 id、long 样本编号、3 个 double 坐标、两个 float 视角、4 个布尔标志。 */
         @Override public RiderMove decode(RegistryByteBuf b) {
             return new RiderMove(b.readVarInt(), b.readLong(), b.readDouble(), b.readDouble(),
-                    b.readDouble(), b.readFloat(), b.readFloat(), b.readBoolean(), b.readBoolean(), b.readBoolean());
+                    b.readDouble(), b.readFloat(), b.readFloat(), b.readBoolean(), b.readBoolean(),
+                    b.readBoolean(), b.readBoolean());
         }
         /** 按与解码完全对称的顺序写出；顺序一旦改动即为协议不兼容。 */
         @Override public void encode(RegistryByteBuf b, RiderMove p) {
             b.writeVarInt(p.cabinId); b.writeLong(p.tick);
             b.writeDouble(p.x); b.writeDouble(p.y); b.writeDouble(p.z);
             b.writeFloat(p.yaw); b.writeFloat(p.pitch);
-            b.writeBoolean(p.ground); b.writeBoolean(p.position); b.writeBoolean(p.look);
+            b.writeBoolean(p.ground); b.writeBoolean(p.horizontalCollision);
+            b.writeBoolean(p.position); b.writeBoolean(p.look);
         }
     };
 
@@ -84,7 +89,8 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      */
     public static RiderMove of(int cabinId, long tick, PlayerMoveC2SPacket p) {
         return new RiderMove(cabinId, tick, p.getX(0), p.getY(0), p.getZ(0),
-                p.getYaw(0), p.getPitch(0), p.isOnGround(), p.changesPosition(), p.changesLook());
+                p.getYaw(0), p.getPitch(0), p.isOnGround(), p.horizontalCollision(),
+                p.changesPosition(), p.changesLook());
     }
 
     /** @return 负载类型 id，框架据此把包分发到对应接收器 */
@@ -101,10 +107,12 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
      * @return 可直接交给 {@code ServerPlayNetworkHandler#onPlayerMove} 的原版移动包
      */
     public PlayerMoveC2SPacket vanilla(double adjustedY) {
-        if (position && look) return new PlayerMoveC2SPacket.Full(x, adjustedY, z, yaw, pitch, ground);
-        if (position) return new PlayerMoveC2SPacket.PositionAndOnGround(x, adjustedY, z, ground);
-        if (look) return new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, ground);
-        return new PlayerMoveC2SPacket.OnGroundOnly(ground);
+        // 1.21 之后原版每个移动包都多带一个"水平撞墙"标志（见 {@link #horizontalCollision}），构造器因此是
+        // 6/5/4/3 个参数；这里逐项照抄，保证服务端看到的包与原版客户端发出的逐字段一致。
+        if (position && look) return new PlayerMoveC2SPacket.Full(x, adjustedY, z, yaw, pitch, ground, horizontalCollision);
+        if (position) return new PlayerMoveC2SPacket.PositionAndOnGround(x, adjustedY, z, ground, horizontalCollision);
+        if (look) return new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, ground, horizontalCollision);
+        return new PlayerMoveC2SPacket.OnGroundOnly(ground, horizontalCollision);
     }
 
     /**
@@ -123,7 +131,7 @@ public record RiderMove(int cabinId, long tick, double x, double y, double z,
     public void apply(ServerPlayerEntity player) {
         double adjustedY = y;
         if (position && player.isAlive() && !player.isSpectator() && !player.hasVehicle()
-                && player.getWorld().getEntityById(cabinId) instanceof AbstractCabinEntity cabin
+                && player.getEntityWorld().getEntityById(cabinId) instanceof AbstractCabinEntity cabin
                 && cabin.containsPassenger(player)) {
             double seenY = cabin.motionHeight(tick);
             // 只接受"确实存在的近期服务端样本"，并且身体必须贴近这辆轿厢：

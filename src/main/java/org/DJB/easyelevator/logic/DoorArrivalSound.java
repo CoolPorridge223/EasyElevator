@@ -1,6 +1,7 @@
 package org.DJB.easyelevator.logic;
 
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.storage.ReadView;
+import net.minecraft.storage.WriteView;
 
 /**
  * 单扇楼层门的<b>到站提示音</b>设置：一个开关 + 一个音效选项。
@@ -19,7 +20,7 @@ import net.minecraft.nbt.NbtCompound;
  * </ul>
  *
  * <p>关键不变量：{@code choice} 永远落在 {@code [0, DoorSounds.CHOICE_COUNT)} 内——构造器与
- * {@link #readNbt} 都会调用 {@link DoorSounds#clamp}，因此存档里的坏数据、旧版本序号、
+ * {@link #readData} 都会调用 {@link DoorSounds#clamp}，因此存档里的坏数据、旧版本序号、
  * 畸形网络包都不会让后续代码拿到越界下标。</p>
  *
  * @param enabled 到站是否播放提示音
@@ -32,7 +33,7 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      * <p>为什么默认是开的：模组在此之前就是"到站必响一次"。若这里默认静音，升级后所有旧存档的门
      * 会突然全部安静——那是行为回退。默认开着 + 默认音效正好等于旧行为，玩家想安静就在面板里关掉。
      *
-     * <p>本功能之前放置的门存档里从没写过 {@code ArrivalSound} 键，{@link #readNbt} 因此对缺失的
+     * <p>本功能之前放置的门存档里从没写过 {@code ArrivalSound} 键，{@link #readData} 因此对缺失的
      * 开关回退到 {@link #enabled()}（= 发声），旧门升级后照旧会响，不需要逐扇重新设置。
      */
     public static final DoorArrivalSound DEFAULT = new DoorArrivalSound(true, DoorSounds.DEFAULT);
@@ -73,33 +74,34 @@ public record DoorArrivalSound(boolean enabled, int choice) {
      *
      * <p><b>只写偏离出厂默认的那一侧</b>：出厂默认是"发声 + 默认音效"，因此默认设置的门一个字段都不写
      * （存档体积与加这个功能之前逐字节一致），只有玩家真的<b>关掉</b>了开关才写 {@code ArrivalSound=false}。
-     * 这正是{@link #readNbt} 能把"缺失"解释成默认值的前提——若反过来写成"发声时才写 true"，
+     * 这正是{@link #readData} 能把"缺失"解释成默认值的前提——若反过来写成"发声时才写 true"，
      * 关掉的设置就会因为没有字段而丢失，读回来又变成发声。
      *
-     * @param nbt 目标 NBT
+     * @param view 目标存档视图（1.21 之后原版把方块实体的 NBT 读写换成了 {@code WriteView}）
      */
-    public void writeNbt(NbtCompound nbt) {
-        if (!enabled) nbt.putBoolean(KEY_ENABLED, false);
-        if (choice != DoorSounds.DEFAULT) nbt.putInt(KEY_CHOICE, choice);
+    public void writeData(WriteView view) {
+        if (!enabled) view.putBoolean(KEY_ENABLED, false);
+        if (choice != DoorSounds.DEFAULT) view.putInt(KEY_CHOICE, choice);
     }
 
     /**
      * 从方块实体 NBT 读回设置；**缺失的开关按出厂默认处理（发声）**，缺失的序号按 0（默认音效）。
      *
-     * <p>关键：{@code getBoolean} 的缺省值是 {@code false}，若直接用它会得出"本功能之前放置的门
-     * 升级后全部变静音"——那是行为回退，不是默认值。因此这里显式区分"键不存在"与"键为 false"：
-     * 前者是旧门 / 从未改过设置（→ 发声），后者才是玩家主动关掉。
+     * <p>关键：旧版的 {@code getBoolean} 缺省值是 {@code false}，直接用它会得出"本功能之前放置的门
+     * 升级后全部变静音"——那是行为回退，不是默认值。1.21 之后的 {@code ReadView} 直接提供
+     * {@code getBoolean(键, 缺省值)}，语义恰好就是这里需要的"键不存在 = 出厂默认"，因此不再需要手写
+     * {@code contains} 判断；玩家主动关掉（键为 {@code false}）与键不存在仍然能区分开。
      *
-     * <p>兼容性说明：只有 {@link #writeNbt} 那侧的约定成立时（关掉才写 {@code false}），
-     * 这个区分才是完整的。本功能早期版本的 {@code writeNbt} 恰好写反了（发声时写 {@code true}、
+     * <p>兼容性说明：只有 {@link #writeData} 那侧的约定成立时（关掉才写 {@code false}），
+     * 这个区分才是完整的。本功能早期版本的写侧恰好写反了（发声时写 {@code true}、
      * 关掉时什么都不写），那种存档里"关掉"没有留下任何痕迹，读回来会恢复成发声一次，
      * 需要在面板里再关一次。
      *
-     * @param nbt 存档 NBT
+     * @param view 存档视图
      * @return 读回的设置（序号已由构造器夹进合法区间）
      */
-    public static DoorArrivalSound readNbt(NbtCompound nbt) {
-        boolean enabled = nbt.contains(KEY_ENABLED) ? nbt.getBoolean(KEY_ENABLED) : DEFAULT.enabled();
-        return new DoorArrivalSound(enabled, nbt.getInt(KEY_CHOICE));
+    public static DoorArrivalSound readData(ReadView view) {
+        boolean enabled = view.getBoolean(KEY_ENABLED, DEFAULT.enabled());
+        return new DoorArrivalSound(enabled, view.getInt(KEY_CHOICE, DoorSounds.DEFAULT));
     }
 }

@@ -204,13 +204,13 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
                 BlockPos p=part(root,facing,col,row);
                 if(world.isOutOfHeightLimit(p) || !world.getWorldBorder().contains(p) || !world.isChunkLoaded(p)
                         || !world.getBlockState(p).isReplaceable()
-                        || (ctx.getPlayer()!=null && (!world.canPlayerModifyAt(ctx.getPlayer(),p)
+                        || (ctx.getPlayer()!=null && (!world.canEntityModifyAt(ctx.getPlayer(),p)
                         || !ctx.getPlayer().canPlaceOn(p,ctx.getSide(),ctx.getStack())))) return null;
             }
             return getDefaultState().with(FACING,facing);
         }
         // actionbar 提示：告诉玩家门必须放在轨道前方 3 格、同 Y 的底部中心，而不是静默失败
-        if(!world.isClient && ctx.getPlayer()!=null) ctx.getPlayer().sendMessage(Text.translatable("message.easyelevator.door_placement"),true);
+        if(!world.isClient() && ctx.getPlayer()!=null) ctx.getPlayer().sendMessage(Text.translatable("message.easyelevator.door_placement"),true);
         return null;
     }
 
@@ -233,7 +233,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     @Override
     public void onPlaced(World world,BlockPos p,BlockState s,LivingEntity placer,ItemStack stack) {
         super.onPlaced(world,p,s,placer,stack);
-        if(world.isClient || !isRoot(s)) return;
+        if(world.isClient() || !isRoot(s)) return;
         for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
             if(row==0 && col==1) continue;
             world.setBlockState(part(p,s.get(FACING),col,row),s.with(COLUMN,col).with(LEVEL,row),Block.NOTIFY_ALL);
@@ -364,7 +364,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      * @param origin 站点根方块坐标
      */
     public static void refresh(World world,BlockPos origin) {
-        if(world.isClient) return;
+        if(world.isClient()) return;
         BlockState state=world.getBlockState(origin);
         if(!isRoot(state)) return;
         boolean open=mayOpen(world,origin);
@@ -418,7 +418,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      */
     @Override
     protected ActionResult onUse(BlockState state,World world,BlockPos pos,PlayerEntity player,BlockHitResult hit) {
-        if(!world.isClient) {
+        if(!world.isClient()) {
             BlockPos origin=root(state,pos);
             if(player.isSneaking()) openDoorSettings(world,origin,player);
             else openHallPanel(world,origin,player);
@@ -529,7 +529,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
      */
     @Override
     public BlockState onBreak(World world,BlockPos pos,BlockState state,PlayerEntity player) {
-        if(!world.isClient && !isRoot(state)) {
+        if(!world.isClient() && !isRoot(state)) {
             BlockPos origin=root(state,pos);
             if(isRoot(world.getBlockState(origin))) world.breakBlock(origin,!player.isCreative(),player);
         }
@@ -539,21 +539,21 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
     /**
      * 任一格离开本方块（被拆、被替换、爆炸、活塞推动等）时清除同门其余部件，避免留下残块。
      *
-     * <p>守卫 {@code !next.isOf(this)} 区分两种情形：放置时的 9 格与 OPEN 属性变化都属于
-     * "仍是本方块"，不能触发清拆；只有真正消失才清理。清理写空气（不掉落），掉落只由
+     * <p>守卫 {@code world.getBlockState(pos)} 是否仍是本方块（1.21 之后原版把 {@code onStateReplaced}
+     * 的"新状态"参数去掉了，改为在被替换<b>之后</b>调用，所以这里直接查世界）：放置时的 9 格与 OPEN
+     * 属性变化都属于"仍是本方块"，不能触发清拆；只有真正消失才清理。清理写空气（不掉落），掉落只由
      * 根方块的破坏流程负责；{@code NOTIFY_ALL} 让形状与碰撞立即更新。
      *
-     * <p>副作用：最多把同门 8 格写成空气并触发方块更新。服务端专属。
+     * <p>副作用：最多把同门 8 格写成空气并触发方块更新。服务端专属（参数已是 {@link ServerWorld}）。
      *
      * @param state 变化前状态
-     * @param world 世界
+     * @param world 服务端世界
      * @param pos 变化位置
-     * @param next 变化后的新状态
      * @param moved 是否为移动（活塞相关），未使用
      */
     @Override
-    protected void onStateReplaced(BlockState state,World world,BlockPos pos,BlockState next,boolean moved) {
-        if(!world.isClient && !next.isOf(this)) {
+    protected void onStateReplaced(BlockState state,ServerWorld world,BlockPos pos,boolean moved) {
+        if(!world.getBlockState(pos).isOf(this)) {
             BlockPos origin=root(state,pos);
             for(int row=0;row<3;row++) for(int col=0;col<3;col++) {
                 BlockPos p=part(origin,state.get(FACING),col,row);
@@ -562,7 +562,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
                 if(cell.isOf(this) && root(cell,p).equals(origin)) world.setBlockState(p,Blocks.AIR.getDefaultState(),Block.NOTIFY_ALL);
             }
         }
-        super.onStateReplaced(state,world,pos,next,moved);
+        super.onStateReplaced(state,world,pos,moved);
     }
 
     /**
@@ -616,7 +616,7 @@ public final class LandingDoorBlock extends HorizontalFacingBlock implements Blo
         if(!(w instanceof World world)) return s.get(OPEN)?1f:0f;
         BlockPos origin=root(s,p);
         // 服务端联锁兜底：状态还写着 OPEN 但此刻已不允许开门，本次碰撞就按全关算（不回写状态）
-        if(!world.isClient && s.get(OPEN) && !mayOpen(world,origin)) return 0f;
+        if(!world.isClient() && s.get(OPEN) && !mayOpen(world,origin)) return 0f;
         if(world.getBlockEntity(origin) instanceof LandingDoorBlockEntity door) return door.openProgress();
         return s.get(OPEN)?1f:0f;
     }

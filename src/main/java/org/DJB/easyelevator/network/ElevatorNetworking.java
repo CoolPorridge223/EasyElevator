@@ -14,7 +14,6 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.DJB.easyelevator.Easyelevator;
@@ -115,7 +114,7 @@ public final class ElevatorNetworking {
             double riderOffset = cabin.phase() == org.DJB.easyelevator.logic.ElevatorController.Phase.MOVING
                     && cabin.hasTarget() && cabin.containsPassenger(observer)
                     ? observer.getY() - cabin.getY() : Double.NaN;
-            ServerPlayNetworking.send(observer, new MotionFrame(cabin.getId(), cabin.getWorld().getTime(), cabin.getY(), riderOffset));
+            ServerPlayNetworking.send(observer, new MotionFrame(cabin.getId(), cabin.getEntityWorld().getTime(), cabin.getY(), riderOffset));
         }
     }
     /**
@@ -547,7 +546,7 @@ public final class ElevatorNetworking {
             var player=context.player();
             // 旁观者或已死亡玩家不应能操作轿厢；这里再挡一次，避免只靠客户端 ui 状态。
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.getServerWorld().getEntityById(payload.entityId());
+            var entity=player.getEntityWorld().getEntityById(payload.entityId());
             // Never trust a client-provided cabin, station index, distance or line identifier.
             // 客户端可伪造任意实体 id：必须确认它在本玩家世界内、确实是轿厢、且本玩家是车上乘客。
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
@@ -563,7 +562,7 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(DoorCommand.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var entity=player.getServerWorld().getEntityById(payload.entityId());
+            var entity=player.getEntityWorld().getEntityById(payload.entityId());
             if (!(entity instanceof AbstractCabinEntity cabin) || !cabin.containsPassenger(player)) return;
             if (cabin.doorCommand(payload.open())) open(player,cabin); // 成功后刷一次面板：计划可能已经变了
             else player.sendMessage(Text.translatable(payload.open()
@@ -574,7 +573,7 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(HallCallButton.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.getServerWorld();
+            var world=player.getEntityWorld();
             BlockPos origin=payload.station();
             if (!world.isChunkLoaded(origin)) return;
             BlockState state=world.getBlockState(origin);
@@ -595,7 +594,7 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(DoorSoundCommand.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            var world=player.getServerWorld();
+            var world=player.getEntityWorld();
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
             if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
@@ -613,7 +612,7 @@ public final class ElevatorNetworking {
         ServerPlayNetworking.registerGlobalReceiver(SetBaseFloor.ID,(payload,context)->context.server().execute(()->{
             var player=context.player();
             if (player.isSpectator() || !player.isAlive()) return;
-            LandingDoorBlock.setFloorBase(player.getServerWorld(),payload.station(),player,payload.on());
+            LandingDoorBlock.setFloorBase(player.getEntityWorld(),payload.station(),player,payload.on());
         }));
         // 自定义到站音效上传：客户端携带的字节视为不可信输入——重新校验玩家、整扇门、ogg 魔数与大小上限，
         // 通过后才写入权威副本目录。落盘失败只回一条提示（音效是表现层，不该把服务端刻带崩）。
@@ -622,7 +621,7 @@ public final class ElevatorNetworking {
             if (player.isSpectator() || !player.isAlive()) return;
             byte[] bytes=payload.bytes();
             if (bytes.length==0 || bytes.length>MAX_AUDIO_BYTES) { player.sendMessage(Text.translatable("message.easyelevator.door_sound_upload_failed"),true); return; }
-            var world=player.getServerWorld();
+            var world=player.getEntityWorld();
             BlockPos origin=payload.station();
             LandingDoorBlockEntity door=doorEntity(world,origin);
             if (door==null) { player.sendMessage(Text.translatable("message.easyelevator.invalid_stop"),true); return; }
@@ -667,21 +666,23 @@ public final class ElevatorNetworking {
         }));
         UseItemCallback.EVENT.register((player,world,hand)->{
             // 只看主手：副手会随主手重复触发；潜行 + 空手是拆除轿厢的保留组合，不能与之抢事件。
-            if (hand!=Hand.MAIN_HAND || player.isSpectator() || player.isSneaking()) return TypedActionResult.pass(player.getStackInHand(hand));
+            // 1.21 之后原版把 TypedActionResult 并入了 ActionResult：PASS 即"原样交还"，
+            // "成功并替换手中物品堆"用 SUCCESS.withNewHandStack(stack) 表达。
+            if (hand!=Hand.MAIN_HAND || player.isSpectator() || player.isSneaking()) return ActionResult.PASS;
             // 用玩家自身碰撞箱查询，等价于"玩家是否站在轿厢内部的 3x3 空间里"。
             for (var cabin:world.getEntitiesByClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
                 // 仅在逻辑服务端发包；客户端返回成功即可，否则会收到重复面板。
-                if (!world.isClient) open((ServerPlayerEntity)player,cabin);
-                return TypedActionResult.success(player.getStackInHand(hand));
+                if (!world.isClient()) open((ServerPlayerEntity)player,cabin);
+                return ActionResult.SUCCESS.withNewHandStack(player.getStackInHand(hand));
             }
-            return TypedActionResult.pass(player.getStackInHand(hand));
+            return ActionResult.PASS;
         });
         UseBlockCallback.EVENT.register((player,world,hand,hit)->{
             // 与上面的 UseItem 路径互补：视线命中方块时走这里，未命中方块时走上一个回调。
             // 条件必须完全一致，否则"对着方块右键"与"对着空气右键"行为会分叉。
             if (hand!=Hand.MAIN_HAND || player.isSpectator() || player.isSneaking()) return ActionResult.PASS;
             for (var cabin:world.getEntitiesByClass(AbstractCabinEntity.class,player.getBoundingBox(),c->c.containsPassenger(player))) {
-                if (!world.isClient) open((ServerPlayerEntity)player,cabin);
+                if (!world.isClient()) open((ServerPlayerEntity)player,cabin);
                 return ActionResult.SUCCESS;
             }
             // PASS 而非 SUCCESS：没站在轿厢里时必须把这次使用让给楼层门/轨道等其它方块逻辑。
@@ -786,7 +787,9 @@ public final class ElevatorNetworking {
      * @param preview 本次要提示的试听状态（打开面板时恒为 {@link OpenDoorPanel#PREVIEW_NONE}）
      */
     public static void sendDoorPanel(ServerPlayerEntity player,BlockPos origin,int preview) {
-        if (!(player.getServerWorld() instanceof ServerWorld server)) return;
+        // 1.21 之后 ServerPlayerEntity.getEntityWorld() 的返回类型本身就收窄成了 ServerWorld
+        // （原版删掉了 getServerWorld()），因此不再需要 instanceof 判断。
+        ServerWorld server = player.getEntityWorld();
         OpenDoorPanel payload=doorPanel(server,origin,preview,true);
         if (payload!=null) ServerPlayNetworking.send(player,payload);
     }

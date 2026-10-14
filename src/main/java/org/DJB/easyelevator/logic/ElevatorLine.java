@@ -46,8 +46,9 @@ public record ElevatorLine(int x, int z, int bottom, int top, Direction facing, 
         int low = seed.getY(), high = low;
         // 向下扩展：matches 同时负责“区块已加载”与“同朝向轨道”两项校验，任一不满足即停。
         while (low > world.getBottomY() && matches(world, new BlockPos(seed.getX(), low - 1, seed.getZ()), direction)) low--;
-        // 向上扩展：上界用 world.getTopY() - 1，确保坐标始终在世界高度范围内。
-        while (high < world.getTopY() - 1 && matches(world, new BlockPos(seed.getX(), high + 1, seed.getZ()), direction)) high++;
+        // 向上扩展：上界用 world.getTopYInclusive()（1.21 之后原版把"上界 - 1"改成了这个默认方法），
+        // 确保坐标始终在世界高度范围内。
+        while (high < world.getTopYInclusive() && matches(world, new BlockPos(seed.getX(), high + 1, seed.getZ()), direction)) high++;
         List<BlockPos> stops = new ArrayList<>();
         for (int y = low; y <= high; y++) {
             BlockPos rail = new BlockPos(seed.getX(), y, seed.getZ());

@@ -118,7 +118,7 @@ public final class CabinMotion {
         tickCabin = null;
         // 先清理轨迹：已移除（区块卸载/实体回收）或已不在本玩家世界的（换维度）条目一律丢弃，
         // 否则会把上个世界的目标高度继续套用到新世界的第一刻。
-        TRACKS.entrySet().removeIf(e -> e.getKey().isRemoved() || e.getKey().getWorld() != player.getWorld());
+        TRACKS.entrySet().removeIf(e -> e.getKey().isRemoved() || e.getKey().getEntityWorld() != player.getEntityWorld());
         for (var entry : TRACKS.entrySet()) {
             AbstractCabinEntity cabin = entry.getKey();
             Track track = entry.getValue();
@@ -126,7 +126,7 @@ public final class CabinMotion {
             track.previousY = track.physicalY;
             // 本刻位移（格）：从实体当前（客户端预测的）位置到服务端目标位置；这个量也要原样加在乘客身上。
             double dy = track.targetY - cabin.getY();
-            boolean fresh = player.getWorld().getTime() - track.receivedAt <= ElevatorParameters.MOTION_STALE_TICKS;
+            boolean fresh = player.getEntityWorld().getTime() - track.receivedAt <= ElevatorParameters.MOTION_STALE_TICKS;
             // 样本够新（链路没断，绝不外推）、玩家存活且确实在厢内、位移未超瞬移阈值，三者缺一不可；
             // 位移超阈值说明是传送/归位而不是平台运动，此时把乘客一起拽走会把人甩出轿厢。
             // tickCabin == null 保证本刻只认第一辆轿厢，避免重叠判定重复平移玩家。

@@ -91,7 +91,7 @@ public abstract class ServerPlayNetworkHandlerMixin implements PlatformMovement 
         // 只处理"自称踩在地上"的正常玩家：旁观者与骑乘者本来就不走这套站立判定，直接放行。
         if (!player.isOnGround() || player.isSpectator() || player.hasVehicle()) return;
         // 外扩 0.01 格再搜索：玩家站在地板边缘时包围盒可能因浮点误差与轿厢刚好不相交，漏判就会白挨一次拉回。
-        for (var cabin : player.getWorld().getEntitiesByClass(AbstractCabinEntity.class,
+        for (var cabin : player.getEntityWorld().getEntitiesByClass(AbstractCabinEntity.class,
                 player.getBoundingBox().expand(.01), c -> !c.isRemoved())) {
             // supportsPassenger = 在厢内 且 脚底恰好贴在地板面（容差 0.025 格）；站在厢内半空中跳起的玩家不算，悬浮判定照旧生效。
             if (cabin.supportsPassenger(player)) {

@@ -10,8 +10,10 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.Item;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.storage.ReadView;
+import net.minecraft.storage.WriteView;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
@@ -110,7 +112,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 副作用：写同步字段（服务端）；客户端调用时什么都不做。
      */
     private void syncCargo() {
-        if (!getWorld().isClient) {
+        if (!getEntityWorld().isClient()) {
             int count = 0;
             for (int i = 0; i < cargo.size(); i++) count += cargo.getStack(i).getCount();
             dataTracker.set(CARGO_ITEMS, count);
@@ -150,7 +152,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @return 允许操作货舱时为 true
      */
     public boolean canUseCargo(PlayerEntity player) {
-        return isAlive() && player.isAlive() && !player.isSpectator() && player.getWorld() == getWorld()
+        return isAlive() && player.isAlive() && !player.isSpectator() && player.getEntityWorld() == getEntityWorld()
                 && containsPassenger(player);
     }
 
@@ -164,7 +166,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @return 至少有一名玩家正在装卸本厢货物时为 true
      */
     private boolean cargoInUse() {
-        return getWorld().getPlayers().stream().anyMatch(player ->
+        return getEntityWorld().getPlayers().stream().anyMatch(player ->
                 player.currentScreenHandler instanceof CargoScreenHandler handler
                         && handler.cabin() == this && canUseCargo(player));
     }
@@ -182,7 +184,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * 同一刻内不会出现"倒计时先归零、门开始关"的窗口。
      */
     @Override public void tick() {
-        if (!getWorld().isClient && cargoInUse()) super.doorCommand(true);
+        if (!getEntityWorld().isClient() && cargoInUse()) super.doorCommand(true);
         super.tick();
     }
 
@@ -224,7 +226,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      */
     @Override public ActionResult interact(PlayerEntity player, Hand hand) {
         if (hand == Hand.MAIN_HAND && player.isSneaking() && containsPassenger(player)) {
-            if (!getWorld().isClient) {
+            if (!getEntityWorld().isClient()) {
                 if (canUseCargo(player)) {
                     player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
                             (syncId, inventory, viewer) -> new CargoScreenHandler(syncId, inventory, this),
@@ -308,7 +310,7 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      */
     private int cargoSpaceLimit() {
         for (int i = cargoCrates(); i < CargoLoad.MAX_CRATES; i++) {
-            if (!getWorld().getOtherEntities(this, cargoBox(i), e -> e instanceof LivingEntity && !e.isSpectator()).isEmpty()) {
+            if (!getEntityWorld().getOtherEntities(this, cargoBox(i), e -> e instanceof LivingEntity && !e.isSpectator()).isEmpty()) {
                 return i * CargoLoad.ITEMS_PER_CRATE;
             }
         }
@@ -355,17 +357,17 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
     }
 
     /**
-     * 存档：父类写线路/状态机/乘客名册，本类补一个 {@code Cargo} 复合标签。
+     * 存档：父类写线路/状态机/乘客名册，本类补一个 {@code Cargo} 子视图。
      *
-     * <p>用原版 {@link Inventories#writeNbt} 的格式（{@code Items} 列表）而不是自定义结构：槽位、数量与
+     * <p>用原版 {@link Inventories#writeData} 的格式（{@code Items} 列表）而不是自定义结构：槽位、数量与
      * 物品组件（自定义名称、附魔、容器内容……）都由原版负责往返，本模组不需要跟着版本更新维护一份
-     * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readCustomDataFromNbt}）。
+     * 物品序列化。旧存档没有这个键时读入空舱（见 {@link #readCustomData}）。
      *
-     * @param nbt 待写入的实体 NBT
+     * @param view 目标存档视图；{@code view.get("Cargo")} 取出的子视图就是原版物品列表的落点
      */
-    @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
-        super.writeCustomDataToNbt(nbt);
-        nbt.put("Cargo", Inventories.writeNbt(new NbtCompound(), cargo.getHeldStacks(), getRegistryManager()));
+    @Override protected void writeCustomData(WriteView view) {
+        super.writeCustomData(view);
+        Inventories.writeData(view.get("Cargo"), cargo.getHeldStacks());
     }
 
     /**
@@ -373,15 +375,15 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      *
      * <p>顺序不能反——{@link #syncCargo()} 依赖货舱内容已经填好；而它必须在这里调用一次，
      * 否则首个 tick 之前客户端会按"空舱"渲染（货箱消失、铭牌显示 20 人）闪一下。
-     * {@code Cargo} 键缺失（旧存档）时 {@code Inventories.readNbt} 读到空复合标签，
+     * {@code Cargo} 键缺失（旧存档）时 {@code Inventories.readData} 读到空视图，
      * 结果是空舱，行为与旧版本一致。
      *
-     * @param nbt 已序列化的实体 NBT
+     * @param view 存档视图
      */
-    @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
-        super.readCustomDataFromNbt(nbt);
+    @Override protected void readCustomData(ReadView view) {
+        super.readCustomData(view);
         cargo.clear();
-        Inventories.readNbt(nbt.getCompound("Cargo"), cargo.getHeldStacks(), getRegistryManager());
+        Inventories.readData(view.getReadView("Cargo"), cargo.getHeldStacks());
         syncCargo();
     }
 
@@ -404,11 +406,13 @@ public class PowerfulCabinEntity extends AbstractCabinEntity {
      * @param reason 原版移除原因
      */
     @Override public void remove(RemovalReason reason) {
-        if (!getWorld().isClient && !isRemoved()
+        // 1.21 之后 dropStack 需要显式传入服务端世界（原版不再自己从实体查），
+        // 因此这里直接用 instanceof 取世界，同时也替代了旧版的"非客户端"判断。
+        if (getEntityWorld() instanceof ServerWorld server && !isRemoved()
                 && (reason == RemovalReason.KILLED || reason == RemovalReason.DISCARDED)) {
             for (int i = 0; i < cargo.size(); i++) {
                 var stack = cargo.removeStack(i);
-                if (!stack.isEmpty()) dropStack(stack);
+                if (!stack.isEmpty()) dropStack(server, stack);
             }
             syncCargo();
         }
