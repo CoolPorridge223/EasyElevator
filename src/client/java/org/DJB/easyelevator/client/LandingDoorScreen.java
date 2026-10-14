@@ -29,8 +29,13 @@ import org.DJB.easyelevator.network.ElevatorNetworking;
 public class LandingDoorScreen extends Screen {
     /** 方形按钮边长（像素）、按钮间距（像素）、面板内边距（像素）。三个键同尺寸，整列才齐。 */
     private static final int BUTTON=20, GAP=6, PADDING=10;
-    /** 面板底色与提示文字颜色：与轿厢内选站面板保持同一套深色配色。 */
-    private static final int PANEL_COLOR=0xEC171E29, HINT_COLOR=0xA7B4C5;
+    /**
+     * 面板底色与提示文字颜色：与轿厢内选站面板保持同一套深色配色。
+     *
+     * <p>文字颜色必须带 alpha：1.21.11 的 {@code DrawContext#drawText} 遇到 alpha=0 会整行跳过，
+     * 六位十六进制（只有 RGB）的写法在那个版本等于"不画"。详见 {@code DoorSoundScreen} 里的同类注释。
+     */
+    private static final int PANEL_COLOR=0xEC171E29, HINT_COLOR=0xFFA7B4C5;
     /** 本面板绑定的站点（楼层门根方块）；客户端收到点亮状态时据此判断"这份状态是不是本面板的"。 */
     private final BlockPos station;
     /** 是否显示上 / 下行按钮：端站只显示有意义的那一个（服务端计算，见 OpenHallPanel）。 */
@@ -101,7 +106,7 @@ public class LandingDoorScreen extends Screen {
     public void render(DrawContext context,int mouseX,int mouseY,float delta) {
         renderBackground(context,mouseX,mouseY,delta);
         context.fill(panelLeft,panelTop,panelLeft+panelWidth,panelTop+panelHeight,PANEL_COLOR);
-        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer,title,width/2,panelTop-PADDING-10,0xFFFFFFFF);
         context.drawCenteredTextWithShadow(textRenderer,
                 Text.translatable("screen.easyelevator.hall_station",station.getY()),
                 width/2,panelTop+panelHeight+PADDING-4,HINT_COLOR);
@@ -175,7 +180,7 @@ public class LandingDoorScreen extends Screen {
             ctx.fill(x,y,x+s,y+s, lit?0xFFE8F1F8:queued?0xFFE08585:0xFF6B7A88);
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:0xFF212A36);
-            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFF:queued?0xFFFFD9D9:0xC3D5E8);
+            ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2, lit?0xFFFFFFFF:queued?0xFFFFD9D9:0xFFC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：按钮当前的提示文本（方向或"关闭"）。 */

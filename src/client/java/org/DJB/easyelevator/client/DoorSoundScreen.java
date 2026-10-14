@@ -56,7 +56,15 @@ public class DoorSoundScreen extends Screen {
     /** 面板底色（不透明，避免井道里的红字从底下透出来）。 */
     private static final int PANEL_COLOR=0xFF141B26;
     /** 标题、副标题、值、行名的文字颜色。 */
-    private static final int TITLE_COLOR=0xFFFFFFFF, HINT_COLOR=0x9FB0C2, VALUE_COLOR=0xE6EEF7;
+    /**
+     * 标题 / 提示 / 数值三种文字颜色。
+     *
+     * <p><b>1.21.11 起这里的每个文字颜色都必须带 alpha（{@code 0xFF} 开头）</b>：新版
+     * {@code DrawContext#drawText} 在开头就做 {@code if (ColorHelper.getAlpha(color) == 0) return;}，
+     * 只有 RGB、没写 alpha 的颜色会被<b>整行跳过</b>（旧版原版会把它补成不透明，所以 1.21.1 时代的
+     * 六位十六进制写法一直没暴露问题）。新增文字颜色时请照此写全八位。
+     */
+    private static final int TITLE_COLOR=0xFFFFFFFF, HINT_COLOR=0xFF9FB0C2, VALUE_COLOR=0xFFE6EEF7;
     /** 值格（只读凹陷条）的底与内层颜色；分隔线的颜色。 */
     private static final int VALUE_BG=0xFF0E141C, VALUE_INNER=0xFF1B2430, DIVIDER=0xFF2A3543;
 
@@ -509,7 +517,7 @@ public class DoorSoundScreen extends Screen {
                 ctx.fill(x,y,x+w,y+h,VALUE_BG);
                 ctx.fill(x,y,x+w-1,y,VALUE_INNER);
                 ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-8),x+w/2,y+(h-8)/2,
-                        on?VALUE_COLOR:0x77828F);
+                        on?VALUE_COLOR:0xFF77828F);
                 return;
             }
             boolean lit=isHovered(), on=toggled.getAsBoolean();
@@ -518,7 +526,7 @@ public class DoorSoundScreen extends Screen {
             ctx.fill(x+1,y+1,x+w-1,y+h-1, lit?0xFF54697F:0xFF2A3543);
             ctx.fill(x+2,y+2,x+w-2,y+h-2, lit?0xFF41566C:on?0xFF233A36:0xFF1E2833);
             ctx.drawCenteredTextWithShadow(textRenderer,trim(label,w-6),x+w/2,y+(h-8)/2,
-                    lit?0xFFFFFF:on?0xFFD9FFF4:0xD2DEE9);
+                    lit?0xFFFFFFFF:on?0xFFD9FFF4:0xFFD2DEE9);
         }
 
         /**

@@ -240,7 +240,7 @@ public class ElevatorScreen extends Screen {
      * <b>开门键的判据与服务端共用 {@link ElevatorController#canOpenDoor}</b>，因此按钮亮着点了就一定会被受理：
      * <ul>
      *   <li>正常停靠（停在某一层）时可用——已经全开时按下只是续满停留时间，相当于按住开门键；</li>
-     *   <li>故障脱困 ，例如断轨或被卡在两层之间）时也可用，
+     *   <li>故障脱困（{@link ElevatorStatus#faulted}，例如断轨或被卡在两层之间）时也可用，
      *       让被困的乘客能自己开门走出来；</li>
      *   <li>本线路一扇完整的门都没有（{@code stops} 为空，例如轿厢刚放到轨道上还没建门）时也可用——
      *       这辆车永远不会动，门关着就必须能开出来；</li>
@@ -340,11 +340,11 @@ public class ElevatorScreen extends Screen {
             // Locale.ROOT 保证小数点是 '.'、阶段键不随语言环境变形（翻译键必须与语言文件一致）。
             Text status=Text.translatable("screen.easyelevator.status",String.format(java.util.Locale.ROOT,"%.1f",cabin.getY()),
                     Text.translatable("phase.easyelevator."+cabin.phase().name().toLowerCase(java.util.Locale.ROOT)));
-            context.drawCenteredTextWithShadow(textRenderer,status,textCenter,panelTop+STATUS_Y,0xC9DAEA);
+            context.drawCenteredTextWithShadow(textRenderer,status,textCenter,panelTop+STATUS_Y,0xFFC9DAEA);
         }
         // 页数行：总站点数、当前页（1 基）、总页数。
         context.drawCenteredTextWithShadow(textRenderer,
-                Text.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0x8FA0B3);
+                Text.translatable("screen.easyelevator.count",stops.size(),page+1,grid.pageCount()),textCenter,panelTop+COUNT_Y,0xFF8FA0B3);
         // 按键区凹底：只比按键块四周各宽 WELL_PAD 像素，把数字键"托"起来——横贯整块面板会多出一条突兀的黑带。
         // 只填充、不再给凹底描边：描边会和上下两条分隔线贴在一起，看起来像叠了三层线，显得臃肿。
         int wellLeft=gridLeft-WELL_PAD, wellTop=gridTop-WELL_PAD, wellRight=gridRight+WELL_PAD, wellBottom=gridBottom+WELL_PAD;
@@ -353,7 +353,7 @@ public class ElevatorScreen extends Screen {
         context.fill(panelLeft+1,wellBottom,panelLeft+panelWidth-1,wellBottom+1,LINE_COLOR);
         context.fill(panelLeft+1,wellBottom+1,panelLeft+panelWidth-1,panelTop+panelHeight-1,BAR_COLOR);
         if(stops.isEmpty()) context.drawCenteredTextWithShadow(textRenderer,Text.translatable("screen.easyelevator.empty"),
-                panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFC27A);
+                panelLeft+panelWidth/2,gridTop+BUTTON/2,0xFFFFC27A);
         super.render(context,mouseX,mouseY,delta);
     }
 
@@ -449,7 +449,7 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x+1,y+1,x+w-1,y+h-1, !active?0xFF1A212B:lit?0xFF41566C:0xFF2B3542);
             if(h>6) ctx.fill(x+2,y+2,x+w-2,y+3, lit?0x30FFFFFF:0x14FFFFFF); // 顶部高光：一像素就够，别抢楼层键的层次
             ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+w/2,y+(h-8)/2,
-                    !active?0xFF7C8896:lit?0xFFFFFFFF:0xD5E2EE);
+                    !active?0xFF7C8896:lit?0xFFFFFFFF:0xFFD5E2EE);
         }
     }
 
@@ -513,7 +513,7 @@ public class ElevatorScreen extends Screen {
             ctx.fill(x+1,y+1,x+s-1,y+s-1, lit?0xFF54697F:queued?0xFF3E2A2E:current?0xFF23392D:0xFF2B3542);
             ctx.fill(x+2,y+2,x+s-2,y+s-2, lit?0xFF41566C:queued?0xFF33222A:current?0xFF1B2C23:0xFF212A36);
             ctx.drawCenteredTextWithShadow(textRenderer,getMessage(),x+s/2,y+(s-8)/2,
-                    lit?0xFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xC3D5E8);
+                    lit?0xFFFFFFFF:queued?0xFFFFD9D9:current?0xFFCFF5DA:0xFFC3D5E8);
         }
 
         /** @return 键盘朗读用的说明：楼层编号 + 该站高度，和悬停提示一致。 */
